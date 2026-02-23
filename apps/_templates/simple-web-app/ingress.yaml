@@ -1,0 +1,15 @@
+# テンプレート: Traefik IngressRoute
+# クラスタ内でのみアクセスする場合はこのファイルは不要です。
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: my-app  # ← アプリ名に変更
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`my-app.local`)  # ← アクセスするドメインに変更
+      kind: Rule
+      services:
+        - name: my-app  # ← Service名に変更
+          port: 80

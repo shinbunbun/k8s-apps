@@ -1,0 +1,34 @@
+# ユーザーアプリケーション用 ArgoCD Project
+#
+# apps/ 配下にデプロイされるアプリケーションが所属するプロジェクト。
+# 安全性のため、使用可能なリソースと送信先を制限する。
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: user-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "ユーザーアプリケーション用プロジェクト"
+  # ソースリポジトリの制限
+  sourceRepos:
+    - git@github.com:shinbunbun/k8s-apps.git
+  # デプロイ先の制限
+  destinations:
+    - namespace: "*"
+      server: https://kubernetes.default.svc
+  # 使用可能なクラスタリソース
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # 使用可能な名前空間スコープリソース
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: traefik.io
+      kind: "*"

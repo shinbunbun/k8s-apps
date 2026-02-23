@@ -1,0 +1,11 @@
+# 動作確認用サンプル: nginx Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-nginx
+spec:
+  selector:
+    app: example-nginx
+  ports:
+    - port: 80
+      targetPort: 80

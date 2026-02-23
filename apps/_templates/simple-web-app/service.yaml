@@ -1,0 +1,11 @@
+# テンプレート: Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app  # ← アプリ名に変更
+spec:
+  selector:
+    app: my-app  # ← アプリ名に変更
+  ports:
+    - port: 80
+      targetPort: 80  # ← コンテナのポートに変更

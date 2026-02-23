@@ -1,0 +1,28 @@
+# テンプレート: Deployment
+# このファイルをコピーして、イメージ名やポートを変更して使ってください。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app  # ← アプリ名に変更
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app  # ← アプリ名に変更
+  template:
+    metadata:
+      labels:
+        app: my-app  # ← アプリ名に変更
+    spec:
+      containers:
+        - name: my-app  # ← アプリ名に変更
+          image: nginx:latest  # ← 使いたいDockerイメージに変更
+          ports:
+            - containerPort: 80  # ← アプリのポートに変更
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
