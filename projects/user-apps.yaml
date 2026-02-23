@@ -32,3 +32,5 @@ spec:
       kind: "*"
     - group: traefik.io
       kind: "*"
+    - group: batch
+      kind: "*"
