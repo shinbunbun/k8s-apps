@@ -16,7 +16,7 @@ spec:
     targetRevision: main
     path: .
     directory:
-      recurse: false
+      recurse: true
       include: "{projects/*.yaml,applicationsets/*.yaml,infrastructure/*/*.yaml}"
   destination:
     server: https://kubernetes.default.svc
