@@ -1,0 +1,38 @@
+# ArgoCD Image Updater
+#
+# ghcr.ioなどのコンテナレジストリからイメージタグの変更を検知し、
+# ArgoCDアプリケーションのイメージタグを自動更新する。
+#
+# レジストリ認証はNixOS側のargocd-secretsサービスで投入される
+# argocd-image-updater-ghcr-credentialsシークレットを使用する。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argocd-image-updater
+    targetRevision: "1.1.1"
+    helm:
+      valuesObject:
+        config:
+          argocd:
+            serverAddress: argocd-server.argocd.svc.cluster.local
+            insecure: true
+            plaintext: true
+          registries:
+            - name: GitHub Container Registry
+              api_url: https://ghcr.io
+              prefix: ghcr.io
+              credentials: secret:argocd/argocd-image-updater-ghcr-credentials#credentials
+              default: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
