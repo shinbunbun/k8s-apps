@@ -1,0 +1,7 @@
+keys:
+  - &k8s_key age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # ← k8s専用Age公開鍵に置き換え
+creation_rules:
+  - path_regex: apps/.*/secrets/.*\.enc\.yaml$
+    key_groups:
+      - age:
+          - *k8s_key

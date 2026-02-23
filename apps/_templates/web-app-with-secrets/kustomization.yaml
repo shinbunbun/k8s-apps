@@ -1,0 +1,9 @@
+# Kustomize設定（KSOPS generator付き）
+# KSOPS が secret-generator.yaml を読み取り、暗号化された Secret を復号して生成する
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+generators:
+  - secret-generator.yaml
