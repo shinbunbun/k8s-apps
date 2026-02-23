@@ -1,0 +1,45 @@
+# テンプレート: Deployment（Secret付き）
+# このファイルをコピーして、イメージ名やポートを変更して使ってください。
+#
+# Secret の使い方:
+#   - envFrom で Secret 全体を環境変数として読み込む
+#   - secrets/secret.enc.yaml に SOPS 暗号化された Secret を配置
+#
+# ghcr.ioプライベートイメージを使う場合:
+#   - image: ghcr.io/shinbunbun/my-app:latest
+#   - k3sノードレベルでレジストリ認証済みのためimagePullSecretsは不要
+#
+# ArgoCD Image Updaterで自動タグ更新する場合:
+#   ApplicationまたはApplicationSetのmetadata.annotationsに以下を追加:
+#     argocd-image-updater.argoproj.io/image-list: myapp=ghcr.io/shinbunbun/my-app
+#     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
+#     argocd-image-updater.argoproj.io/write-back-method: argocd
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app  # ← アプリ名に変更
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app  # ← アプリ名に変更
+  template:
+    metadata:
+      labels:
+        app: my-app  # ← アプリ名に変更
+    spec:
+      containers:
+        - name: my-app  # ← アプリ名に変更
+          image: nginx:latest  # ← 使いたいDockerイメージに変更（例: ghcr.io/shinbunbun/my-app:v1.0.0）
+          ports:
+            - containerPort: 80  # ← アプリのポートに変更
+          envFrom:
+            - secretRef:
+                name: my-app-secret  # ← Secret名に変更（secret.enc.yaml の metadata.name と一致させる）
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
