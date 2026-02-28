@@ -22,7 +22,7 @@ spec:
                 name: google-calendar-bot-secrets
           volumeMounts:
             - name: sqlite-data
-              mountPath: /var/www/html/database
+              mountPath: /var/www/html/database/sqlite
             - name: storage-data
               mountPath: /var/www/html/storage
           resources:
