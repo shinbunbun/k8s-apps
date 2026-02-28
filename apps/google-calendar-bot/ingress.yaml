@@ -1,0 +1,13 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: google-calendar-bot
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`calendar-bot.shinbunbun.com`)
+      kind: Rule
+      services:
+        - name: google-calendar-bot
+          port: 80
