@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mixi2-shinbunbun-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mixi2-shinbunbun-bot
+  template:
+    metadata:
+      labels:
+        app: mixi2-shinbunbun-bot
+    spec:
+      containers:
+        - name: mixi2-shinbunbun-bot
+          image: ghcr.io/shinbunbun/mixi2-shinbunbun-bot:latest
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: mixi2-shinbunbun-bot-secrets
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 3
+            periodSeconds: 10
