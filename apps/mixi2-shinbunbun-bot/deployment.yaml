@@ -21,6 +21,8 @@ spec:
           envFrom:
             - secretRef:
                 name: mixi2-shinbunbun-bot-secrets
+            - secretRef:
+                name: mixi2-shinbunbun-bot-github-secrets
           resources:
             requests:
               memory: "32Mi"
