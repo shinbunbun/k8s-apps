@@ -1,0 +1,47 @@
+# Cilium - eBPF ベースの CNI + kube-proxy 代替 + BGP Service LB
+#
+# Flannel, kube-proxy, MetalLB を統合的に置き換える。
+# RouterOS (AS 65000) と BGP ピアリングし、Service VIP を ECMP で広告する。
+#
+# 初回は Helm で手動インストール後、ArgoCD 管理に移行する。
+# ArgoCD の ServerSideApply が必要（CRD サイズ制限対策）。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://helm.cilium.io/
+    chart: cilium
+    targetRevision: "1.17.3"
+    helm:
+      valuesObject:
+        kubeProxyReplacement: true
+        k8sServiceHost: 127.0.0.1
+        k8sServicePort: 6444
+
+        ipam:
+          operator:
+            clusterPoolIPv4PodCIDRList:
+              - "10.42.0.0/16"
+
+        bgpControlPlane:
+          enabled: true
+
+        hubble:
+          enabled: true
+          relay:
+            enabled: true
+          ui:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

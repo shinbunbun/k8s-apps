@@ -1,0 +1,12 @@
+# Cilium LoadBalancer IP プール
+#
+# Service type: LoadBalancer に割り当てる IP アドレスプール。
+# 192.168.128.0/24 は物理 LAN (192.168.1.0/24) とは別の CIDR で、
+# Cilium BGP 経由で RouterOS にルート広告される。
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: k8s-services
+spec:
+  blocks:
+    - cidr: 192.168.128.0/24

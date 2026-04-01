@@ -1,0 +1,52 @@
+# Cilium BGP 設定
+#
+# RouterOS (AS 65000) と BGP ピアリングし、
+# Service VIP (192.168.128.0/24) を ECMP で広告する。
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumBGPClusterConfig
+metadata:
+  name: bgp-cluster
+spec:
+  nodeSelector:
+    matchLabels:
+      kubernetes.io/os: linux
+  bgpInstances:
+    - name: routeros-peer
+      localASN: 65001
+      peers:
+        - name: routeros
+          peerASN: 65000
+          peerAddress: 192.168.1.1
+          peerConfigRef:
+            name: routeros-config
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumBGPPeerConfig
+metadata:
+  name: routeros-config
+spec:
+  holdTime: 30s
+  keepAliveTime: 10s
+  gracefulRestart:
+    enabled: true
+  families:
+    - afi: ipv4
+      safi: unicast
+      advertisements:
+        matchLabels:
+          advertise: bgp
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumBGPAdvertisement
+metadata:
+  name: svc-advertisement
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+    - advertisementType: Service
+      service:
+        addresses:
+          - ExternalIP
+          - LoadBalancerIP
