@@ -1,0 +1,39 @@
+# Piraeus Operator - LINSTOR + DRBD 分散ストレージ
+#
+# カーネルレベルの DRBD レプリケーションで PVC の HA を実現する。
+# NixOS ではホスト側で DRBD カーネルモジュールをプリロードし、
+# Piraeus の DRBD Module Loader を無効化する（イミュータブル OS 対応）。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: piraeus
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.piraeus.io
+    chart: piraeus-operator
+    targetRevision: "2.7.1"
+    helm:
+      valuesObject:
+        operator:
+          controller:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+          satellite:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: piraeus-datastore
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
