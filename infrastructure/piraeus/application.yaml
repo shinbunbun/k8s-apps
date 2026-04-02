@@ -27,6 +27,23 @@ spec:
               requests:
                 cpu: 50m
                 memory: 128Mi
+        # NixOS 用: カーネルモジュールパスをNixOSのパスに調整
+        linstorSatelliteConfiguration:
+          patches:
+            - target:
+                kind: Pod
+                name: satellite
+              patch: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: satellite
+                spec:
+                  volumes:
+                    - name: lib-modules
+                      hostPath:
+                        path: /run/current-system/kernel-modules/lib/modules
+                        type: Directory
   destination:
     server: https://kubernetes.default.svc
     namespace: piraeus-datastore
