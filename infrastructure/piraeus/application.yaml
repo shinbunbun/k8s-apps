@@ -11,8 +11,8 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://charts.piraeus.io
-    chart: piraeus-operator
+    repoURL: ghcr.io/piraeusdatastore/piraeus-operator
+    chart: piraeus
     targetRevision: "2.7.1"
     helm:
       valuesObject:
