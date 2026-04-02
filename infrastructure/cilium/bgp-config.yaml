@@ -2,6 +2,13 @@
 #
 # RouterOS (AS 65000) と BGP ピアリングし、
 # Service VIP (192.168.128.0/24) を ECMP で広告する。
+#
+# 注意事項:
+#   - CiliumBGPPeerConfig のタイマーは timers.holdTimeSeconds (整数秒) 形式
+#   - gracefulRestart は RouterOS (IPv4 only) と非互換の場合があるため無効化
+#     (Issue: https://github.com/cilium/cilium/issues/30367)
+#   - CiliumBGPAdvertisement の selector が nil だと何も広告されない
+#     → NotIn ワークアラウンドで全 Service を選択
 ---
 apiVersion: cilium.io/v2alpha1
 kind: CiliumBGPClusterConfig
@@ -26,10 +33,11 @@ kind: CiliumBGPPeerConfig
 metadata:
   name: routeros-config
 spec:
-  holdTime: 30s
-  keepAliveTime: 10s
+  timers:
+    holdTimeSeconds: 30
+    keepAliveTimeSeconds: 10
   gracefulRestart:
-    enabled: true
+    enabled: false
   families:
     - afi: ipv4
       safi: unicast
@@ -50,3 +58,6 @@ spec:
         addresses:
           - ExternalIP
           - LoadBalancerIP
+      selector:
+        matchExpressions:
+          - { key: somekey, operator: NotIn, values: [ "never-match" ] }
