@@ -1,9 +1,13 @@
 # LINSTOR Satellite 設定 - NixOS 用
 #
-# NixOS はイミュータブル OS のため、Piraeus のデフォルトの
-# DRBD Module Loader initContainer を無効化する。
-# DRBD カーネルモジュールは NixOS のホスト側でプリロード済み。
-# （Talos Linux と同じパターン）
+# NixOS では nixpkgs の DRBD 9.2.16 が Linux 6.19+ カーネルに未対応のため、
+# Piraeus の DRBD Module Loader にモジュールのビルド・ロードを任せる。
+# ただし /lib/modules が NixOS では /nix/store 配下にあるため、
+# ホストパスのマウントを調整する必要がある場合がある。
+#
+# 問題が発生した場合:
+# 1. nixpkgs の DRBD を 9.3.x にオーバーレイしてホスト側ビルドに戻す
+# 2. または DRBD Module Loader のカーネルソースパスを NixOS 用に調整
 apiVersion: piraeus.io/v1
 kind: LinstorSatelliteConfiguration
 metadata:
@@ -20,11 +24,8 @@ spec:
         metadata:
           name: satellite
         spec:
-          initContainers:
-            - $patch: delete
-              name: drbd-module-loader
           volumes:
-            - $patch: delete
-              name: usr-src
-            - $patch: delete
-              name: lib-modules
+            - name: lib-modules
+              hostPath:
+                path: /run/current-system/kernel-modules/lib/modules
+                type: Directory
