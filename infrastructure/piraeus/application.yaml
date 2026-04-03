@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: ghcr.io/piraeusdatastore/piraeus-operator
     chart: piraeus
-    targetRevision: "2.7.1"
+    targetRevision: "2.10.5"
     helm:
       valuesObject:
         operator:
