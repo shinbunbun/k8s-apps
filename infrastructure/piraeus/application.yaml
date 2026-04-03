@@ -16,6 +16,7 @@ spec:
     targetRevision: "2.10.5"
     helm:
       valuesObject:
+        installCRDs: true
         operator:
           controller:
             resources:
