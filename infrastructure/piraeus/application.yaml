@@ -17,8 +17,13 @@ spec:
     helm:
       valuesObject:
         installCRDs: true
-        # LinstorCluster CR を作成し、LINSTOR controller/satellite をデプロイ
-        linstorCluster: {}
+        # LinstorCluster CR を extraManifests で作成
+        extraManifests:
+          - apiVersion: piraeus.io/v1
+            kind: LinstorCluster
+            metadata:
+              name: linstorcluster
+            spec: {}
         operator:
           controller:
             resources:
