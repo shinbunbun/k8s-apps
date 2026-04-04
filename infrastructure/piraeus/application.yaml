@@ -17,6 +17,8 @@ spec:
     helm:
       valuesObject:
         installCRDs: true
+        # LinstorCluster CR を作成し、LINSTOR controller/satellite をデプロイ
+        linstorCluster: {}
         operator:
           controller:
             resources:
