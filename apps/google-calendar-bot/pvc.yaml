@@ -3,6 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: google-calendar-bot-sqlite
 spec:
+  storageClassName: piraeus-storage
   accessModes:
     - ReadWriteOnce
   resources:
@@ -14,6 +15,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: google-calendar-bot-storage
 spec:
+  storageClassName: piraeus-storage
   accessModes:
     - ReadWriteOnce
   resources:

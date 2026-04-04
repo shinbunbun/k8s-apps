@@ -3,6 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: tokyu-flyer-bot-data
 spec:
+  storageClassName: piraeus-storage
   accessModes:
     - ReadWriteOnce
   resources:
