@@ -32,65 +32,53 @@ spec:
             metadata:
               name: nixos-config
             spec:
-              # podTemplate: DaemonSet の Pod テンプレートに strategic merge patch を適用
-              # $patch: delete で既存のボリューム・コンテナを削除し、patches で再追加する
-              # （同名エントリの delete + add は同一パッチ内では不可能なため 2 段階で処理）
-              podTemplate:
-                spec:
-                  initContainers:
-                    # デフォルトの drbd-module-loader を削除（patches で deps_only 版として再追加）
-                    - name: drbd-module-loader
-                      $patch: delete
-                  volumes:
-                    # デフォルトの lib-modules（/lib/modules）と usr-src（/usr/src）を削除
-                    # NixOS ではパスが異なるため patches で正しいパスで再定義する
-                    - name: lib-modules
-                      $patch: delete
-                    - name: usr-src
-                      $patch: delete
-              # patches: podTemplate による削除後、kustomize パッチで再追加
-              # target に kind: Pod, name: satellite を指定すると、operator 内部の
-              # barepodpatch 機構が DaemonSet linstor-satellite への適用に自動変換する
+              # JSON Patch (RFC 6902) で NixOS 向けにボリュームとコンテナを修正
+              # strategic merge patch ではボリュームの type 変更（hostPath→emptyDir）が不可能なため
+              # JSON Patch でインデックス指定で直接置換する
+              #
+              # デフォルトの volumes 順序:
+              #   0: lib-modules (hostPath: /lib/modules)
+              #   1: usr-src (hostPath: /usr/src)
+              # デフォルトの initContainers 順序:
+              #   0: drbd-module-loader
               patches:
-                # drbd-module-loader を deps_only モードで再追加
-                # DRBD 9 カーネルモジュールはホスト側でプリロード済みのため、
-                # ビルドは不要で依存モジュール（libcrc32c 等）のみロードする
                 - target:
                     kind: Pod
                     name: satellite
                   patch: |
-                    apiVersion: v1
-                    kind: Pod
-                    metadata:
-                      name: satellite
-                    spec:
-                      initContainers:
-                        - name: drbd-module-loader
-                          image: quay.io/piraeusdatastore/drbd9-noble:v9.3.1
-                          env:
-                            - name: LB_HOW
-                              value: deps_only
-                          securityContext:
-                            capabilities:
-                              add: [SYS_MODULE]
-                              drop: [ALL]
-                            readOnlyRootFilesystem: true
-                          volumeMounts:
-                            - mountPath: /lib/modules
-                              name: lib-modules
-                              readOnly: true
-                            - mountPath: /tmp
-                              name: tmp
-                      volumes:
-                        # NixOS のカーネルモジュールパス
-                        # /run/booted-system/ は稼働中カーネルに対応（current-system はリビルド後に変わる）
-                        - name: lib-modules
-                          hostPath:
-                            path: /run/booted-system/kernel-modules/lib/modules
-                            type: Directory
-                        # /usr/src は NixOS に存在しないため emptyDir に置換
-                        - name: usr-src
-                          emptyDir: {}
+                    # lib-modules: NixOS のカーネルモジュールパスに変更
+                    # /run/booted-system/ は稼働中カーネルに対応
+                    - op: replace
+                      path: /spec/volumes/0/hostPath/path
+                      value: /run/booted-system/kernel-modules/lib/modules
+                    # usr-src: hostPath を削除して emptyDir に置換
+                    # NixOS に /usr/src は存在しない。deps_only でビルド不要のため空で良い
+                    - op: remove
+                      path: /spec/volumes/1/hostPath
+                    - op: add
+                      path: /spec/volumes/1/emptyDir
+                      value: {}
+                    # drbd-module-loader: deps_only モードに置換
+                    # DRBD 9 はホスト側でプリロード済み、依存モジュールのみロードする
+                    - op: replace
+                      path: /spec/initContainers/0
+                      value:
+                        name: drbd-module-loader
+                        image: quay.io/piraeusdatastore/drbd9-noble:v9.3.1
+                        env:
+                          - name: LB_HOW
+                            value: deps_only
+                        securityContext:
+                          capabilities:
+                            add: [SYS_MODULE]
+                            drop: [ALL]
+                          readOnlyRootFilesystem: true
+                        volumeMounts:
+                          - mountPath: /lib/modules
+                            name: lib-modules
+                            readOnly: true
+                          - mountPath: /tmp
+                            name: tmp
               # LVM thin pool ストレージプール
               storagePools:
                 - name: thinpool
