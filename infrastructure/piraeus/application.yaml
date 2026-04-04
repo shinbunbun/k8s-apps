@@ -32,9 +32,29 @@ spec:
             metadata:
               name: nixos-config
             spec:
+              # podTemplate: DaemonSet の Pod テンプレートに strategic merge patch を適用
+              # $patch: delete で既存のボリューム・コンテナを削除し、patches で再追加する
+              # （同名エントリの delete + add は同一パッチ内では不可能なため 2 段階で処理）
+              podTemplate:
+                spec:
+                  initContainers:
+                    # デフォルトの drbd-module-loader を削除（patches で deps_only 版として再追加）
+                    - name: drbd-module-loader
+                      $patch: delete
+                  volumes:
+                    # デフォルトの lib-modules（/lib/modules）と usr-src（/usr/src）を削除
+                    # NixOS ではパスが異なるため patches で正しいパスで再定義する
+                    - name: lib-modules
+                      $patch: delete
+                    - name: usr-src
+                      $patch: delete
+              # patches: podTemplate による削除後、kustomize パッチで再追加
+              # target に kind: Pod, name: satellite を指定すると、operator 内部の
+              # barepodpatch 機構が DaemonSet linstor-satellite への適用に自動変換する
               patches:
-                # drbd-module-loader: 依存モジュールのみロード
-                # DRBD 9 はホスト側でプリロード済みのため、ビルドは不要
+                # drbd-module-loader を deps_only モードで再追加
+                # DRBD 9 カーネルモジュールはホスト側でプリロード済みのため、
+                # ビルドは不要で依存モジュール（libcrc32c 等）のみロードする
                 - target:
                     kind: Pod
                     name: satellite
@@ -46,8 +66,6 @@ spec:
                     spec:
                       initContainers:
                         - name: drbd-module-loader
-                          $patch: replace
-                          name: drbd-module-loader
                           image: quay.io/piraeusdatastore/drbd9-noble:v9.3.1
                           env:
                             - name: LB_HOW
