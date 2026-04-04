@@ -45,6 +45,12 @@ spec:
                       hostPath:
                         path: /run/current-system/kernel-modules/lib/modules
                         type: Directory
+          # ファイルベース loop device 上の LVM thin pool をストレージプールとして登録
+          storagePools:
+            - name: thinpool
+              lvmThinPool:
+                volumeGroup: vg_linstor
+                thinPool: thinpool
   destination:
     server: https://kubernetes.default.svc
     namespace: piraeus-datastore
