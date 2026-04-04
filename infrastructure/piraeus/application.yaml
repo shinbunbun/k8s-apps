@@ -1,8 +1,8 @@
 # Piraeus Operator - LINSTOR + DRBD 分散ストレージ
 #
 # カーネルレベルの DRBD レプリケーションで PVC の HA を実現する。
-# NixOS ではホスト側で DRBD カーネルモジュールをプリロードし、
-# Piraeus の DRBD Module Loader を無効化する（イミュータブル OS 対応）。
+# NixOS ではホスト側で DRBD 9 カーネルモジュールをプリロードし、
+# drbd-module-loader は依存モジュールのみロード（LB_HOW=deps_only）する。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,13 +17,68 @@ spec:
     helm:
       valuesObject:
         installCRDs: true
-        # LinstorCluster CR を extraManifests で作成
         extraManifests:
+          # LinstorCluster CR
           - apiVersion: piraeus.io/v1
             kind: LinstorCluster
             metadata:
               name: linstorcluster
             spec: {}
+          # NixOS 向け Satellite 設定
+          # piraeus チャートは linstorSatelliteConfiguration values を処理しないため、
+          # extraManifests で LinstorSatelliteConfiguration CR を直接作成する
+          - apiVersion: piraeus.io/v1
+            kind: LinstorSatelliteConfiguration
+            metadata:
+              name: nixos-config
+            spec:
+              patches:
+                # drbd-module-loader: 依存モジュールのみロード
+                # DRBD 9 はホスト側でプリロード済みのため、ビルドは不要
+                - target:
+                    kind: Pod
+                    name: satellite
+                  patch: |
+                    apiVersion: v1
+                    kind: Pod
+                    metadata:
+                      name: satellite
+                    spec:
+                      initContainers:
+                        - name: drbd-module-loader
+                          $patch: replace
+                          name: drbd-module-loader
+                          image: quay.io/piraeusdatastore/drbd9-noble:v9.3.1
+                          env:
+                            - name: LB_HOW
+                              value: deps_only
+                          securityContext:
+                            capabilities:
+                              add: [SYS_MODULE]
+                              drop: [ALL]
+                            readOnlyRootFilesystem: true
+                          volumeMounts:
+                            - mountPath: /lib/modules
+                              name: lib-modules
+                              readOnly: true
+                            - mountPath: /tmp
+                              name: tmp
+                      volumes:
+                        # NixOS のカーネルモジュールパス
+                        # /run/booted-system/ は稼働中カーネルに対応（current-system はリビルド後に変わる）
+                        - name: lib-modules
+                          hostPath:
+                            path: /run/booted-system/kernel-modules/lib/modules
+                            type: Directory
+                        # /usr/src は NixOS に存在しないため emptyDir に置換
+                        - name: usr-src
+                          emptyDir: {}
+              # LVM thin pool ストレージプール
+              storagePools:
+                - name: thinpool
+                  lvmThinPool:
+                    volumeGroup: vg_linstor
+                    thinPool: thinpool
         operator:
           controller:
             resources:
@@ -35,29 +90,6 @@ spec:
               requests:
                 cpu: 50m
                 memory: 128Mi
-        # NixOS 用: カーネルモジュールパスをNixOSのパスに調整
-        linstorSatelliteConfiguration:
-          patches:
-            - target:
-                kind: Pod
-                name: satellite
-              patch: |
-                apiVersion: v1
-                kind: Pod
-                metadata:
-                  name: satellite
-                spec:
-                  volumes:
-                    - name: lib-modules
-                      hostPath:
-                        path: /run/current-system/kernel-modules/lib/modules
-                        type: Directory
-          # ファイルベース loop device 上の LVM thin pool をストレージプールとして登録
-          storagePools:
-            - name: thinpool
-              lvmThinPool:
-                volumeGroup: vg_linstor
-                thinPool: thinpool
   destination:
     server: https://kubernetes.default.svc
     namespace: piraeus-datastore
