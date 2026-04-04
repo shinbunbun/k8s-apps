@@ -5,6 +5,7 @@
 #
 # 注意事項:
 #   - CiliumBGPPeerConfig のタイマーは timers.holdTimeSeconds (整数秒) 形式
+#   - holdTime=9s / keepAlive=3s: LAN内ピアリングで障害検出を高速化（RFC 4271 最小推奨値）
 #   - gracefulRestart は RouterOS (IPv4 only) と非互換の場合があるため無効化
 #     (Issue: https://github.com/cilium/cilium/issues/30367)
 #   - CiliumBGPAdvertisement の selector が nil だと何も広告されない
@@ -34,8 +35,8 @@ metadata:
   name: routeros-config
 spec:
   timers:
-    holdTimeSeconds: 30
-    keepAliveTimeSeconds: 10
+    holdTimeSeconds: 9
+    keepAliveTimeSeconds: 3
   gracefulRestart:
     enabled: false
   families:
