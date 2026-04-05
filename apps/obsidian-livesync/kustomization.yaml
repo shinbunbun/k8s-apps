@@ -5,6 +5,7 @@ resources:
   - service.yaml
   - pvc.yaml
   - ingress.yaml
+  - couchdb-config-configmap.yaml
   - init-script-configmap.yaml
 generators:
   - secret-generator.yaml

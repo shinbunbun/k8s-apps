@@ -38,36 +38,8 @@ data:
       -X PUT http://localhost:5984/_users 2>/dev/null || \
       echo "Database _users already exists or creation failed"
 
-    # CORS設定
-    echo "Configuring CORS settings..."
-    curl -sf --netrc-file "$NETRC_FILE" \
-      -X PUT http://localhost:5984/_node/nonode@nohost/_config/httpd/enable_cors \
-      -H "Content-Type: application/json" \
-      -d '"true"' 2>/dev/null || echo "CORS enable setting failed"
-
-    curl -sf --netrc-file "$NETRC_FILE" \
-      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/origins \
-      -H "Content-Type: application/json" \
-      -d '"app://obsidian.md,capacitor://localhost,http://localhost,https://private-obsidian.shinbunbun.com"' \
-      2>/dev/null || echo "CORS origins setting failed"
-
-    curl -sf --netrc-file "$NETRC_FILE" \
-      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/credentials \
-      -H "Content-Type: application/json" \
-      -d '"true"' 2>/dev/null || echo "CORS credentials setting failed"
-
-    curl -sf --netrc-file "$NETRC_FILE" \
-      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/methods \
-      -H "Content-Type: application/json" \
-      -d '"GET,PUT,POST,HEAD,DELETE,OPTIONS"' 2>/dev/null || echo "CORS methods setting failed"
-
-    curl -sf --netrc-file "$NETRC_FILE" \
-      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/headers \
-      -H "Content-Type: application/json" \
-      -d '"accept,authorization,content-type,origin,referer,x-couch-request-id,x-requested-with"' \
-      2>/dev/null || echo "CORS headers setting failed"
-
     # データベースセキュリティ設定（JWT認証ユーザーへの権限付与）
+    # CORS設定は20-cors.iniで宣言的に管理
     echo "Configuring database security..."
     SECURITY_DOC='{
       "admins": {

@@ -17,13 +17,14 @@ spec:
       securityContext:
         fsGroup: 5984
       initContainers:
-        # JWT設定ファイルを Secret の値から生成
-        - name: generate-jwt-config
+        # ConfigMapのiniファイルをコピーし、SecretからJWT設定を生成
+        - name: prepare-config
           image: busybox:1.37
           command:
             - sh
             - -c
             - |
+              cp /config-readonly/*.ini /config/
               cat > /config/10-jwt.ini <<EOF
               [chttpd]
               authentication_handlers = {chttpd_auth, jwt_authentication_handler}, {chttpd_auth, cookie_authentication_handler}, {chttpd_auth, default_authentication_handler}
@@ -50,6 +51,8 @@ spec:
           volumeMounts:
             - name: couchdb-config
               mountPath: /config
+            - name: couchdb-config-readonly
+              mountPath: /config-readonly
       containers:
         - name: couchdb
           image: couchdb:3.5.0
@@ -92,7 +95,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
-        # DB初期化 sidecar（冪等、起動時にDB作成・CORS設定・セキュリティ設定を実行後 sleep）
+        # DB初期化 sidecar（冪等、起動時にDB作成・セキュリティ設定を実行後 sleep）
         - name: init-db
           image: curlimages/curl:8.12.1
           command:
@@ -130,6 +133,9 @@ spec:
             claimName: obsidian-livesync-data
         - name: couchdb-config
           emptyDir: {}
+        - name: couchdb-config-readonly
+          configMap:
+            name: obsidian-livesync-couchdb-config
         - name: init-script
           configMap:
             name: obsidian-livesync-init-script
