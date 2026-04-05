@@ -12,3 +12,9 @@ data:
     credentials = true
     methods = GET,PUT,POST,HEAD,DELETE,OPTIONS
     headers = accept,authorization,content-type,origin,referer,x-couch-request-id,x-requested-with
+  30-couchdb.ini: |
+    [couchdb]
+    max_document_size = 16777216
+
+    [cluster]
+    n = 1
