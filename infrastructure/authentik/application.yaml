@@ -1,8 +1,8 @@
 # Authentik IdP - OAuth2/OIDC/SAML2 認証基盤
 #
-# 公式 Helm Chart (2024.10.5) で Authentik 本体をデプロイする。
-# PostgreSQL/Redis は Bitnami subchart を使用（公式イメージでオーバーライド）。
-# piraeus-storage で永続化。
+# 公式 Helm Chart (2026.2.1) で Authentik 本体をデプロイする。
+# PostgreSQL は Bitnami subchart (公式 postgres イメージ) を使用し、piraeus-storage で永続化。
+# Redis は Authentik 本体に内蔵（subchart 不要）。
 # シークレットは apps/authentik-config/ (KSOPS) で管理する authentik-secrets を参照。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -14,14 +14,15 @@ spec:
   source:
     repoURL: https://charts.goauthentik.io
     chart: authentik
-    targetRevision: "2024.10.5"
+    targetRevision: "2026.2.1"
     helm:
       valuesObject:
         # --- Authentik 本体設定 ---
         authentik:
           log_level: info
-          # secret_key, postgresql.password, redis.password, email は
-          # KSOPS Secret (authentik-secrets) から envFrom で注入
+          # secret_key, email 等は KSOPS Secret (authentik-secrets) から existingSecret で注入
+          existingSecret:
+            secretName: authentik-secrets
           error_reporting:
             enabled: false
           email:
@@ -34,6 +35,15 @@ spec:
           envFrom:
             - secretRef:
                 name: authentik-secrets
+          env:
+            - name: AUTHENTIK_POSTGRESQL__HOST
+              value: authentik-postgresql
+            - name: AUTHENTIK_POSTGRESQL__USER
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__NAME
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__PORT
+              value: "5432"
 
         # --- Server (ステートレス、2レプリカで HA) ---
         server:
@@ -45,13 +55,9 @@ spec:
         worker:
           replicas: 1
 
-        # --- PostgreSQL subchart (公式イメージでオーバーライド) ---
+        # --- PostgreSQL subchart (公式 postgres イメージ) ---
         postgresql:
           enabled: true
-          image:
-            registry: docker.io
-            repository: library/postgres
-            tag: "16-alpine"
           auth:
             username: authentik
             database: authentik
@@ -60,30 +66,10 @@ spec:
               userPasswordKey: password
               adminPasswordKey: postgres-password
           primary:
-            extendedConfiguration: |
-              max_connections = 500
             persistence:
               enabled: true
               storageClass: piraeus-storage
               size: 5Gi
-
-        # --- Redis subchart (公式イメージでオーバーライド) ---
-        redis:
-          enabled: true
-          architecture: standalone
-          image:
-            registry: docker.io
-            repository: library/redis
-            tag: "7-alpine"
-          auth:
-            enabled: true
-            existingSecret: authentik-secrets
-            existingSecretPasswordKey: redis-password
-          master:
-            persistence:
-              enabled: true
-              storageClass: piraeus-storage
-              size: 1Gi
   destination:
     server: https://kubernetes.default.svc
     namespace: authentik
