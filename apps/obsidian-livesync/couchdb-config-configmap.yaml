@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obsidian-livesync-couchdb-config
+data:
+  20-cors.ini: |
+    [httpd]
+    enable_cors = true
+
+    [cors]
+    origins = app://obsidian.md,capacitor://localhost,http://localhost,https://private-obsidian.shinbunbun.com
+    credentials = true
+    methods = GET,PUT,POST,HEAD,DELETE,OPTIONS
+    headers = accept,authorization,content-type,origin,referer,x-couch-request-id,x-requested-with

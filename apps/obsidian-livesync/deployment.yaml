@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obsidian-livesync
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: obsidian-livesync
+  template:
+    metadata:
+      labels:
+        app: obsidian-livesync
+    spec:
+      securityContext:
+        fsGroup: 5984
+      initContainers:
+        # ConfigMapのiniファイルをコピーし、SecretからJWT設定を生成
+        - name: prepare-config
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              cp /config-readonly/*.ini /config/
+              cat > /config/10-jwt.ini <<EOF
+              [chttpd]
+              authentication_handlers = {chttpd_auth, jwt_authentication_handler}, {chttpd_auth, cookie_authentication_handler}, {chttpd_auth, default_authentication_handler}
+
+              [jwt_auth]
+              required_claims = exp
+              roles_claim_path = groups
+              allowed_algorithms = ES256
+
+              [jwt_keys]
+              ${JWT_KID} = ${JWT_EC_PUBLIC_KEY}
+              EOF
+          env:
+            - name: JWT_KID
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: JWT_KID
+            - name: JWT_EC_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: JWT_EC_PUBLIC_KEY
+          volumeMounts:
+            - name: couchdb-config
+              mountPath: /config
+            - name: couchdb-config-readonly
+              mountPath: /config-readonly
+      containers:
+        - name: couchdb
+          image: couchdb:3.5.0
+          ports:
+            - containerPort: 5984
+          env:
+            - name: COUCHDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: COUCHDB_USER
+            - name: COUCHDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: COUCHDB_PASSWORD
+          volumeMounts:
+            - name: couchdb-data
+              mountPath: /opt/couchdb/data
+            - name: couchdb-config
+              mountPath: /opt/couchdb/etc/local.d
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5984
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5984
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+        # DB初期化 sidecar（冪等、起動時にDB作成・セキュリティ設定を実行後 sleep）
+        - name: init-db
+          image: curlimages/curl:8.12.1
+          command:
+            - sh
+            - /scripts/init-db.sh
+          env:
+            - name: COUCHDB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: COUCHDB_USER
+            - name: COUCHDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: COUCHDB_PASSWORD
+            - name: COUCHDB_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: obsidian-livesync-secrets
+                  key: COUCHDB_DATABASE_NAME
+          volumeMounts:
+            - name: init-script
+              mountPath: /scripts
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+      volumes:
+        - name: couchdb-data
+          persistentVolumeClaim:
+            claimName: obsidian-livesync-data
+        - name: couchdb-config
+          emptyDir: {}
+        - name: couchdb-config-readonly
+          configMap:
+            name: obsidian-livesync-couchdb-config
+        - name: init-script
+          configMap:
+            name: obsidian-livesync-init-script
+            defaultMode: 0755
