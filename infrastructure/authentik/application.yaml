@@ -1,8 +1,9 @@
 # Authentik IdP - OAuth2/OIDC/SAML2 認証基盤
 #
-# 公式 Helm Chart で Authentik 本体をデプロイする。
-# PostgreSQL/Redis は Bitnami subchart を使用し、piraeus-storage で永続化。
-# シークレットと IngressRoute は apps/authentik/ (KSOPS + Kustomize) で別途管理。
+# 公式 Helm Chart (2026.2.1) で Authentik 本体をデプロイする。
+# PostgreSQL は Bitnami subchart (公式 postgres イメージ) を使用し、piraeus-storage で永続化。
+# Redis は Authentik 本体に内蔵（subchart 不要）。
+# シークレットは apps/authentik-config/ (KSOPS) で管理する authentik-secrets を参照。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,14 +14,15 @@ spec:
   source:
     repoURL: https://charts.goauthentik.io
     chart: authentik
-    targetRevision: "2024.10.5"
+    targetRevision: "2026.2.1"
     helm:
       valuesObject:
         # --- Authentik 本体設定 ---
         authentik:
           log_level: info
-          # secret_key, postgresql.password, redis.password, email は
-          # KSOPS Secret (authentik-secrets) から envFrom で注入するため空のまま
+          # secret_key, email 等は KSOPS Secret (authentik-secrets) から existingSecret で注入
+          existingSecret:
+            secretName: authentik-secrets
           error_reporting:
             enabled: false
           email:
@@ -38,17 +40,15 @@ spec:
         server:
           replicas: 2
           ingress:
-            enabled: false  # Traefik IngressRoute を apps/authentik/ で定義
+            enabled: false  # Traefik IngressRoute を apps/authentik-config/ で定義
 
         # --- Worker ---
         worker:
           replicas: 1
 
-        # --- PostgreSQL subchart (Bitnami) ---
+        # --- PostgreSQL subchart (公式 postgres イメージ) ---
         postgresql:
           enabled: true
-          image:
-            tag: "16"
           auth:
             username: authentik
             database: authentik
@@ -57,26 +57,10 @@ spec:
               userPasswordKey: password
               adminPasswordKey: postgres-password
           primary:
-            extendedConfiguration: |
-              max_connections = 500
             persistence:
               enabled: true
               storageClass: piraeus-storage
               size: 5Gi
-
-        # --- Redis subchart (Bitnami) ---
-        redis:
-          enabled: true
-          architecture: standalone
-          auth:
-            enabled: true
-            existingSecret: authentik-secrets
-            existingSecretPasswordKey: redis-password
-          master:
-            persistence:
-              enabled: true
-              storageClass: piraeus-storage
-              size: 1Gi
   destination:
     server: https://kubernetes.default.svc
     namespace: authentik
