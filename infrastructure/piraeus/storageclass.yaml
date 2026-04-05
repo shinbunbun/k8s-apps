@@ -1,6 +1,6 @@
 # Piraeus StorageClass
 #
-# DRBD レプリカ数 2 で PVC の HA を実現する。
+# DRBD レプリカ数 3 で PVC の HA を実現する。
 # LVM thin pool 上にボリュームを作成し、WaitForFirstConsumer で
 # Pod がスケジュールされたノードにボリュームをバインドする。
 apiVersion: storage.k8s.io/v1
@@ -10,7 +10,7 @@ metadata:
 provisioner: linstor.csi.linbit.com
 parameters:
   linstor.csi.linbit.com/storagePool: thinpool
-  linstor.csi.linbit.com/placementCount: "2"
+  linstor.csi.linbit.com/placementCount: "3"
   csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 reclaimPolicy: Delete
