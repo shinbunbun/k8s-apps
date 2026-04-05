@@ -45,13 +45,11 @@ spec:
         worker:
           replicas: 1
 
-        # --- PostgreSQL subchart (公式イメージでオーバーライド) ---
+        # --- PostgreSQL subchart (Bitnami latest) ---
         postgresql:
           enabled: true
           image:
-            registry: docker.io
-            repository: library/postgres
-            tag: "16-alpine"
+            tag: latest
           auth:
             username: authentik
             database: authentik
@@ -67,14 +65,12 @@ spec:
               storageClass: piraeus-storage
               size: 5Gi
 
-        # --- Redis subchart (公式イメージでオーバーライド) ---
+        # --- Redis subchart (Bitnami latest) ---
         redis:
           enabled: true
           architecture: standalone
           image:
-            registry: docker.io
-            repository: library/redis
-            tag: "7-alpine"
+            tag: latest
           auth:
             enabled: true
             existingSecret: authentik-secrets
