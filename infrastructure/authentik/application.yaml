@@ -30,11 +30,20 @@ spec:
             use_tls: true
             from: "noreply@shinbunbun.com"
 
-        # --- envFrom でシークレットを注入 ---
+        # --- シークレット・DB接続設定を注入 ---
         global:
           envFrom:
             - secretRef:
                 name: authentik-secrets
+          env:
+            - name: AUTHENTIK_POSTGRESQL__HOST
+              value: authentik-postgresql
+            - name: AUTHENTIK_POSTGRESQL__USER
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__NAME
+              value: authentik
+            - name: AUTHENTIK_POSTGRESQL__PORT
+              value: "5432"
 
         # --- Server (ステートレス、2レプリカで HA) ---
         server:
