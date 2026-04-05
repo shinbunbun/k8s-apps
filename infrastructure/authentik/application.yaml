@@ -1,0 +1,95 @@
+# Authentik IdP - OAuth2/OIDC/SAML2 認証基盤
+#
+# 公式 Helm Chart + KSOPS Secret + Traefik IngressRoute の multi-source 構成。
+# PostgreSQL/Redis は Bitnami subchart を使用し、piraeus-storage で永続化する。
+# シークレットは KSOPS (SOPS/Age) で管理し、kustomize/ サブディレクトリから注入する。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: authentik
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    # Source 1: Authentik 公式 Helm Chart
+    - repoURL: https://charts.goauthentik.io
+      chart: authentik
+      targetRevision: "2024.10.5"
+      helm:
+        valuesObject:
+          # --- Authentik 本体設定 ---
+          authentik:
+            log_level: info
+            # secret_key, postgresql.password, redis.password, email は
+            # KSOPS Secret (authentik-secrets) から envFrom で注入するため空のまま
+            error_reporting:
+              enabled: false
+            email:
+              port: 587
+              use_tls: true
+              from: "noreply@shinbunbun.com"
+
+          # --- envFrom でシークレットを注入 ---
+          global:
+            envFrom:
+              - secretRef:
+                  name: authentik-secrets
+
+          # --- Server (ステートレス、2レプリカで HA) ---
+          server:
+            replicas: 2
+            ingress:
+              enabled: false  # Traefik IngressRoute を別途定義
+
+          # --- Worker ---
+          worker:
+            replicas: 1
+
+          # --- PostgreSQL subchart (Bitnami) ---
+          postgresql:
+            enabled: true
+            image:
+              tag: "16"
+            auth:
+              username: authentik
+              database: authentik
+              existingSecret: authentik-secrets
+              secretKeys:
+                userPasswordKey: password
+                adminPasswordKey: postgres-password
+            primary:
+              extendedConfiguration: |
+                max_connections = 500
+              persistence:
+                enabled: true
+                storageClass: piraeus-storage
+                size: 5Gi
+
+          # --- Redis subchart (Bitnami) ---
+          redis:
+            enabled: true
+            architecture: standalone
+            auth:
+              enabled: true
+              existingSecret: authentik-secrets
+              existingSecretPasswordKey: redis-password
+            master:
+              persistence:
+                enabled: true
+                storageClass: piraeus-storage
+                size: 1Gi
+
+    # Source 2: KSOPS Secret + Traefik IngressRoute
+    - repoURL: git@github.com:shinbunbun/k8s-apps.git
+      targetRevision: main
+      path: infrastructure/authentik/kustomize
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: authentik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
