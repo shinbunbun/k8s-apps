@@ -1,0 +1,20 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: authentik
+spec:
+  entryPoints:
+    - web
+  routes:
+    # Authentik 管理画面・OAuth/OIDC エンドポイント
+    - match: Host(`auth.shinbunbun.com`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          port: 80
+    # wg-lease (peer-issuer) - Embedded Outpost 経由のプロキシ認証
+    - match: Host(`wg-lease.shinbunbun.com`)
+      kind: Rule
+      services:
+        - name: authentik-server
+          port: 80
