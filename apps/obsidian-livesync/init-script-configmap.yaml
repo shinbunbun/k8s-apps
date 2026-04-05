@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obsidian-livesync-init-script
+data:
+  init-db.sh: |
+    #!/bin/sh
+    set -e
+
+    echo "Waiting for CouchDB to be ready..."
+    for i in $(seq 1 30); do
+      if curl -sf http://localhost:5984/ >/dev/null 2>&1; then
+        echo "CouchDB is ready!"
+        break
+      fi
+      echo "Attempt $i/30: CouchDB not ready yet, waiting..."
+      sleep 2
+    done
+
+    # 認証用の netrc ファイルを作成
+    NETRC_FILE=$(mktemp)
+    chmod 600 "$NETRC_FILE"
+    echo "machine localhost login ${COUCHDB_USER} password ${COUCHDB_PASSWORD}" > "$NETRC_FILE"
+
+    # データベース作成
+    echo "Creating obsidian-livesync database..."
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/obsidian-livesync 2>/dev/null || \
+      echo "Database obsidian-livesync already exists or creation failed"
+
+    echo "Creating ${COUCHDB_DATABASE_NAME} database..."
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/${COUCHDB_DATABASE_NAME} 2>/dev/null || \
+      echo "Database ${COUCHDB_DATABASE_NAME} already exists or creation failed"
+
+    echo "Creating _users system database..."
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_users 2>/dev/null || \
+      echo "Database _users already exists or creation failed"
+
+    # CORS設定
+    echo "Configuring CORS settings..."
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_node/nonode@nohost/_config/httpd/enable_cors \
+      -H "Content-Type: application/json" \
+      -d '"true"' 2>/dev/null || echo "CORS enable setting failed"
+
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/origins \
+      -H "Content-Type: application/json" \
+      -d '"app://obsidian.md,capacitor://localhost,http://localhost,https://private-obsidian.shinbunbun.com"' \
+      2>/dev/null || echo "CORS origins setting failed"
+
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/credentials \
+      -H "Content-Type: application/json" \
+      -d '"true"' 2>/dev/null || echo "CORS credentials setting failed"
+
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/methods \
+      -H "Content-Type: application/json" \
+      -d '"GET,PUT,POST,HEAD,DELETE,OPTIONS"' 2>/dev/null || echo "CORS methods setting failed"
+
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/_node/nonode@nohost/_config/cors/headers \
+      -H "Content-Type: application/json" \
+      -d '"accept,authorization,content-type,origin,referer,x-couch-request-id,x-requested-with"' \
+      2>/dev/null || echo "CORS headers setting failed"
+
+    # データベースセキュリティ設定（JWT認証ユーザーへの権限付与）
+    echo "Configuring database security..."
+    SECURITY_DOC='{
+      "admins": {
+        "names": ["admin"],
+        "roles": ["authentik Admins"]
+      },
+      "members": {
+        "names": [],
+        "roles": ["Obsidian Users"]
+      }
+    }'
+
+    curl -sf --netrc-file "$NETRC_FILE" \
+      -X PUT http://localhost:5984/obsidian-livesync/_security \
+      -H "Content-Type: application/json" \
+      -d "$SECURITY_DOC" 2>/dev/null || echo "Security configuration for obsidian-livesync failed"
+
+    if [ "${COUCHDB_DATABASE_NAME}" != "obsidian-livesync" ]; then
+      curl -sf --netrc-file "$NETRC_FILE" \
+        -X PUT http://localhost:5984/${COUCHDB_DATABASE_NAME}/_security \
+        -H "Content-Type: application/json" \
+        -d "$SECURITY_DOC" 2>/dev/null || echo "Security configuration for ${COUCHDB_DATABASE_NAME} failed"
+    fi
+
+    # 一時ファイルを削除
+    rm -f "$NETRC_FILE"
+
+    echo "CouchDB initialization completed successfully!"
+    # 初期化完了後は無限スリープ（sidecar として常駐）
+    exec sleep infinity
