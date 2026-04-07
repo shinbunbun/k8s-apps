@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-issuer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: peer-issuer
+  template:
+    metadata:
+      labels:
+        app: peer-issuer
+    spec:
+      containers:
+        - name: peer-issuer
+          image: ghcr.io/shinbunbun/peer-issuer:latest
+          ports:
+            - containerPort: 8088
+          env:
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:8088"
+            - name: DB_PATH
+              value: "/data/leases.db"
+            - name: CI_POOL_CIDR
+              value: "10.66.66.64/26"
+            - name: ROUTER_HOST
+              value: "192.168.1.1"
+            - name: ROUTER_SSH_PORT
+              value: "22"
+            - name: ROUTER_USER
+              value: "wgissuer"
+            - name: ROUTER_SSH_KEY
+              value: "/secrets/router-ssh-key"
+            - name: ROUTER_WG_IF
+              value: "wg-home"
+            - name: WG_MTU
+              value: "1392"
+            - name: WG_KEEPALIVE
+              value: "25"
+            - name: DEFAULT_TTL
+              value: "86400"
+          envFrom:
+            - secretRef:
+                name: peer-issuer-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: ssh-key
+              mountPath: /secrets/router-ssh-key
+              subPath: router-ssh-key
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            tcpSocket:
+              port: 8088
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8088
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: ssh-key
+          secret:
+            secretName: peer-issuer-secrets
+            items:
+              - key: router-ssh-key
+                path: router-ssh-key
+                mode: 0400
