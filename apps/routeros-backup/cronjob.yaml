@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: routeros-backup
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: routeros-backup
+              image: ghcr.io/shinbunbun/routeros-backup:latest
+              imagePullPolicy: Always
+              env:
+                - name: ROUTER_HOST
+                  value: "192.168.1.1"
+                - name: ROUTER_SSH_PORT
+                  value: "22"
+                - name: ROUTER_USER
+                  value: "admin"
+                - name: ROUTER_SSH_KEY
+                  value: "/secrets/ssh-key"
+                - name: GIT_REPO_URL
+                  value: "git@github.com:shinbunbun/routeros-backups.git"
+                - name: GIT_BRANCH
+                  value: "main"
+                - name: GIT_USER_NAME
+                  value: "RouterOS Backup Bot"
+                - name: GIT_USER_EMAIL
+                  value: "routeros-backup@shinbunbun.com"
+                - name: GIT_SSH_KEY
+                  value: "/secrets/ssh-key"
+                - name: BACKUP_FILENAME
+                  value: "routeros.rsc"
+                - name: STRIP_HEADER_LINES
+                  value: "1"
+                - name: MAX_RETRIES
+                  value: "3"
+                - name: RETRY_DELAY_SEC
+                  value: "30"
+                - name: WORKDIR
+                  value: "/tmp/routeros-backup"
+              envFrom:
+                - secretRef:
+                    name: routeros-backup-secrets
+              volumeMounts:
+                - name: ssh-key
+                  mountPath: /secrets/ssh-key
+                  subPath: ssh-key
+                  readOnly: true
+                - name: workdir
+                  mountPath: /tmp/routeros-backup
+              resources:
+                requests:
+                  memory: "32Mi"
+                  cpu: "25m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
+          volumes:
+            - name: ssh-key
+              secret:
+                secretName: routeros-backup-secrets
+                items:
+                  - key: ssh-key
+                    path: ssh-key
+                    mode: 0400
+            - name: workdir
+              emptyDir: {}
