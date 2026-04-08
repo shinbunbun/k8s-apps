@@ -16,6 +16,10 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
           containers:
             - name: routeros-backup
               image: ghcr.io/shinbunbun/routeros-backup:latest
@@ -73,6 +77,6 @@ spec:
                 items:
                   - key: ssh-key
                     path: ssh-key
-                    mode: 0400
+                    mode: 0440
             - name: workdir
               emptyDir: {}
