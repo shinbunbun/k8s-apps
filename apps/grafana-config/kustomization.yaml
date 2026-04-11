@@ -8,9 +8,18 @@
 # label grafana_dashboard=1 を付与することで Helm chart の dashboard sidecar が
 # 自動ロードする (infrastructure/grafana/application.yaml の
 # sidecar.dashboards.label / labelValue / searchNamespace 設定と対応)。
+#
+# commonAnnotations で argocd.argoproj.io/sync-options: ServerSideApply=true を
+# 付与。理由: nixos.json ダッシュボードは 474KB あり、ArgoCD の client-side apply
+# では kubectl.kubernetes.io/last-applied-configuration annotation に全データが
+# コピーされ metadata.annotations 256KiB 上限を超過して ConfigMap apply が失敗する。
+# server-side apply は last-applied-configuration を使わないためこの制限を回避できる。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: grafana
+
+commonAnnotations:
+  argocd.argoproj.io/sync-options: ServerSideApply=true
 
 resources:
   - postgres-cluster.yaml
