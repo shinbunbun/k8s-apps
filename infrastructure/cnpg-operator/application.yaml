@@ -10,10 +10,21 @@
 # CNPG Cluster 側 storage は PG streaming replication とブロックレベル複製が
 # 重複しないよう local-path (k3s ノードローカル) を推奨する。
 #
-# values は指定せず chart のデフォルトに任せる。Operator Pod に CPU/memory
-# limits を付けると調停中に OOM kill されクラスタ全体に影響するリスクがあり、
-# homelab 規模ではデフォルト {} のほうが安全。resources / podAntiAffinity /
-# monitoring (PodMonitor CRD 要) 等の調整は実運用で必要が出た時点で追記する。
+# Operator と Cluster instance の同居を避けるため podAntiAffinity (preferred) を
+# 設定する。Primary ノードと Operator ノードが同一だと、そのノード障害で
+# Operator 同時ダウン → Standby 昇格が起きない → r/w 不能 (Operator 再スケジュール
+# まで最大 5 分) という失敗パターンがあるため。preferred にしているのは required
+# にすると Standby の再作成時にスケジュール不能になるケースが出るため。
+# 通常時は 3 ノード構成 (Cluster instance 2 + Operator 1) で Operator が
+# 必ず Cluster とは別ノードに配置される。
+#
+# replicaCount は chart デフォルトの 1 のまま。Operator 自体のノード障害時は
+# 5 分程度管理操作が止まるが、Grafana メタデータ DB 用途では許容範囲。
+# (DB 自体は既存 Pod が動き続けるので r/w 継続)。
+#
+# resources は指定しない。Operator Pod に CPU/memory limits を付けると調停中に
+# OOM kill されクラスタ全体に影響するリスクがあり、homelab 規模では chart デフォルト
+# {} のほうが安全。monitoring (PodMonitor CRD 要) 等の調整は実運用で必要が出た時点で追記する。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -29,6 +40,23 @@ spec:
     chart: cloudnative-pg
     # Chart 0.28.0 = Operator v1.29.0 (https://cloudnative-pg.github.io/charts/index.yaml で確認)
     targetRevision: "0.28.0"
+    helm:
+      valuesObject:
+        # Operator は Cluster instance (cnpg.io/podRole=instance ラベル付き) の
+        # 動いているノードを避けて配置する。preferred なので Cluster 側に偏って
+        # 候補ノードが無くなった場合は同居を許容する。
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                      - key: cnpg.io/podRole
+                        operator: In
+                        values:
+                          - instance
+                  topologyKey: kubernetes.io/hostname
   destination:
     server: https://kubernetes.default.svc
     namespace: cnpg-system

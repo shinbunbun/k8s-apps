@@ -1,0 +1,106 @@
+# Grafana - 可視化 UI (HA, 2 レプリカ)
+#
+# values は chart デフォルトを活かし、運用上の差分だけを明示:
+# - replicas: 2 (chart デフォルト 1)
+# - admin: existingSecret (OIDC 優先なのでフォールバック用途)
+# - envFromSecret: grafana-secrets (DB / OAuth / secret_key を注入)
+# - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化
+# - extraConfigmapMounts: datasources provisioning ConfigMap をマウント
+# - sidecar.dashboards: label grafana_dashboard=1 を grafana namespace 内で探索
+# - affinity: podAntiAffinity preferred でノード分散
+# - persistence: chart デフォルト無効のまま (/var/lib/grafana と /var/lib/grafana-search
+#   は chart が自動で emptyDir マウントするので unified_storage.index_path もそのまま動く)
+# - unified_alerting / alerting: 無効化 (NixOS Alertmanager が継続担当、2 レプリカ重複回避)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  annotations:
+    # Cluster より後でデプロイ (cnpg-operator -10 → Cluster 0 → grafana 10)
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    # Chart 10.5.15 bundles Grafana 12.3.1 appVersion. image.tag で 12.4.2 に上書きする。
+    # chart が 12.4.x を正式サポートしたら tag を空に戻して chart デフォルトに任せる。
+    targetRevision: "10.5.15"
+    helm:
+      valuesObject:
+        replicas: 2
+
+        image:
+          # chart 側 appVersion より新しい Grafana を使うための tag 上書き
+          tag: "12.4.2"
+
+        admin:
+          existingSecret: grafana-secrets
+          userKey: admin-user
+          passwordKey: admin-password
+
+        envFromSecret: grafana-secrets
+
+        grafana.ini:
+          server:
+            domain: grafana.shinbunbun.com
+            root_url: https://grafana.shinbunbun.com
+          database:
+            type: postgres
+            host: grafana-db-rw.grafana.svc.cluster.local
+            port: 5432
+            name: grafana
+            user: grafana
+            ssl_mode: disable
+          analytics:
+            reporting_enabled: false
+            check_for_updates: false
+          "auth.anonymous":
+            enabled: false
+          "auth.generic_oauth":
+            enabled: true
+            name: Authentik
+            allow_sign_up: true
+            scopes: "openid email profile groups"
+            auth_url: https://auth.shinbunbun.com/application/o/authorize/
+            token_url: https://auth.shinbunbun.com/application/o/token/
+            api_url: https://auth.shinbunbun.com/application/o/userinfo/
+            role_attribute_path: "contains(groups[*], 'Grafana Admins') && 'Admin' || contains(groups[*], 'Grafana Editors') && 'Editor' || 'Viewer'"
+            auto_login: true
+          unified_alerting:
+            enabled: false
+          alerting:
+            enabled: false
+
+        extraConfigmapMounts:
+          - name: datasources
+            mountPath: /etc/grafana/provisioning/datasources
+            configMap: grafana-datasources
+            readOnly: true
+
+        sidecar:
+          dashboards:
+            enabled: true
+            labelValue: "1"
+            searchNamespace: grafana
+
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: grafana
+                  topologyKey: kubernetes.io/hostname
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: grafana
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
