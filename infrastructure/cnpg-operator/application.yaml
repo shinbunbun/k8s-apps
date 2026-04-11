@@ -1,0 +1,43 @@
+# CloudNativePG Operator - k3s クラスタの汎用 PostgreSQL 基盤
+#
+# 公式 Helm Chart で CNPG Operator をインストール。
+# Chart 0.28.0 は Operator v1.29.0 をバンドル (chart Chart.yaml の appVersion)。
+# CRDs は chart が自動作成する (values.yaml の crds.create: true がデフォルト)。
+# cluster-wide scope (config.clusterWide: true がデフォルト) で
+# 全 namespace の postgresql.cnpg.io/v1 Cluster CR を扱う汎用基盤となる。
+#
+# 第1利用者は Grafana HA 移行タスクで apps/grafana-config/postgres-cluster.yaml。
+# CNPG Cluster 側 storage は PG streaming replication とブロックレベル複製が
+# 重複しないよう local-path (k3s ノードローカル) を推奨する。
+#
+# values は指定せず chart のデフォルトに任せる。Operator Pod に CPU/memory
+# limits を付けると調停中に OOM kill されクラスタ全体に影響するリスクがあり、
+# homelab 規模ではデフォルト {} のほうが安全。resources / podAntiAffinity /
+# monitoring (PodMonitor CRD 要) 等の調整は実運用で必要が出た時点で追記する。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    # 他の PG 依存アプリ (Grafana 等) より先にデプロイするため sync-wave を小さく
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    # Chart 0.28.0 = Operator v1.29.0 (https://cloudnative-pg.github.io/charts/index.yaml で確認)
+    targetRevision: "0.28.0"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # CNPG CRDs (Cluster / Backup / Pooler / ScheduledBackup) は定義が大きく、
+      # client-side apply では annotation 260KB 上限エラーになるため必須
+      - ServerSideApply=true
