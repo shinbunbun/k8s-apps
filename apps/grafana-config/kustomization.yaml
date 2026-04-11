@@ -1,0 +1,72 @@
+# Grafana Config - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/grafana-config を
+# 自動検出して ArgoCD Application を生成する。
+# すべてのリソースを grafana namespace にデプロイ。
+#
+# configMapGenerator で dashboards/*.json を ConfigMap 化し、
+# label grafana_dashboard=1 を付与することで Helm chart の dashboard sidecar が
+# 自動ロードする (infrastructure/grafana/application.yaml の
+# sidecar.dashboards.label / labelValue / searchNamespace 設定と対応)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: grafana
+
+resources:
+  - postgres-cluster.yaml
+  - ingress.yaml
+  - datasources-configmap.yaml
+
+generators:
+  - secret-generator.yaml
+
+configMapGenerator:
+  - name: grafana-dashboard-overview
+    files:
+      - dashboards/overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-nixos
+    files:
+      - dashboards/nixos.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-routeros
+    files:
+      - dashboards/routeros.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s
+    files:
+      - dashboards/k8s.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-overview
+    files:
+      - dashboards/logs-overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-errors
+    files:
+      - dashboards/logs-errors.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-explore
+    files:
+      - dashboards/logs-explore.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false

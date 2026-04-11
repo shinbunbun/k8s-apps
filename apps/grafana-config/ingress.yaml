@@ -1,0 +1,30 @@
+# Grafana Ingress - Traefik IngressRoute
+#
+# Cloudflare Tunnel (homeMachine) が Host ヘッダ付きで Traefik VIP
+# (192.168.128.10, Cilium BGP) に中継する。Traefik がこのルールで
+# grafana Service (ClusterIP:80 → Grafana Pod :3000) にルーティングする。
+# Zero Trust Access 認証は Cloudflare 側で既に設定済み。
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: grafana-headers
+spec:
+  headers:
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`grafana.shinbunbun.com`)
+      kind: Rule
+      middlewares:
+        - name: grafana-headers
+      services:
+        - name: grafana
+          port: 80
