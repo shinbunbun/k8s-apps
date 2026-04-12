@@ -1,8 +1,7 @@
 # Prometheus Alert Rules (YAML format)
 #
-# このファイルは alert-rules.nix と同一のルールを YAML 形式で提供します。
+# alert-rules.nix と同一のルールを YAML 形式で提供します。
 # k8s 上の VictoriaMetrics (vmalert) から参照されます。
-# NixOS 側は引き続き alert-rules.nix を使用します。
 
 groups:
   - name: system

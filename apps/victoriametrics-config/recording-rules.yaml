@@ -4,9 +4,8 @@
 # これにより Linux 前提の Grafana ダッシュボード（Node Exporter Full 等）が
 # macOS インスタンスでも正しく表示されます。
 #
-# このファイルは recording-rules.nix と同一のルールを YAML 形式で提供します。
+# recording-rules.nix と同一のルールを YAML 形式で提供します。
 # k8s 上の VictoriaMetrics (vmalert) から参照されます。
-# NixOS 側は引き続き recording-rules.nix を使用します。
 
 groups:
   - name: darwin_memory_compat
