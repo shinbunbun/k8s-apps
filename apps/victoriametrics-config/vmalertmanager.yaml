@@ -1,7 +1,7 @@
 # VMAlertmanager - アラート通知管理
 #
 # vmalert から受信したアラートをグルーピング・抑制し、Discord に通知する。
-# 設定 (alertmanager.yaml) は KSOPS Secret (alertmanager-config) で管理。
+# 具体的な receiver/route 設定は VMAlertmanagerConfig (vmalertmanagerconfig.yaml) で定義。
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMAlertmanager
 metadata:
@@ -9,4 +9,5 @@ metadata:
   namespace: victoriametrics
 spec:
   replicaCount: 1
-  configSecret: alertmanager-config
+  selectAllByDefault: true
+  disableNamespaceMatcher: true
