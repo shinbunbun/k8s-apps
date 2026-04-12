@@ -1,0 +1,22 @@
+# vmselect LAN アクセス用 LoadBalancer Service
+#
+# Cilium LB IPAM で固定 VIP (192.168.128.12) を割当。
+# BGP 経由で RouterOS に広告され、LAN 内のクライアントから
+# VictoriaMetrics クエリエンドポイントにアクセス可能。
+# 用途: デバッグ、Grafana MCP Server、直接クエリ等。
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmselect-lan
+  namespace: victoriametrics
+  annotations:
+    io.cilium/lb-ipam-ips: "192.168.128.12"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: vmselect
+    app.kubernetes.io/instance: vmcluster
+  ports:
+    - name: http
+      port: 8481
+      targetPort: 8481
