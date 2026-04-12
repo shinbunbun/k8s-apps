@@ -2,7 +2,8 @@
 #
 # VMCluster, VMAgent, VMAlert 等の CRD を reconcile し、
 # Pod のライフサイクルを管理する。
-# CRD より後、他コンポーネントより先にデプロイ (sync-wave: -3)。
+# CRD も同梱 (crds.plain: false) のため、別途 CRDs チャートは不要。
+# cnpg-operator と同じ sync-wave (-10) で他コンポーネントより先にデプロイ。
 #
 # ArgoCD workaround:
 # - cert-manager 不使用時に webhook 証明書が sync ごとに再生成される問題を
@@ -13,7 +14,7 @@ metadata:
   name: victoria-metrics-operator
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-3"
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   project: default
   source:
