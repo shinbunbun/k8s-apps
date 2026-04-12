@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: victoriametrics
+
+resources:
+  - vmcluster.yaml
+  - vmagent.yaml
+  - vmalert.yaml
+  - scrape-config-cm.yaml
+  - alertmanager-config-cm.yaml
+  - lan-service.yaml
+
+configMapGenerator:
+  # SNMP Exporter 設定 (MikroTik RouterOS)
+  - name: snmp-config
+    files:
+      - snmp.yml
+    options:
+      disableNameSuffixHash: true
+
+  # vmalert アラートルール
+  - name: vmalert-alert-rules
+    files:
+      - alert-rules.yaml
+    options:
+      disableNameSuffixHash: true
+
+  # vmalert レコーディングルール
+  - name: vmalert-recording-rules
+    files:
+      - recording-rules.yaml
+    options:
+      disableNameSuffixHash: true
+
+generators:
+  - secret-generator.yaml

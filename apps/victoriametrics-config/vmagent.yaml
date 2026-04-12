@@ -1,0 +1,28 @@
+# VMAgent - メトリクス収集エージェント (HA: 2 レプリカ)
+#
+# 全ターゲットを両レプリカがスクレイプし、VMCluster の vminsert に remote_write。
+# 重複データは vmstorage/vmselect の dedup.minScrapeInterval=15s で排除。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAgent
+metadata:
+  name: vmagent
+  namespace: victoriametrics
+spec:
+  replicaCount: 2
+  remoteWrite:
+    - url: "http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
+  additionalScrapeConfigs:
+    name: vmagent-scrape-config
+    key: scrape-config.yaml
+  secrets:
+    - vm-monitoring-token
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vmagent
+                app.kubernetes.io/instance: vmagent
+            topologyKey: kubernetes.io/hostname

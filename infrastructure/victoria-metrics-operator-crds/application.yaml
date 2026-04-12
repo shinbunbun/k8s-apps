@@ -1,0 +1,27 @@
+# VictoriaMetrics Operator CRDs
+#
+# VMCluster, VMAgent, VMAlert 等のカスタムリソース定義。
+# Operator 本体より先にインストールする必要がある (sync-wave: -5)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoria-metrics-operator-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: default
+  source:
+    repoURL: https://victoriametrics.github.io/helm-charts/
+    chart: victoria-metrics-operator-crds
+    targetRevision: "0.8.0"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: victoriametrics
+  syncPolicy:
+    automated:
+      prune: false # CRD の誤削除を防止
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

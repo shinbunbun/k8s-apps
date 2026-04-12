@@ -1,0 +1,53 @@
+# VictoriaMetrics Operator
+#
+# VMCluster, VMAgent, VMAlert 等の CRD を reconcile し、
+# Pod のライフサイクルを管理する。
+# CRD より後、他コンポーネントより先にデプロイ (sync-wave: -3)。
+#
+# ArgoCD workaround:
+# - cert-manager 不使用時に webhook 証明書が sync ごとに再生成される問題を
+#   ignoreDifferences + RespectIgnoreDifferences で対処
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoria-metrics-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  source:
+    repoURL: https://victoriametrics.github.io/helm-charts/
+    chart: victoria-metrics-operator
+    targetRevision: "0.59.4"
+    helm:
+      valuesObject:
+        operator:
+          # ServiceMonitor → VMServiceScrape 自動変換時に ArgoCD ignore アノテーション付与
+          prometheus_converter_add_argocd_ignore_annotations: true
+        admissionWebhooks:
+          certManager:
+            enabled: false
+          keepTLSSecret: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: victoriametrics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: victoria-metrics-operator-validation
+      namespace: victoriametrics
+      jsonPointers:
+        - /data
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'

@@ -1,0 +1,63 @@
+# VMCluster - VictoriaMetrics HA クラスタ
+#
+# vminsert x2 + vmstorage x2 + vmselect x2 で HA 構成。
+# replicationFactor=2 により全データが両方の vmstorage に複製される。
+# ストレージは local-path (CNPG と同じパターン: アプリ層で冗長化済みのため DRBD 不要)。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMCluster
+metadata:
+  name: vmcluster
+  namespace: victoriametrics
+spec:
+  retentionPeriod: "30d"
+  replicationFactor: 2
+
+  vmstorage:
+    replicaCount: 2
+    extraArgs:
+      dedup.minScrapeInterval: "15s"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          resources:
+            requests:
+              storage: 10Gi
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vmstorage
+                  app.kubernetes.io/instance: vmcluster
+              topologyKey: kubernetes.io/hostname
+
+  vmselect:
+    replicaCount: 2
+    extraArgs:
+      dedup.minScrapeInterval: "15s"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vmselect
+                  app.kubernetes.io/instance: vmcluster
+              topologyKey: kubernetes.io/hostname
+
+  vminsert:
+    replicaCount: 2
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vminsert
+                  app.kubernetes.io/instance: vmcluster
+              topologyKey: kubernetes.io/hostname
