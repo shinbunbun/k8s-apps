@@ -6,8 +6,7 @@ resources:
   - vmcluster.yaml
   - vmagent.yaml
   - vmalert.yaml
-  - scrape-config-cm.yaml
-  - alertmanager-config-cm.yaml
+  - scrape-config-secret.yaml
   - lan-service.yaml
 
 configMapGenerator:
