@@ -4,6 +4,5 @@ resources:
   - deployment.yaml
   - service.yaml
   - pvc.yaml
-  - ingress.yaml
 generators:
   - secret-generator.yaml
