@@ -16,7 +16,7 @@ spec:
   remoteRead:
     url: "http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus"
   notifiers:
-    - url: "http://alertmanager.victoriametrics.svc.cluster.local:9093"
+    - url: "http://vmalertmanager-alertmanager.victoriametrics.svc.cluster.local:9093"
   evaluationInterval: "15s"
   extraArgs:
     rule: "/etc/vmalert/rules/*.yaml"

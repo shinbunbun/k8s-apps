@@ -1,0 +1,47 @@
+# VMAlertmanagerConfig - アラートルーティング・通知設定
+#
+# NixOS の alertmanager.nix から移植。
+# Discord webhook URL は Secret (alertmanager-discord) の key "url" を参照。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlertmanagerConfig
+metadata:
+  name: discord-alerts
+  namespace: victoriametrics
+spec:
+  route:
+    receiver: discord
+    group_by:
+      - alertname
+      - cluster
+      - service
+    group_wait: 10s
+    group_interval: 10s
+    repeat_interval: 1h
+    routes:
+      - receiver: discord
+        matchers:
+          - severity = "critical"
+        repeat_interval: 15m
+        continue: false
+      - receiver: discord
+        matchers:
+          - severity = "warning"
+        repeat_interval: 30m
+        continue: false
+
+  receivers:
+    - name: discord
+      discord_configs:
+        - send_resolved: true
+          webhook_url_secret:
+            name: alertmanager-discord
+            key: url
+
+  inhibit_rules:
+    - source_matchers:
+        - severity = "critical"
+      target_matchers:
+        - severity = "warning"
+      equal:
+        - alertname
+        - instance
