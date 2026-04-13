@@ -10,7 +10,7 @@
 # - affinity: podAntiAffinity preferred でノード分散
 # - persistence: chart デフォルト無効のまま (/var/lib/grafana と /var/lib/grafana-search
 #   は chart が自動で emptyDir マウントするので unified_storage.index_path もそのまま動く)
-# - unified_alerting / alerting: 無効化 (NixOS Alertmanager が継続担当、2 レプリカ重複回避)
+# - unified_alerting: 有効化（アラート表示のみ、ルール評価は vmalert が担当）
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -69,7 +69,8 @@ spec:
             role_attribute_path: "contains(groups[*], 'Grafana Admins') && 'Admin' || contains(groups[*], 'Grafana Editors') && 'Editor' || 'Viewer'"
             auto_login: true
           unified_alerting:
-            enabled: false
+            enabled: true
+            execute_alerts: false
           alerting:
             enabled: false
 
