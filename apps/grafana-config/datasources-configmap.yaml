@@ -1,10 +1,7 @@
 # Grafana データソース provisioning ConfigMap
 #
-# homeMachine (192.168.1.3) 上の NixOS Prometheus (:9090) と Loki (:3100) を参照。
-# 両者は nixos-observability モジュールの openFirewall=true デフォルトで
-# LAN 公開されており、k3s Pod から Cilium native routing 経由で到達可能。
-#
-# 将来 Loki/Prometheus を k3s 側に移行した際は url を差し替えるだけで良い。
+# Prometheus → k3s 上の VictoriaMetrics VMCluster (vmselect) に移行済み。
+# Loki は引き続き homeMachine (192.168.1.3:3100) を参照。
 # このファイルは Helm chart の extraConfigmapMounts で
 # /etc/grafana/provisioning/datasources にマウントされる
 # (infrastructure/grafana/application.yaml 参照)。
@@ -19,7 +16,7 @@ data:
       - name: Prometheus
         type: prometheus
         access: proxy
-        url: http://192.168.1.3:9090
+        url: http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus
         isDefault: true
         editable: false
         jsonData:
