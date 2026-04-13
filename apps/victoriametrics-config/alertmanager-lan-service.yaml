@@ -1,0 +1,20 @@
+# VMAlertmanager LAN アクセス用 LoadBalancer Service
+#
+# Cilium LB IPAM で固定 VIP (192.168.128.13) を割当。
+# NixOS 上の Loki からログベースアラートを送信するために使用。
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmalertmanager-lan
+  namespace: victoriametrics
+  annotations:
+    io.cilium/lb-ipam-ips: "192.168.128.13"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: vmalertmanager
+    app.kubernetes.io/instance: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093

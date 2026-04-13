@@ -12,6 +12,7 @@ resources:
   - vmrule-recording.yaml
   - scrape-config-secret.yaml
   - lan-service.yaml
+  - alertmanager-lan-service.yaml
 
 configMapGenerator:
   # SNMP Exporter 設定 (MikroTik RouterOS)
