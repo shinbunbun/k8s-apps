@@ -8,6 +8,8 @@ resources:
   - vmalert.yaml
   - vmalertmanager.yaml
   - vmalertmanagerconfig.yaml
+  - vmrule-alerts.yaml
+  - vmrule-recording.yaml
   - scrape-config-secret.yaml
   - lan-service.yaml
 
@@ -16,20 +18,6 @@ configMapGenerator:
   - name: snmp-config
     files:
       - snmp.yml
-    options:
-      disableNameSuffixHash: true
-
-  # vmalert アラートルール
-  - name: vmalert-alert-rules
-    files:
-      - alert-rules.yaml
-    options:
-      disableNameSuffixHash: true
-
-  # vmalert レコーディングルール
-  - name: vmalert-recording-rules
-    files:
-      - recording-rules.yaml
     options:
       disableNameSuffixHash: true
 

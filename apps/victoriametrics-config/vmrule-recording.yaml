@@ -1,0 +1,31 @@
+# VMRule - レコーディングルール
+#
+# macOS (Darwin) の Node Exporter メトリクスを Linux 互換名にリマップ。
+# これにより Linux 前提の Grafana ダッシュボード（Node Exporter Full 等）が
+# macOS インスタンス (Mac mini) でも正しく表示される。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: recording-rules
+  namespace: victoriametrics
+spec:
+  groups:
+    - name: darwin_memory_compat
+      interval: 30s
+      rules:
+        - record: node_memory_MemTotal_bytes
+          expr: "node_memory_total_bytes"
+        - record: node_memory_MemFree_bytes
+          expr: "node_memory_free_bytes"
+        - record: node_memory_MemAvailable_bytes
+          expr: "node_memory_free_bytes + node_memory_inactive_bytes + node_memory_purgeable_bytes"
+        - record: node_memory_Cached_bytes
+          expr: "node_memory_inactive_bytes"
+        - record: node_memory_Buffers_bytes
+          expr: "0 * node_memory_total_bytes"
+        - record: node_memory_SReclaimable_bytes
+          expr: "node_memory_purgeable_bytes"
+        - record: node_memory_SwapTotal_bytes
+          expr: "node_memory_swap_total_bytes"
+        - record: node_memory_SwapFree_bytes
+          expr: "node_memory_swap_total_bytes - node_memory_swap_used_bytes"
