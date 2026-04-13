@@ -9,7 +9,7 @@ metadata:
   name: vmcluster
   namespace: victoriametrics
 spec:
-  retentionPeriod: "30d"
+  retentionPeriod: "1y"
   replicationFactor: 2
 
   vmstorage:
