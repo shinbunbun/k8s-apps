@@ -38,6 +38,8 @@ spec:
     replicaCount: 2
     extraArgs:
       dedup.minScrapeInterval: "15s"
+      replicationFactor: "2"
+      search.skipSlowReplicas: "true"
     affinity:
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:

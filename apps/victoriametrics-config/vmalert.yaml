@@ -9,7 +9,7 @@ metadata:
   name: vmalert
   namespace: victoriametrics
 spec:
-  replicaCount: 1
+  replicaCount: 2
   selectAllByDefault: true
   evaluationInterval: "15s"
   datasource:
