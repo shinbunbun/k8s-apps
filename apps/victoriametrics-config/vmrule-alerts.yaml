@@ -1,9 +1,14 @@
-# Prometheus Alert Rules (YAML format)
+# VMRule - アラートルール
 #
-# alert-rules.nix と同一のルールを YAML 形式で提供します。
-# k8s 上の VictoriaMetrics (vmalert) から参照されます。
-
-groups:
+# alert-rules.nix と同一のルールを VMRule CRD で定義。
+# VM Operator が自動的に vmalert にマウントする。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: alert-rules
+  namespace: victoriametrics
+spec:
+  groups:
   - name: system
     interval: 30s
     rules:

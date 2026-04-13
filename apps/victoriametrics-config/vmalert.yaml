@@ -2,6 +2,7 @@
 #
 # vmselect にクエリしてルールを評価し、Alertmanager に通知する。
 # recording rule の結果は vminsert に書き戻す。
+# ルールは VMRule CRD から Operator が自動マウント (selectAllByDefault: true)。
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMAlert
 metadata:
@@ -9,6 +10,8 @@ metadata:
   namespace: victoriametrics
 spec:
   replicaCount: 1
+  selectAllByDefault: true
+  evaluationInterval: "15s"
   datasource:
     url: "http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus"
   remoteWrite:
@@ -17,17 +20,3 @@ spec:
     url: "http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus"
   notifiers:
     - url: "http://vmalertmanager-alertmanager.victoriametrics.svc.cluster.local:9093"
-  evaluationInterval: "15s"
-  extraArgs:
-    rule: "/etc/vmalert/rules/*.yaml"
-  extraVolumeMounts:
-    - name: alert-rules
-      mountPath: /etc/vmalert/rules
-  extraVolumes:
-    - name: alert-rules
-      projected:
-        sources:
-          - configMap:
-              name: vmalert-alert-rules
-          - configMap:
-              name: vmalert-recording-rules
