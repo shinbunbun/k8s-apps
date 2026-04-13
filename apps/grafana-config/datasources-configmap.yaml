@@ -28,3 +28,10 @@ data:
         editable: false
         jsonData:
           maxLines: 1000
+      - name: Alertmanager
+        type: alertmanager
+        access: proxy
+        url: http://vmalertmanager-alertmanager.victoriametrics.svc.cluster.local:9093
+        editable: false
+        jsonData:
+          implementation: prometheus
