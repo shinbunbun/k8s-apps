@@ -5,6 +5,16 @@
 # このファイルは Helm chart の extraConfigmapMounts で
 # /etc/grafana/provisioning/datasources にマウントされる
 # (infrastructure/grafana/application.yaml 参照)。
+#
+# アラート評価は vmalert (k3s) が担当し、Grafana は Alerting UI で
+# ルール一覧・発火状態を「閲覧」するのみ。
+# - vmalert を Prometheus 型 datasource として登録し、manageAlerts と
+#   alertmanagerUid を設定することで Data source-managed ルールが UI に出る
+# - vmselect は ruler 機能を持たないため manageAlerts: false
+# - Alertmanager datasource は VMAlertmanager を参照
+#
+# 各 datasource の uid は既存 Grafana DB の値を踏襲している。
+# routeros.json などのダッシュボードが Prometheus uid を直接参照しているため。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,14 +25,28 @@ data:
     datasources:
       - name: Prometheus
         type: prometheus
+        uid: PBFA97CFB590B2093
         access: proxy
         url: http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus
         isDefault: true
         editable: false
         jsonData:
           timeInterval: 15s
+          manageAlerts: false
+      - name: VMAlert
+        type: prometheus
+        uid: vmalert
+        access: proxy
+        url: http://vmalert-vmalert.victoriametrics.svc.cluster.local:8080
+        editable: false
+        jsonData:
+          manageAlerts: true
+          alertmanagerUid: P7647F508D5F54FCB
+          prometheusType: Prometheus
+          prometheusVersion: "2.40.0"
       - name: Loki
         type: loki
+        uid: P8E80F9AEF21F6940
         access: proxy
         url: http://192.168.1.3:3100
         editable: false
@@ -30,8 +54,10 @@ data:
           maxLines: 1000
       - name: Alertmanager
         type: alertmanager
+        uid: P7647F508D5F54FCB
         access: proxy
         url: http://vmalertmanager-alertmanager.victoriametrics.svc.cluster.local:9093
         editable: false
         jsonData:
           implementation: prometheus
+          handleGrafanaManagedAlerts: false
