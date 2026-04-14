@@ -22,7 +22,7 @@ spec:
           storageClassName: local-path
           resources:
             requests:
-              storage: 10Gi
+              storage: 50Gi
     affinity:
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
