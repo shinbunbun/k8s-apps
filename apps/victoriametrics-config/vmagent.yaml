@@ -16,6 +16,12 @@ spec:
     key: scrape-config.yaml
   secrets:
     - vm-monitoring-token
+  # ストレージ削減: ヒストグラムの *_bucket メトリクスを全ジョブから drop
+  # (count/sum は残るので平均値は計算可能。quantile は失われる)
+  inlineRelabelConfig:
+    - source_labels: [__name__]
+      regex: '.*_bucket$'
+      action: drop
   affinity:
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
