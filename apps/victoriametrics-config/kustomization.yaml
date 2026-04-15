@@ -6,6 +6,7 @@ resources:
   - vmcluster.yaml
   - vmagent.yaml
   - vmalert.yaml
+  - vmauth-grafana.yaml
   - vmalertmanager.yaml
   - vmalertmanagerconfig.yaml
   - vmrule-alerts.yaml

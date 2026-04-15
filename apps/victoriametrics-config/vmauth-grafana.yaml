@@ -1,0 +1,42 @@
+# VMAuth - Grafana 向け統合ゲートウェイ
+#
+# Grafana の Prometheus datasource を単一 URL に寄せるための router。
+# 旧 NixOS 時代の Prometheus (ruler 同居) 相当を VictoriaMetrics 系で再現する。
+#
+# /api/v1/rules, /api/v1/alerts              → vmalert (ルール/発火状態)
+# それ以外の Prometheus API (query, status)  → vmselect (PromQL クエリ / health)
+#
+# Grafana 側では Prometheus datasource 1 個に manageAlerts: true を付けるだけで
+# Alert rules UI にルール一覧と発火状態が出るようになる。
+#
+# 2 レプリカで HA (vmalert/vmselect は各自で HA 済)。stateless なので
+# rolling update で無停止。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAuth
+metadata:
+  name: grafana-gateway
+  namespace: victoriametrics
+spec:
+  replicaCount: 2
+  selectAllByDefault: false
+  unauthorizedUserAccessSpec:
+    url_map:
+      - src_paths:
+          - "/api/v1/rules"
+          - "/api/v1/alerts"
+        url_prefix:
+          - "http://vmalert-vmalert.victoriametrics.svc.cluster.local:8080/"
+      - src_paths:
+          - "/.*"
+        url_prefix:
+          - "http://vmselect-vmcluster.victoriametrics.svc.cluster.local:8481/select/0/prometheus/"
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vmauth
+                app.kubernetes.io/instance: grafana-gateway
+            topologyKey: kubernetes.io/hostname
