@@ -26,6 +26,12 @@ metadata:
 data:
   datasources.yaml: |
     apiVersion: 1
+    # PR #66 で追加した VMAlert datasource を PR #67 (vmauth 統合) で廃止した際、
+    # editable: false で provisioning 管理下にあったため Grafana DB に orphan として
+    # 残った。provisioning の deleteDatasources で明示削除する。
+    deleteDatasources:
+      - name: VMAlert
+        orgId: 1
     datasources:
       - name: Prometheus
         type: prometheus
