@@ -44,16 +44,24 @@ spec:
               value: authentik
             - name: AUTHENTIK_POSTGRESQL__PORT
               value: "5432"
+          affinity:
+            podAntiAffinity: soft
 
         # --- Server (ステートレス、2レプリカで HA) ---
         server:
           replicas: 2
           ingress:
             enabled: false  # Traefik IngressRoute を apps/authentik-config/ で定義
+          pdb:
+            enabled: true
+            minAvailable: 1
 
         # --- Worker ---
         worker:
-          replicas: 1
+          replicas: 2
+          pdb:
+            enabled: true
+            minAvailable: 1
 
         # --- PostgreSQL subchart (公式 postgres イメージ) ---
         postgresql:
