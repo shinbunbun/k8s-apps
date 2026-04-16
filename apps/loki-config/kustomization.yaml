@@ -1,0 +1,21 @@
+# Loki Config - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/loki-config を
+# 自動検出して ArgoCD Application を生成する。loki namespace にデプロイ。
+#
+# commonAnnotations の ServerSideApply=true は rules-configmap.yaml が
+# 317 行の LogQL rule を持ち client-side apply では metadata annotation 上限を
+# 超えうるため (grafana-config と同じ理由)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: loki
+
+commonAnnotations:
+  argocd.argoproj.io/sync-options: ServerSideApply=true
+
+resources:
+  - lan-service.yaml
+  - rules-configmap.yaml
+
+generators:
+  - secret-generator.yaml
