@@ -40,3 +40,6 @@ spec:
     # VictoriaMetrics Operator の VMCluster / VMAgent / VMAlert 等を apps/ 配下で使えるようにする
     - group: operator.victoriametrics.com
       kind: "*"
+    # MinIO Operator の Tenant / PolicyBinding 等を apps/ 配下で使えるようにする
+    - group: minio.min.io
+      kind: "*"
