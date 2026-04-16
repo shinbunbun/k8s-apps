@@ -261,32 +261,6 @@ data:
               summary: "RouterOS error log detected on {{ $labels.host }}"
               description: "{{ $value }} error logs detected in the last minute"
     
-      # k8s Pod ログ監視アラート
-      - name: k8s_pod_monitoring
-        interval: 30s
-        rules:
-          # k8s Podの高エラーレート
-          - alert: K8sPodHighErrorRate
-            expr: |
-              sum(rate({job="k8s-pods", level="error"} [5m])) by (namespace, pod) > 0.5
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High error rate in k8s pod {{ $labels.namespace }}/{{ $labels.pod }}"
-              description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} error rate is {{ $value }} errors/sec over 5 minutes"
-    
-          # k8s Pod OOMKill検知
-          - alert: K8sPodOOMKill
-            expr: |
-              sum(count_over_time({job="k8s-pods"} |= "OOMKilled" [1m])) by (namespace, pod) > 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "OOMKill detected in k8s pod {{ $labels.namespace }}/{{ $labels.pod }}"
-              description: "OOMKilled event detected in pod {{ $labels.namespace }}/{{ $labels.pod }}"
-    
       # macOS 監視アラート
       - name: macos_monitoring
         interval: 30s
