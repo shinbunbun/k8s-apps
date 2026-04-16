@@ -10,7 +10,7 @@
 #   その他 (query, status/buildinfo 等) → vmselect
 # (victoriametrics-config/vmauth-grafana.yaml 参照)
 #
-# Loki は引き続き homeMachine (192.168.1.3:3100) を参照。
+# Loki は k3s 上の SimpleScalable Gateway (cluster DNS) を参照。
 # Alertmanager datasource は発火アラート・サイレンス閲覧用。
 #
 # このファイルは Helm chart の extraConfigmapMounts で
@@ -50,7 +50,7 @@ data:
         type: loki
         uid: P8E80F9AEF21F6940
         access: proxy
-        url: http://192.168.1.3:3100
+        url: http://loki-gateway.loki.svc.cluster.local
         editable: false
         jsonData:
           maxLines: 1000
