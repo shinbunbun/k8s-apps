@@ -1,0 +1,28 @@
+# Loki LAN 内アクセス用 LoadBalancer Service
+#
+# Fluent Bit (NixOS/macOS 各ホスト) から Loki に書き込むためのエンドポイント。
+# 既存の grafana-lan (192.168.128.11) / vmselect-lan (.12) /
+# vmalertmanager-lan (.13) と同じく Cilium LB IPAM から固定 VIP を割り当て、
+# Cilium BGP で 192.168.128.0/24 を RouterOS に広告しているため LAN から到達可能。
+#
+# SimpleScalable デプロイメントでは Fluent Bit の push は gateway 経由ではなく
+# write コンポーネント直接で良い (gateway は主にクエリルーティング・認証用)。
+# selector で write pod のみ対象にすることで、読み取り系 pod に push が当たって
+# forwarding が発生するのを回避する。
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-lan
+  namespace: loki
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.14
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/component: write
+  ports:
+    - name: http
+      port: 3100
+      protocol: TCP
+      targetPort: http-metrics
