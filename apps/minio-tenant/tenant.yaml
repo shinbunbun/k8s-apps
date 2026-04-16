@@ -1,0 +1,84 @@
+# MinIO Tenant - Loki/将来の Tempo/CNPG barman 等が使う S3 互換ストレージ
+#
+# 設計判断:
+#
+# 【配置】servers: 3 × volumesPerServer: 2 = 6 drives。
+# topologySpreadConstraints で 3 ノードに 1 pod ずつ強制分散。
+# 任意 1 ノード障害で 2 drives を失っても read/write 継続させるための構成。
+#
+# 【EC:3】6 drives のデフォルト parity は EC:3 (data 3 + parity 3)。
+# write quorum = data + 1 = 4 drives、残 4 drives で充足するため
+# 1 ノード障害 = 2 drives loss を吸収できる。
+# spec.env の MINIO_STORAGE_CLASS_STANDARD="EC:3" で明示し、
+# 将来の drive 追加時にも parity が変わらないよう固定する。
+#
+# 【容量】20 GiB × 6 = 120 GiB raw → EC:3 で 60 GiB usable。
+# 現行 Loki (/var/lib/loki 実測 21 GB) + 将来の Tempo/Pyroscope/CNPG backup 枠 ~40 GB
+# をカバー。逼迫時は新 Pool を追加して水平拡張する。
+#
+# 【ストレージ】storageClass: local-path (k3s 同梱)。
+# piraeus (3-way DRBD) は MinIO 自身の EC 冗長化と重複するので使わない。
+# ノード障害で該当 PVC が消えても、復旧後に MinIO が EC で再構築する。
+#
+# 【セキュリティ】requestAutoCert: false で TLS 終端なし、
+# 内部ネットワーク (k3s 内・LAN VIP 経由) のみ利用想定。
+# Console / S3 API とも exposeServices で LoadBalancer 発行しない
+# (port-forward or LAN VIP 必要になったら別 Service を追加する)。
+#
+# 【認証】root credentials を configuration Secret (storage-env-configuration) で注入。
+# Loki 等のクライアントは同 credentials を共用する (homelab 規模、multi-tenant 不要)。
+# 将来 per-app access key が必要になれば spec.users でユーザー発行へ移行。
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: storage
+  labels:
+    app: minio
+  annotations:
+    prometheus.io/path: /minio/v2/metrics/cluster
+    prometheus.io/port: "9000"
+    prometheus.io/scrape: "true"
+spec:
+  image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+  mountPath: /export
+  # storage-env-configuration Secret (KSOPS) に MINIO_ROOT_USER/MINIO_ROOT_PASSWORD のみ格納。
+  # EC 設定や browser 設定は機密ではないので spec.env で平文指定し PR diff で可視化する。
+  configuration:
+    name: storage-env-configuration
+  env:
+    - name: MINIO_STORAGE_CLASS_STANDARD
+      # 6 drives のデフォルト parity と同じ (data 3 + parity 3)。
+      # 明示指定で将来の drive 追加時にも parity を EC:3 に固定。
+      value: "EC:3"
+    - name: MINIO_BROWSER
+      value: "on"
+  requestAutoCert: false
+  exposeServices:
+    minio: false
+    console: false
+  pools:
+    - name: pool-0
+      servers: 3
+      volumesPerServer: 2
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              v1.min.io/tenant: storage
+              v1.min.io/pool: pool-0
+      volumeClaimTemplate:
+        metadata:
+          name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+          storageClassName: local-path
+  buckets:
+    - name: loki-chunks
+    - name: loki-ruler
+    - name: loki-admin
