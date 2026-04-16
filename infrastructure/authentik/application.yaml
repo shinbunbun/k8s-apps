@@ -1,9 +1,10 @@
 # Authentik IdP - OAuth2/OIDC/SAML2 認証基盤
 #
 # 公式 Helm Chart (2026.2.1) で Authentik 本体をデプロイする。
-# PostgreSQL は Bitnami subchart (公式 postgres イメージ) を使用し、piraeus-storage で永続化。
-# Redis は Authentik 本体に内蔵（subchart 不要）。
-# シークレットは apps/authentik-config/ (KSOPS) で管理する authentik-secrets を参照。
+# PostgreSQL は CNPG Cluster (apps/authentik-config/postgres-cluster.yaml) を参照。
+# Authentik 2026.x は task broker も PostgreSQL ベース (django_dramatiq_postgres) のため
+# Redis は不要、chart にも subchart は含まれない。
+# シークレットは apps/authentik-config/ (KSOPS) で管理する authentik-secrets / authentik-db-app を参照。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -37,13 +38,18 @@ spec:
                 name: authentik-secrets
           env:
             - name: AUTHENTIK_POSTGRESQL__HOST
-              value: authentik-postgresql
+              value: authentik-db-rw.authentik.svc.cluster.local
             - name: AUTHENTIK_POSTGRESQL__USER
               value: authentik
             - name: AUTHENTIK_POSTGRESQL__NAME
               value: authentik
             - name: AUTHENTIK_POSTGRESQL__PORT
               value: "5432"
+            - name: AUTHENTIK_POSTGRESQL__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: authentik-db-app
+                  key: password
           affinity:
             podAntiAffinity: soft
 
@@ -62,22 +68,6 @@ spec:
           pdb:
             enabled: true
             minAvailable: 1
-
-        # --- PostgreSQL subchart (公式 postgres イメージ) ---
-        postgresql:
-          enabled: true
-          auth:
-            username: authentik
-            database: authentik
-            existingSecret: authentik-secrets
-            secretKeys:
-              userPasswordKey: password
-              adminPasswordKey: postgres-password
-          primary:
-            persistence:
-              enabled: true
-              storageClass: piraeus-storage
-              size: 5Gi
   destination:
     server: https://kubernetes.default.svc
     namespace: authentik
