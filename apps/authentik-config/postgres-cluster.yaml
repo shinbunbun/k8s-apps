@@ -1,0 +1,20 @@
+# Authentik 用 PostgreSQL Cluster (CNPG)
+# 設計判断は apps/grafana-config/postgres-cluster.yaml と同じ。
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: authentik-db
+spec:
+  description: "Authentik authentication database"
+  instances: 2
+
+  bootstrap:
+    initdb:
+      database: authentik
+      owner: authentik
+      secret:
+        name: authentik-db-app
+
+  storage:
+    storageClass: local-path
+    size: 5Gi
