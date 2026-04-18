@@ -3,5 +3,7 @@ kind: Kustomization
 namespace: authentik
 resources:
   - postgres-cluster.yaml
+  - objectstore.yaml
+  - scheduled-backup.yaml
 generators:
   - secret-generator.yaml

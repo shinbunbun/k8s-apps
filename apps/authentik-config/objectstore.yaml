@@ -1,0 +1,24 @@
+# Barman Cloud Plugin 経由で MinIO に WAL archive + base backup を書き込む設定。
+# grafana-config/objectstore.yaml と同じ構成。
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: authentik-db-backup
+spec:
+  configuration:
+    destinationPath: s3://cnpg-backups/
+    endpointURL: http://minio.minio-tenant.svc.cluster.local
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-minio-credentials
+        key: AWS_ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-minio-credentials
+        key: AWS_SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+      immediateCheckpoint: true
+      jobs: 2
+  retentionPolicy: "14d"
