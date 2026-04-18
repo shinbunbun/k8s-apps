@@ -19,19 +19,6 @@ Grafana Helm chart の sidecar が `grafana_dashboard=1` ラベル付き ConfigM
 | `victoriametrics-cluster.json` | [VictoriaMetrics/VictoriaMetrics](https://github.com/VictoriaMetrics/VictoriaMetrics/tree/master/dashboards) | VictoriaMetrics, Inc. |
 | `vmagent.json` | VictoriaMetrics 公式 (Grafana.com ID 12683) | VictoriaMetrics, Inc. |
 | `vmalert.json` | VictoriaMetrics 公式 (Grafana.com ID 14950) | VictoriaMetrics, Inc. |
-
-## 自作 / 社内配布
-
-以下は本リポジトリで作成したダッシュボードで、外部ライセンス適用対象外。
-
-- `overview.json`
-- `nixos.json`
-- `routeros.json`
-- `k8s.json`
-- `logs-overview.json` / `logs-errors.json` / `logs-explore.json`
-- `argocd-application-overview.json` / `argocd-operational-overview.json`
-
-## その他
-
-- `cilium.json` / `hubble.json` / `hubble-network-overview-namespace.json` は
-  [cilium/cilium](https://github.com/cilium/cilium) リポジトリ (Apache License 2.0) 由来。
+| `cilium.json` | [cilium/cilium](https://github.com/cilium/cilium) | Cilium Authors |
+| `hubble.json` | 同上 | Cilium Authors |
+| `hubble-network-overview-namespace.json` | 同上 | Cilium Authors |
