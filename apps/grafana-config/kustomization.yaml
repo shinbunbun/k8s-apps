@@ -102,3 +102,17 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-argocd-application-overview
+    files:
+      - dashboards/argocd-application-overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-argocd-operational-overview
+    files:
+      - dashboards/argocd-operational-overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false

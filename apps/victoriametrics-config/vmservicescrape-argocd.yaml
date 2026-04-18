@@ -1,0 +1,95 @@
+# ArgoCD メトリクス scrape 設定
+#
+# dotfiles 側で argo-cd Helm chart の各コンポーネント metrics.enabled=true
+# を有効化しており、argocd namespace に以下の metrics Service が作成される。
+# それらを VictoriaMetrics (VMAgent) で収集するための VMServiceScrape。
+#
+# Service 名と port:
+# - argocd-application-controller-metrics  (:8082, port name: http-metrics)
+# - argocd-server-metrics                   (:8083, port name: http-metrics)
+# - argocd-repo-server-metrics              (:8084, port name: http-metrics)
+# - argocd-applicationset-controller-metrics(:8080, port name: http-metrics)
+#
+# selector: Helm chart が生成する Service ラベルに合わせる。
+# controller / applicationSet は同じ app.kubernetes.io/name=argocd-metrics を
+# 持つため、component ラベルで分離する。
+#
+# job ラベルを relabel で統一 (adinhodovic/argo-cd-mixin ダッシュボードが
+# `job=~".*application-controller"` 等のパターン集計を想定している)。
+#
+# kustomization の namespace: victoriametrics が効いて VMServiceScrape 自体は
+# victoriametrics ns に配置される。namespaceSelector で argocd ns の Service
+# を拾う。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-application-controller
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-metrics
+      app.kubernetes.io/component: application-controller
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: argocd-application-controller
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-server
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server-metrics
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: argocd-server
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-repo-server
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server-metrics
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: argocd-repo-server
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argocd-applicationset-controller
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-metrics
+      app.kubernetes.io/component: applicationset-controller
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: argocd-applicationset-controller
