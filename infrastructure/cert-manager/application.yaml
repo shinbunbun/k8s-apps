@@ -1,0 +1,44 @@
+# cert-manager - TLS 証明書管理 Operator
+#
+# Barman Cloud Plugin (infrastructure/cnpg-barman-plugin/) が
+# CNPG Operator と gRPC 通信するための mTLS 証明書を自動発行する用途で導入。
+# Plugin manifest.yaml 内の selfSigned Issuer + Certificate が cert-manager に依存。
+#
+# homelab 規模で HA 化のため controller/webhook/cainjector を各 2 replicas。
+# CRD は chart 同梱 (crds.enabled: true)、uninstall 時も CRD は残す (crds.keep: true)。
+#
+# sync-wave -15 で cnpg-operator (-10) / cnpg-barman-plugin (-5) より先にデプロイ。
+# Plugin が Issuer/Certificate を作成する時点で cert-manager webhook が Ready であること。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-15"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: "v1.16.5"
+    helm:
+      valuesObject:
+        crds:
+          enabled: true
+          keep: true
+        replicaCount: 2
+        webhook:
+          replicaCount: 2
+        cainjector:
+          replicaCount: 2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
