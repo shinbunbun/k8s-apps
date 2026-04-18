@@ -2105,7 +2105,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] # system calls (average node)",
+      "title": "# system calls (average node)",
       "type": "timeseries"
     },
     {
@@ -2248,7 +2248,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] # system calls (max node)",
+      "title": "# system calls (max node)",
       "type": "timeseries"
     },
     {
@@ -2390,7 +2390,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] system call latency (avg node)",
+      "title": "system call latency (avg node)",
       "type": "timeseries"
     },
     {
@@ -2491,7 +2491,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] system call latency (max node)",
+      "title": "system call latency (max node)",
       "type": "timeseries"
     },
     {
@@ -6752,7 +6752,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] L7 forwarded request",
+      "title": "L7 forwarded request",
       "type": "timeseries"
     },
     {
@@ -7044,7 +7044,7 @@
           "refId": "A"
         }
       ],
-      "title": "[N/A] Policy Denies: L7",
+      "title": "Policy Denies: L7",
       "type": "timeseries"
     },
     {
@@ -7271,7 +7271,7 @@
           "refId": "B"
         }
       ],
-      "title": "[N/A] Policy Identity Update Latency",
+      "title": "Policy Identity Update Latency",
       "type": "timeseries"
     },
     {
