@@ -88,13 +88,6 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
-  - name: grafana-dashboard-cilium-operator
-    files:
-      - dashboards/cilium-operator.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      disableNameSuffixHash: false
   - name: grafana-dashboard-hubble
     files:
       - dashboards/hubble.json
