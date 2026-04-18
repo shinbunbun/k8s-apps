@@ -49,8 +49,13 @@ spec:
   # Barman Cloud Plugin で continuous archiving を有効化。
   # serverName は MinIO 上の prefix (s3://cnpg-backups/grafana-db-v1/) に使われる。
   # Cluster を作り直す場合は -v2 に上げて旧バックアップと分離する。
+  # enabled: true は CNPG operator の default だが、ServerSideApply 時は
+  # operator が後から注入する形になり ArgoCD の SSA dry-run diff が drift を
+  # 検出して OutOfSync ループに入る (kustomization.yaml の ServerSideApply=true)。
+  # 明示しておくことで argocd-controller が field owner となり drift しない。
   plugins:
     - name: barman-cloud.cloudnative-pg.io
+      enabled: true
       isWALArchiver: true
       parameters:
         barmanObjectName: grafana-db-backup
