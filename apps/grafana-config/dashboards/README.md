@@ -1,11 +1,12 @@
-# Dashboard Attribution / サードパーティダッシュボード出典
+# Dashboards
 
-このディレクトリには外部プロジェクト由来の Grafana ダッシュボード JSON が含まれる。
-それぞれのライセンス条件に従って再配布している。
+Grafana Helm chart の sidecar が `grafana_dashboard=1` ラベル付き ConfigMap を自動ロードする。
+`kustomization.yaml` の `configMapGenerator` で追加・削除を行う。
 
-## Apache License 2.0
+## サードパーティ由来（Apache License 2.0）
 
 以下は Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0) の下で配布されている。
+ライセンス本文は [LICENSE-APACHE-2.0](./LICENSE-APACHE-2.0) を参照。
 
 | ファイル | 出典 | 著作権者 |
 |----------|------|----------|
@@ -34,7 +35,3 @@
 
 - `cilium.json` / `hubble.json` / `hubble-network-overview-namespace.json` は
   [cilium/cilium](https://github.com/cilium/cilium) リポジトリ (Apache License 2.0) 由来。
-
----
-
-Apache 2.0 ライセンス本文は [LICENSE-APACHE-2.0](./LICENSE-APACHE-2.0) を参照。
