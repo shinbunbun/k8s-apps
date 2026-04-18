@@ -1,0 +1,24 @@
+# Hubble UI LAN 内アクセス用 LoadBalancer Service
+#
+# Cilium Helm Chart がデプロイする hubble-ui (kube-system) は ClusterIP のみで
+# LAN から直接到達不可。Cilium LB IPAM から固定 VIP を割り当てて公開する。
+# Cilium BGP が 192.168.128.0/24 を RouterOS に広告しているため、同 LAN 上の
+# クライアントからルーター経由でアクセスできる。
+#
+# 既存 LAN VIP 割当: .11 grafana / .12 vmselect / .13 vmalertmanager / .14 loki
+apiVersion: v1
+kind: Service
+metadata:
+  name: hubble-ui-lan
+  namespace: kube-system
+  annotations:
+    io.cilium/lb-ipam-ips: "192.168.128.15"
+spec:
+  type: LoadBalancer
+  selector:
+    k8s-app: hubble-ui
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8081

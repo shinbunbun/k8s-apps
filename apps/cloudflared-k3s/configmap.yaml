@@ -41,4 +41,8 @@ data:
         service: http://argocd-server.argocd.svc.cluster.local:80
         originRequest:
           httpHostHeader: argocd.shinbunbun.com
+      - hostname: hubble.shinbunbun.com
+        service: http://hubble-ui.kube-system.svc.cluster.local:80
+        originRequest:
+          httpHostHeader: hubble.shinbunbun.com
       - service: http_status:404
