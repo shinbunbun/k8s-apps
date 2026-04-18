@@ -15,10 +15,10 @@ spec:
   source:
     repoURL: https://helm.cilium.io/
     chart: cilium
-    targetRevision: "1.18.9"
+    targetRevision: "1.19.3"
     helm:
       valuesObject:
-        upgradeCompatibility: "1.17"
+        upgradeCompatibility: "1.18"
         kubeProxyReplacement: true
         k8sServiceHost: 127.0.0.1
         k8sServicePort: 6444

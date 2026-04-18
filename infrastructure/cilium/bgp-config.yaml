@@ -10,7 +10,7 @@
 #   - CiliumBGPAdvertisement の selector が nil だと何も広告されない
 #     → NotIn ワークアラウンドで全 Service を選択
 ---
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPClusterConfig
 metadata:
   name: bgp-cluster
@@ -28,7 +28,7 @@ spec:
           peerConfigRef:
             name: routeros-config
 ---
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPPeerConfig
 metadata:
   name: routeros-config
@@ -45,7 +45,7 @@ spec:
         matchLabels:
           advertise: bgp
 ---
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumBGPAdvertisement
 metadata:
   name: svc-advertisement
