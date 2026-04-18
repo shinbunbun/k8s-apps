@@ -43,3 +43,6 @@ spec:
     # MinIO Operator の Tenant / PolicyBinding 等を apps/ 配下で使えるようにする
     - group: minio.min.io
       kind: "*"
+    # Barman Cloud Plugin の ObjectStore CR を apps/ 配下で使えるようにする
+    - group: barmancloud.cnpg.io
+      kind: "*"
