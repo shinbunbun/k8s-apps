@@ -425,14 +425,16 @@ spec:
           description: "Node {{ $labels.node }} has been in NotReady state for more than 5 minutes."
 
       # Pod CrashLooping
+      # kube-prometheus-stack 方式: Gauge メトリクスで判定する。
+      # increase() 方式は scrape 系列リセットで counter reset として誤検知するため採用しない。
       - alert: KubePodCrashLooping
-        expr: "increase(kube_pod_container_status_restarts_total[1h]) > 5"
+        expr: 'max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",job="kube-state-metrics"}[5m]) >= 1'
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
-          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last hour."
+          description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff state."
 
       # Pod未準備
       - alert: KubePodNotReady
