@@ -43,12 +43,12 @@ spec:
           enabled: true
           metrics:
             enabled:
-              - dns
-              - drop
-              - tcp
-              - flow
+              - dns:labelsContext=source_namespace,destination_namespace
+              - drop:labelsContext=source_namespace,destination_namespace
+              - tcp:labelsContext=source_namespace,destination_namespace
+              - flow:labelsContext=source_namespace,destination_namespace
               - port-distribution
-              - icmp
+              - icmp:labelsContext=source_namespace,destination_namespace
               - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction
             enableOpenMetrics: true
             serviceMonitor:
