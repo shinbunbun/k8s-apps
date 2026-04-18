@@ -24,8 +24,9 @@
 #
 # imageName は省略し CNPG v1.29.0 のバイナリに埋め込まれた
 # デフォルト PG image を使う (PostgreSQL 17 系の推奨 tag)。
-# backup.barmanObjectStore は本タスクで未設定 (scope 外)。将来 MinIO on k3s を
-# 入れたら barmanObjectStore セクションを追加する。
+# backup は Barman Cloud Plugin (infrastructure/cnpg-barman-plugin/) 経由で
+# MinIO (minio-tenant ns) に WAL archive + base backup を書き込む。
+# Plugin 設定は objectstore.yaml、スケジュールは scheduled-backup.yaml。
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -44,3 +45,13 @@ spec:
   storage:
     storageClass: local-path
     size: 2Gi
+
+  # Barman Cloud Plugin で continuous archiving を有効化。
+  # serverName は MinIO 上の prefix (s3://cnpg-backups/grafana-db-v1/) に使われる。
+  # Cluster を作り直す場合は -v2 に上げて旧バックアップと分離する。
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: grafana-db-backup
+        serverName: grafana-db-v1
