@@ -31,6 +31,8 @@ spec:
           targetLabel: k8s_app
         - targetLabel: job
           replacement: cilium-agent
+        - targetLabel: cluster
+          replacement: homelab
     - port: hubble-metrics    # 9965: Hubble メトリクス (同一 Pod の別ポート)
       path: /metrics
       interval: 30s
@@ -39,6 +41,8 @@ spec:
           targetLabel: k8s_app
         - targetLabel: job
           replacement: hubble
+        - targetLabel: cluster
+          replacement: homelab
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMPodScrape
@@ -59,6 +63,8 @@ spec:
           targetLabel: io_cilium_app
         - targetLabel: job
           replacement: cilium-operator
+        - targetLabel: cluster
+          replacement: homelab
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMPodScrape
@@ -79,3 +85,5 @@ spec:
           targetLabel: k8s_app
         - targetLabel: job
           replacement: hubble-relay
+        - targetLabel: cluster
+          replacement: homelab
