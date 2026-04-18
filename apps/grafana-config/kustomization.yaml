@@ -59,6 +59,8 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
       disableNameSuffixHash: false
   - name: grafana-dashboard-logs-overview
     files:
@@ -87,6 +89,8 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
       disableNameSuffixHash: false
   - name: grafana-dashboard-hubble
     files:
@@ -94,6 +98,8 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
       disableNameSuffixHash: false
   - name: grafana-dashboard-hubble-network-overview-namespace
     files:
@@ -101,6 +107,98 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-node-exporter-full
+    files:
+      - dashboards/node-exporter-full.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-views-global
+    files:
+      - dashboards/k8s-views-global.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-views-namespaces
+    files:
+      - dashboards/k8s-views-namespaces.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-views-nodes
+    files:
+      - dashboards/k8s-views-nodes.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-views-pods
+    files:
+      - dashboards/k8s-views-pods.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-system-api-server
+    files:
+      - dashboards/k8s-system-api-server.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-kube-state-metrics-v2
+    files:
+      - dashboards/kube-state-metrics-v2.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-victoriametrics-cluster
+    files:
+      - dashboards/victoriametrics-cluster.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-vmagent
+    files:
+      - dashboards/vmagent.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-vmalert
+    files:
+      - dashboards/vmalert.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Kubernetes
       disableNameSuffixHash: false
   - name: grafana-dashboard-argocd-application-overview
     files:
