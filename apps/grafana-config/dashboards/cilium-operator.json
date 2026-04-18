@@ -348,7 +348,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "IP Addresses",
+      "title": "[N/A] IP Addresses",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -448,7 +448,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "EC2 API Interactions",
+      "title": "[N/A] EC2 API Interactions",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -548,7 +548,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Number of nodes",
+      "title": "[N/A] Number of nodes",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -648,7 +648,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "# interfaces with addresses available",
+      "title": "[N/A] # interfaces with addresses available",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -748,7 +748,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Metadata Resync Operations",
+      "title": "[N/A] Metadata Resync Operations",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -848,7 +848,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "EC2 client side rate limiting",
+      "title": "[N/A] EC2 client side rate limiting",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -948,7 +948,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Interface Creation",
+      "title": "[N/A] Interface Creation",
       "tooltip": {
         "shared": true,
         "sort": 0,
