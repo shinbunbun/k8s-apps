@@ -9,6 +9,10 @@ metadata:
   namespace: victoriametrics
 spec:
   replicaCount: 2
+  # VMServiceScrape / VMPodScrape / VMRule / VMProbe などのリソースを
+  # ラベル/namespace セレクタの有無によらず全て拾う。
+  # (未指定時の挙動は VM Operator のバージョン依存なので明示する)
+  selectAllByDefault: true
   remoteWrite:
     - url: "http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
   additionalScrapeConfigs:

@@ -1,0 +1,81 @@
+# Cilium / Hubble メトリクスを VMPodScrape で収集
+#
+# 公式ダッシュボードが前提とする k8s_app / io_cilium_app / pod / namespace ラベルを
+# 付与するため、kubernetes Pod discovery ベースのスクレイプに切替。
+# (従来の static_configs は scrape-config-secret.yaml に残し、段階移行後に別 PR で削除)
+#
+# kustomization の namespace: victoriametrics が効いて各 VMPodScrape は
+# victoriametrics ns に配置される。cross-namespace の対象 Pod は
+# spec.namespaceSelector.matchNames: [kube-system] で拾う。
+#
+# pod / namespace ラベルは VM Operator が __meta_kubernetes_pod_name /
+# __meta_kubernetes_namespace から自動付与する。k8s_app / io_cilium_app は
+# ラベル名に "-" や "." が含まれ自動的には `label_*` プレフィクス扱いに
+# ならないため、relabelConfigs で明示的に転写する。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: cilium-agent
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  podMetricsEndpoints:
+    - port: prometheus        # 9962: Cilium Agent メトリクス
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+          targetLabel: k8s_app
+        - targetLabel: job
+          replacement: cilium-agent
+    - port: hubble-metrics    # 9965: Hubble メトリクス (同一 Pod の別ポート)
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+          targetLabel: k8s_app
+        - targetLabel: job
+          replacement: hubble
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: cilium-operator
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels:
+      io.cilium/app: operator
+  podMetricsEndpoints:
+    - port: prometheus        # 9963
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - sourceLabels: [__meta_kubernetes_pod_label_io_cilium_app]
+          targetLabel: io_cilium_app
+        - targetLabel: job
+          replacement: cilium-operator
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: hubble-relay
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels:
+      k8s-app: hubble-relay
+  podMetricsEndpoints:
+    - port: prometheus        # 9966 (Pod 側コンテナ port 名。Service の metrics と混同注意)
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+          targetLabel: k8s_app
+        - targetLabel: job
+          replacement: hubble-relay

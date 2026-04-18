@@ -12,6 +12,7 @@ resources:
   - vmrule-alerts.yaml
   - vmrule-recording.yaml
   - scrape-config-secret.yaml
+  - vmpodscrape-cilium.yaml
   - lan-service.yaml
   - alertmanager-lan-service.yaml
 

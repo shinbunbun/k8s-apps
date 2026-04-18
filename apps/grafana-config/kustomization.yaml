@@ -81,3 +81,45 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-cilium
+    files:
+      - dashboards/cilium.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-cilium-operator
+    files:
+      - dashboards/cilium-operator.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-hubble
+    files:
+      - dashboards/hubble.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-hubble-l7-http
+    files:
+      - dashboards/hubble-l7-http.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-hubble-dns-namespace
+    files:
+      - dashboards/hubble-dns-namespace.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-hubble-network-overview-namespace
+    files:
+      - dashboards/hubble-network-overview-namespace.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
