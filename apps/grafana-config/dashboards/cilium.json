@@ -2105,7 +2105,7 @@
           "refId": "A"
         }
       ],
-      "title": "# system calls (average node)",
+      "title": "[N/A] # system calls (average node)",
       "type": "timeseries"
     },
     {
@@ -2248,7 +2248,7 @@
           "refId": "A"
         }
       ],
-      "title": "# system calls (max node)",
+      "title": "[N/A] # system calls (max node)",
       "type": "timeseries"
     },
     {
@@ -2390,7 +2390,7 @@
           "refId": "A"
         }
       ],
-      "title": "system call latency (avg node)",
+      "title": "[N/A] system call latency (avg node)",
       "type": "timeseries"
     },
     {
@@ -2491,7 +2491,7 @@
           "refId": "A"
         }
       ],
-      "title": "system call latency (max node)",
+      "title": "[N/A] system call latency (max node)",
       "type": "timeseries"
     },
     {
@@ -3036,7 +3036,7 @@
           "refId": "A"
         }
       ],
-      "title": "# operations (sum all nodes)",
+      "title": "[N/A] # operations (sum all nodes)",
       "type": "timeseries"
     },
     {
@@ -3179,7 +3179,7 @@
           "refId": "A"
         }
       ],
-      "title": "# operations (max node)",
+      "title": "[N/A] # operations (max node)",
       "type": "timeseries"
     },
     {
@@ -3321,7 +3321,7 @@
           "refId": "A"
         }
       ],
-      "title": "latency (average node)",
+      "title": "[N/A] latency (average node)",
       "type": "timeseries"
     },
     {
@@ -3463,7 +3463,7 @@
           "refId": "A"
         }
       ],
-      "title": "latency (max node)",
+      "title": "[N/A] latency (max node)",
       "type": "timeseries"
     },
     {
@@ -3602,7 +3602,7 @@
           "refId": "B"
         }
       ],
-      "title": "Events received (average node)",
+      "title": "[N/A] Events received (average node)",
       "type": "timeseries"
     },
     {
@@ -6752,7 +6752,7 @@
           "refId": "A"
         }
       ],
-      "title": "L7 forwarded request",
+      "title": "[N/A] L7 forwarded request",
       "type": "timeseries"
     },
     {
@@ -6854,7 +6854,7 @@
           "refId": "B"
         }
       ],
-      "title": "DNS proxy request latency",
+      "title": "[N/A] DNS proxy request latency",
       "type": "timeseries"
     },
     {
@@ -7044,7 +7044,7 @@
           "refId": "A"
         }
       ],
-      "title": "Policy Denies: L7",
+      "title": "[N/A] Policy Denies: L7",
       "type": "timeseries"
     },
     {
@@ -7271,7 +7271,7 @@
           "refId": "B"
         }
       ],
-      "title": "Policy Identity Update Latency",
+      "title": "[N/A] Policy Identity Update Latency",
       "type": "timeseries"
     },
     {
@@ -7874,7 +7874,7 @@
           "refId": "C"
         }
       ],
-      "title": "Proxy Redirects",
+      "title": "[N/A] Proxy Redirects",
       "type": "timeseries"
     },
     {
