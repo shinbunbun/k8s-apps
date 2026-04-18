@@ -85,6 +85,15 @@ spec:
             enabled: true
             labelValue: "1"
             searchNamespace: grafana
+            # ConfigMap annotation grafana_folder の値を Grafana folder 名として採用。
+            # 未設定だと sidecar は annotation を読まず、全ダッシュボードが General に
+            # 展開される。
+            folderAnnotation: grafana_folder
+            provider:
+              # folderAnnotation で指定されたフォルダ名を動的に作成するために必要
+              # (Grafana の dashboard provider が foldersFromFilesStructure=true かつ
+              # 動的 folder 生成を許可するモードで動くようにする)。
+              foldersFromFilesStructure: true
 
         affinity:
           podAntiAffinity:
