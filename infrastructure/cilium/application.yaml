@@ -39,6 +39,10 @@ spec:
 
         prometheus:
           enabled: true
+          # デフォルトセットに含まれない opt-in メトリクスを追加有効化
+          # (+ prefix でデフォルトセット維持+追加、- prefix で除外、prefix 無しで置換)
+          metrics:
+            - "+cilium_bpf_syscall_duration_seconds"
 
         hubble:
           enabled: true
