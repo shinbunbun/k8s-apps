@@ -25,6 +25,8 @@ resources:
   - postgres-cluster.yaml
   - datasources-configmap.yaml
   - lan-service.yaml
+  - objectstore.yaml
+  - scheduled-backup.yaml
 
 generators:
   - secret-generator.yaml

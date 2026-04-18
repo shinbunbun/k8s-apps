@@ -1,0 +1,16 @@
+# 毎日 03:00 JST (= 18:00 UTC) に grafana-db の base backup を取得。
+# CNPG の schedule は秒を含む 6-field cron で UTC 基準。
+# immediate: false にし、初回は手動 kubectl cnpg backup で Plugin 経路を検証する。
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: grafana-db-daily
+spec:
+  schedule: "0 0 18 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: grafana-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  immediate: false
