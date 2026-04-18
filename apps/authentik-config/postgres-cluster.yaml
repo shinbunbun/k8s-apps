@@ -1,5 +1,7 @@
 # Authentik 用 PostgreSQL Cluster (CNPG)
 # 設計判断は apps/grafana-config/postgres-cluster.yaml と同じ。
+# backup は Barman Cloud Plugin 経由で MinIO に書き込む。
+# Plugin 設定は objectstore.yaml、スケジュールは scheduled-backup.yaml。
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -18,3 +20,10 @@ spec:
   storage:
     storageClass: local-path
     size: 5Gi
+
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: authentik-db-backup
+        serverName: authentik-db-v1
