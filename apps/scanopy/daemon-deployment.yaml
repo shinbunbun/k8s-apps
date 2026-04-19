@@ -54,18 +54,27 @@ spec:
               value: info
             - name: SCANOPY_SERVER_URL
               value: http://scanopy-server.scanopy.svc.cluster.local:60072
-            # SCANOPY_NETWORK_ID は UUID 形式でサーバ側で事前作成された Network の
-            # ID を指定する必要がある。初回登録時は未指定にして daemon が自己登録
-            # → サーバ UI 側で network を作成して後から関連付ける運用とする。
+            - name: SCANOPY_MODE
+              value: daemon_poll
+            - name: SCANOPY_DAEMON_NAME
+              value: scanopy-daemon
+            # Network/User/API key は Scanopy UI の "Create Daemon" Wizard で
+            # 生成された実値を scanopy-secrets に暗号化格納。
             - name: SCANOPY_DAEMON_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: scanopy-secrets
                   key: daemon-api-key
-            - name: SCANOPY_DAEMON_NAME
+            - name: SCANOPY_NETWORK_ID
               valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+                secretKeyRef:
+                  name: scanopy-secrets
+                  key: network-id
+            - name: SCANOPY_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: scanopy-secrets
+                  key: user-id
           readinessProbe:
             httpGet:
               path: /api/health
