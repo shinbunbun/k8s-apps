@@ -1826,7 +1826,7 @@
       },
       "targets": [
         {
-          "expr": "{job=\"routeros\"}",
+          "expr": "{job=\"routeros\", ident=~\"$ident\"}",
           "refId": "A"
         }
       ],
@@ -1904,7 +1904,7 @@
       },
       "targets": [
         {
-          "expr": "sum(count_over_time({job=\"routeros\"} |~ \"error|warning|critical\" [5m]))",
+          "expr": "sum(count_over_time({job=\"routeros\", ident=~\"$ident\"} |~ \"error|warning|critical\" [5m]))",
           "refId": "A",
           "legendFormat": "エラー/警告"
         }
@@ -1983,12 +1983,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (level) (count_over_time({job=\"routeros\"} [5m]))",
+          "expr": "sum by (ident) (count_over_time({job=\"routeros\", ident=~\"$ident\"} [5m]))",
           "refId": "A",
-          "legendFormat": "{{level}}"
+          "legendFormat": "{{ident}}"
         }
       ],
-      "title": "トピック別分布",
+      "title": "ident 別ログ件数",
       "type": "timeseries"
     },
     {
@@ -2453,6 +2453,35 @@
           "qryType": 1,
           "query": "label_values(mktxp_interface_running{job=\"routeros\"}, name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "regex": "",
+        "sort": 1,
+        "hide": 0
+      },
+      {
+        "name": "ident",
+        "label": "Log ident",
+        "description": "RouterOS syslog TAG (サブモジュール: wg-home / dhcp / question 等)",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "P8E80F9AEF21F6940"
+        },
+        "query": {
+          "label": "ident",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{job=\"routeros\"}",
+          "type": 1
         },
         "refresh": 1,
         "includeAll": true,
