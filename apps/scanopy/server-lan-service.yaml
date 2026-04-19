@@ -1,0 +1,22 @@
+# Scanopy LAN 内アクセス用 LoadBalancer Service
+#
+# grafana-lan / loki-lan と同じ方式。Cilium LB IPAM から 192.168.128.16 を
+# 割り当てる。Cilium BGP が 192.168.128.0/24 を RouterOS に広告しているため
+# 同 LAN 上のクライアントから直接アクセスできる (Host ヘッダ不要)。
+#
+# 次に利用可能な VIP: 192.168.128.16 (既存: .10 Traefik / .11 grafana /
+# .12 vmselect / .13 alertmanager / .14 loki / .15 hubble-ui)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: scanopy-lan
+  annotations:
+    io.cilium/lb-ipam-ips: "192.168.128.16"
+spec:
+  type: LoadBalancer
+  selector:
+    app: scanopy-server
+  ports:
+    - name: http
+      port: 60072
+      targetPort: http

@@ -1,0 +1,98 @@
+# Scanopy Daemon (ネットワークスキャナ)
+#
+# docker-compose.yml の daemon は network_mode: host で動くため k8s では
+# hostNetwork: true + dnsPolicy: ClusterFirstWithHostNet にして両立させる。
+#   - hostNetwork: true → 192.168.1.0/24 LAN に直接到達 (L2 broadcast/ICMP/SNMP 可)
+#   - dnsPolicy: ClusterFirstWithHostNet → scanopy-server.scanopy.svc.cluster.local
+#     を hostNetwork Pod から解決するため必須
+#
+# DaemonSet で 3 ノード (nixos-desktop / homeMachine / g3pro) 全てに配置して
+# ノード障害時も他ノードの daemon がスキャン継続できるようにする。
+# それぞれ別の SCANOPY_NETWORK_ID を与える必要はない (同一 LAN セグメント)。
+#
+# capabilities:
+#   NET_RAW  - raw socket (ICMP ping, ARP)
+#   NET_ADMIN - interface inspection
+#
+# /var/run/docker.sock の mount は k3s 環境 (containerd) では使わないため省略。
+# Docker-specific discovery は Cilium Hubble で代替。
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: scanopy-daemon
+  labels:
+    app: scanopy-daemon
+spec:
+  selector:
+    matchLabels:
+      app: scanopy-daemon
+  template:
+    metadata:
+      labels:
+        app: scanopy-daemon
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: daemon
+          image: ghcr.io/scanopy/scanopy/daemon:latest
+          imagePullPolicy: Always
+          ports:
+            - name: health
+              containerPort: 60073
+              hostPort: 60073
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - NET_RAW
+                - NET_ADMIN
+          env:
+            - name: SCANOPY_LOG_LEVEL
+              value: info
+            - name: SCANOPY_SERVER_URL
+              value: http://scanopy-server.scanopy.svc.cluster.local:60072
+            - name: SCANOPY_NETWORK_ID
+              value: "home-lan"
+            - name: SCANOPY_DAEMON_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: scanopy-secrets
+                  key: daemon-api-key
+            # Daemon name はノード毎に一意にする (server 側で個別認識するため)。
+            - name: SCANOPY_DAEMON_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: health
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/scanopy
+      volumes:
+        # daemon-config は起動時生成でノード毎ステートレス扱い。
+        # docker-compose の daemon-config named volume の代替。
+        - name: config
+          emptyDir: {}

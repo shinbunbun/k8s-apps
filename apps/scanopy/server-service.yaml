@@ -1,0 +1,17 @@
+# Scanopy Server - ClusterIP Service
+#
+# cloudflared tunnel が http://scanopy-server.scanopy.svc.cluster.local:60072
+# でルーティングする前段の内部 Service。
+apiVersion: v1
+kind: Service
+metadata:
+  name: scanopy-server
+  labels:
+    app: scanopy-server
+spec:
+  selector:
+    app: scanopy-server
+  ports:
+    - name: http
+      port: 60072
+      targetPort: http

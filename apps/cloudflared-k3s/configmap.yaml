@@ -45,4 +45,8 @@ data:
         service: http://hubble-ui.kube-system.svc.cluster.local:80
         originRequest:
           httpHostHeader: hubble.shinbunbun.com
+      - hostname: scanopy.shinbunbun.com
+        service: http://scanopy-server.scanopy.svc.cluster.local:60072
+        originRequest:
+          httpHostHeader: scanopy.shinbunbun.com
       - service: http_status:404
