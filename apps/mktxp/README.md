@@ -54,12 +54,14 @@ stringData:
         # ... (feature toggles は既存の secret.enc.yaml を sops -d で参照)
 EOF
 cp secret.yaml secret.enc.yaml
-sops -e -i secret.enc.yaml   # in-place 暗号化 (.sops.yaml の creation_rules を使用)
-rm secret.yaml               # 平文は .gitignore で無視されるが手動削除
+# stringData 配下の値のみ暗号化 (apiVersion / kind / metadata は平文のまま)
+# 既存 apps/google-calendar-bot/secrets/secret.enc.yaml と同じ方針
+sops -e -i --encrypted-regex '^stringData$' secret.enc.yaml
+rm secret.yaml
 git add secret.enc.yaml
 ```
 
-既存内容を編集するだけなら `sops secret.enc.yaml` で $EDITOR が開き、保存時に自動再暗号化。
+既存内容を編集するだけなら `sops secret.enc.yaml` で $EDITOR が開き、保存時に自動再暗号化 (sops metadata に `encrypted_regex` が記録されているため再指定不要)。
 
 ### Phase 2: ArgoCD sync
 
