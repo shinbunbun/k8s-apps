@@ -13,8 +13,7 @@ mktxp 本体は GPLv2+。本リポジトリは upstream の公式コンテナイ
 | `deployment.yaml` | Deployment (1 replica, non-root UID 1000) |
 | `service.yaml` | ClusterIP Service :49090 (vmagent scrape 対象) |
 | `secret-generator.yaml` | KSOPS で secrets/secret.enc.yaml を復号 |
-| `secrets/secret.enc.yaml` | **要 Phase 0 完了** — mktxp.conf (password 含む) を SOPS-Age 暗号化 |
-| `secrets/secret.template.yaml` | 暗号化前のテンプレート (コミット OK、password=PHASE_0_PASSWORD 置換用) |
+| `secrets/secret.enc.yaml` | mktxp.conf (password 含む) を SOPS-Age 暗号化したもの |
 | `kustomization.yaml` | リソース+ksops generator |
 
 ## デプロイ手順
@@ -31,18 +30,36 @@ mktxp 本体は GPLv2+。本リポジトリは upstream の公式コンテナイ
 
 検証: `ssh admin@192.168.1.1 "/user print where name=mktxp"` で group=mktxp 確認。翌日の `routeros-backup` CronJob で `routeros-backups/routeros.rsc` に `/ip service` 等が反映される。
 
-### Phase 1: Secret 暗号化
+### Phase 1: Secret 暗号化 (パスワードを更新する場合)
 
-リポジトリルートの `.sops.yaml` で `apps/*/secrets/*.enc.yaml` の age recipient が設定済みなので、以下だけで暗号化される:
+リポジトリルートの `.sops.yaml` で `apps/*/secrets/*.enc.yaml` の age recipient が設定済み。平文 Secret を用意して sops で in-place 暗号化する:
 
 ```bash
 cd k8s-apps/apps/mktxp/secrets
-cp secret.template.yaml secret.yaml
-# secret.yaml を編集して PHASE_0_PASSWORD を実パスワードに置換
-sops --encrypt secret.yaml > secret.enc.yaml
-rm secret.yaml              # 平文は絶対にコミットしない
+cat > secret.yaml <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mktxp-config
+type: Opaque
+stringData:
+  mktxp.conf: |
+    [home-router]
+        enabled = True
+        hostname = 192.168.1.1
+        port = 8729
+        username = mktxp
+        password = <RouterOS の mktxp ユーザのパスワード>
+        use_ssl = True
+        # ... (feature toggles は既存の secret.enc.yaml を sops -d で参照)
+EOF
+cp secret.yaml secret.enc.yaml
+sops -e -i secret.enc.yaml   # in-place 暗号化 (.sops.yaml の creation_rules を使用)
+rm secret.yaml               # 平文は .gitignore で無視されるが手動削除
 git add secret.enc.yaml
 ```
+
+既存内容を編集するだけなら `sops secret.enc.yaml` で $EDITOR が開き、保存時に自動再暗号化。
 
 ### Phase 2: ArgoCD sync
 
