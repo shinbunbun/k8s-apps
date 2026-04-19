@@ -1260,7 +1260,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 12,
+        "w": 6,
         "x": 0,
         "y": 47
       },
@@ -1298,6 +1298,49 @@
       "type": "stat"
     },
     {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 47 },
+      "id": 56,
+      "description": "RouterOS で `/system package update check-for-updates` を定期実行する必要あり (未実行の場合は No Data)",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "/^mtxrSystemUpgradeVersion$/",
+          "values": false
+        },
+        "text": {},
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "mtxrSystemUpgradeVersion{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        }
+      ],
+      "title": "アップグレード可能バージョン",
+      "type": "stat"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -1323,7 +1366,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 12,
+        "w": 6,
         "x": 12,
         "y": 47
       },
@@ -1350,6 +1393,48 @@
         }
       ],
       "title": "ライセンスレベル",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 47 },
+      "id": 57,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "/^mtxrBuildTime$/",
+          "values": false
+        },
+        "text": {},
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "expr": "mtxrBuildTime{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        }
+      ],
+      "title": "ファームウェアビルド時刻",
       "type": "stat"
     },
     {
