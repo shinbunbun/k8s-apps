@@ -42,6 +42,11 @@ spec:
               value: info
             - name: SCANOPY_PUBLIC_URL
               value: https://scanopy.shinbunbun.com
+            # server image には /app/static に Web UI 静的ファイルが同梱されているが
+            # 明示しないと server ログが "Web UI: disabled (API-only)" になるため設定。
+            # docker-compose.yml と同じ値。
+            - name: SCANOPY_WEB_EXTERNAL_PATH
+              value: /app/static
             - name: SCANOPY_DB_HOST
               value: scanopy-postgres.scanopy.svc.cluster.local
             - name: SCANOPY_DB_PORT
