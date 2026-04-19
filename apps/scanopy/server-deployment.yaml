@@ -45,7 +45,7 @@ spec:
               [[oidc_providers]]
               name = "Authentik"
               slug = "authentik"
-              issuer_url = "https://auth.shinbunbun.com/application/o/scanopy"
+              issuer_url = "https://auth.shinbunbun.com/application/o/scanopy/"
               client_id = "${OAUTH_CLIENT_ID}"
               client_secret = "${OAUTH_CLIENT_SECRET}"
               EOF
