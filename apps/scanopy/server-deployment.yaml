@@ -27,6 +27,9 @@ spec:
       labels:
         app: scanopy-server
     spec:
+      # k8s が namespace 内 Service から自動注入する SCANOPY_SERVER_PORT 等の
+      # 環境変数が Scanopy 自身の SCANOPY_* 設定と衝突するため無効化する。
+      enableServiceLinks: false
       containers:
         - name: server
           image: ghcr.io/scanopy/scanopy/server:latest
