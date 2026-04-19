@@ -122,9 +122,9 @@ spec:
           summary: "High packet drop rate on RouterOS interface"
           description: "Interface {{ $labels.name }} is dropping packets at {{ $value }} packets/sec"
 
-      # インターフェース帯域使用率 (mktxp_interface_rate は monitor collector がリンク速度 bps を返す)
+      # インターフェース帯域使用率 (mktxp_interface_rate は monitor collector がリンク速度 Mbps を返すため *1e6 で bps 換算)
       - alert: RouterOSHighBandwidthUsage
-        expr: '(rate(mktxp_interface_rx_byte_total{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8) or (rate(mktxp_interface_tx_byte_total{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8)'
+        expr: '(rate(mktxp_interface_rx_byte_total{job="routeros"}[5m]) * 8 / (ignoring(__name__) mktxp_interface_rate{job="routeros"} * 1000000) > 0.8) or (rate(mktxp_interface_tx_byte_total{job="routeros"}[5m]) * 8 / (ignoring(__name__) mktxp_interface_rate{job="routeros"} * 1000000) > 0.8)'
         for: 5m
         labels:
           severity: warning

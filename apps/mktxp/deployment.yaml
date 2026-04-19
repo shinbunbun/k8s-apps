@@ -21,10 +21,11 @@ spec:
         fsGroup: 1000
       containers:
         - name: mktxp
-          # main タグの digest pin (1.2.17 には wireguard_collector が含まれないため)。
-          # wireguard peer collector は 2026-03-29 に main に追加されたが未リリース。
-          # 次リリース (1.2.18 以降) で正式タグに戻すこと。
-          image: ghcr.io/akpw/mktxp:main@sha256:428f243fd53f4abc3830e95dc3f36f4b0152e6d2f9d58e0f30748e4fe4e5420d
+          # 安定版 1.2.17。main は wireguard_collector を含むが parse_mkt_uptime(None)
+          # で落ちるバグ (2026-04 時点) があるため、安定版で運用。1.2.17 に
+          # wireguard_collector は無いが、peer 詳細が不要な現状では問題なし。
+          # 次リリース (1.2.18+) で main の修正取り込みを検討。
+          image: ghcr.io/akpw/mktxp:1.2.17
           command: ["mktxp"]
           args: ["--cfg-dir", "/etc/mktxp", "export"]
           ports:
