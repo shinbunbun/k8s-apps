@@ -2,10 +2,6 @@
 
 [akpw/mktxp](https://github.com/akpw/mktxp) を使って RouterOS (192.168.1.1) のメトリクスを Prometheus/VictoriaMetrics に収集する。SNMP から API ベースに移行。
 
-## License
-
-mktxp 本体は GPLv2+。本リポジトリは upstream の公式コンテナイメージ `ghcr.io/akpw/mktxp:1.2.17` を利用するだけで、コード改変/再配布は行わないため制約なし。参考にした Grafana Dashboard #13679 は Apache-2.0 (`apps/grafana-config/dashboards/LICENSE-APACHE-2.0` 参照)。
-
 ## ファイル構成
 
 | ファイル | 役割 |
