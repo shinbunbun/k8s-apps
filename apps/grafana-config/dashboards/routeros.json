@@ -1983,12 +1983,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (ident) (count_over_time({job=\"routeros\", ident=~\"$ident\"} [5m]))",
+          "expr": "topk(15, sum by (ident) (count_over_time({job=\"routeros\", ident=~\"$ident\"} [5m])))",
           "refId": "A",
           "legendFormat": "{{ident}}"
         }
       ],
-      "title": "ident 別ログ件数",
+      "title": "ident 別ログ件数 (上位 15)",
       "type": "timeseries"
     },
     {
