@@ -914,7 +914,7 @@
           "refId": "A"
         },
         {
-          "expr": "ifSpeed{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "expr": "ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\"} * 1000000",
           "format": "table",
           "instant": true,
           "refId": "B"
