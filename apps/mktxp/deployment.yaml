@@ -21,11 +21,11 @@ spec:
         fsGroup: 1000
       containers:
         - name: mktxp
-          # 安定版 1.2.17 に digest pin。main は wireguard_collector を含むが
-          # parse_mkt_uptime(None) で落ちるバグ (2026-04 時点) があるため、安定版
-          # で運用する。1.2.17 に wireguard_collector は無いが、peer 詳細が不要な
-          # 現状では問題なし。次リリース (1.2.18+) で main の修正取り込みを検討。
-          image: ghcr.io/akpw/mktxp:1.2.17@sha256:bd6f22f7db0a79557c4af8a73aa22517f4c32d54fafa19fb0de29e7332440613
+          # 安定版 1.2.17。main は wireguard_collector を含むが parse_mkt_uptime(None)
+          # で落ちるバグ (2026-04 時点) があるため、安定版で運用。1.2.17 に
+          # wireguard_collector は無いが、peer 詳細が不要な現状では問題なし。
+          # 次リリース (1.2.18+) で main の修正取り込みを検討。
+          image: ghcr.io/akpw/mktxp:1.2.17
           command: ["mktxp"]
           args: ["--cfg-dir", "/etc/mktxp", "export"]
           ports:
