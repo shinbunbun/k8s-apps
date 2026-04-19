@@ -177,7 +177,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "up{job=\"snmp_routeros\"}",
+          "expr": "up{job=\"routeros\"}",
           "refId": "A"
         }
       ],
