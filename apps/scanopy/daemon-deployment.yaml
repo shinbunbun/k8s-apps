@@ -31,6 +31,8 @@ spec:
       labels:
         app: scanopy-daemon
     spec:
+      # k8s Service 自動注入 env var との衝突を防ぐため無効化。
+      enableServiceLinks: false
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
@@ -52,8 +54,9 @@ spec:
               value: info
             - name: SCANOPY_SERVER_URL
               value: http://scanopy-server.scanopy.svc.cluster.local:60072
-            - name: SCANOPY_NETWORK_ID
-              value: "home-lan"
+            # SCANOPY_NETWORK_ID は UUID 形式でサーバ側で事前作成された Network の
+            # ID を指定する必要がある。初回登録時は未指定にして daemon が自己登録
+            # → サーバ UI 側で network を作成して後から関連付ける運用とする。
             - name: SCANOPY_DAEMON_API_KEY
               valueFrom:
                 secretKeyRef:
