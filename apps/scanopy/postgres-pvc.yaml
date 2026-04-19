@@ -1,0 +1,13 @@
+# PostgreSQL 用 PVC。
+# Piraeus (DRBD 3レプリカ) でノード障害時に別ノードへ再アタッチ可能にする。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scanopy-postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: piraeus-storage
+  resources:
+    requests:
+      storage: 2Gi

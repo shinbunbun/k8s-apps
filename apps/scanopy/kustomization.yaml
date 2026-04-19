@@ -1,0 +1,20 @@
+# Scanopy - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/scanopy を
+# 自動検出して ArgoCD Application を生成する。namespace は scanopy。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: scanopy
+
+resources:
+  - postgres-pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - server-pvc.yaml
+  - server-deployment.yaml
+  - server-service.yaml
+  - server-lan-service.yaml
+  - daemon-deployment.yaml
+
+generators:
+  - secret-generator.yaml

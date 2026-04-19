@@ -1,0 +1,12 @@
+# Scanopy server の /data 用 PVC (Piraeus DRBD 3レプリカ)。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scanopy-server-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: piraeus-storage
+  resources:
+    requests:
+      storage: 5Gi
