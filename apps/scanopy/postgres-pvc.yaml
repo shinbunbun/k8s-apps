@@ -1,6 +1,5 @@
 # PostgreSQL 用 PVC。
-# Scanopy discovery データは再スキャンで復元可能なため、ノード障害で PVC が失われても
-# server 再起動後に daemon が自動で再 discovery して数分で再構築される。
+# Piraeus (DRBD 3レプリカ) でノード障害時に別ノードへ再アタッチ可能にする。
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -8,7 +7,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: local-path
+  storageClassName: piraeus-storage
   resources:
     requests:
       storage: 2Gi

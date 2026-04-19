@@ -1,8 +1,4 @@
-# Scanopy server の /data 用 PVC。
-# scan 結果のキャッシュ / config / ログが保存される (DB 本体は CNPG 側)。
-# local-path (k3s 同梱) を使うため、Pod が別ノードに移ると PVC が新規作成され
-# 空の状態から再 discovery することになる。
-# 許容される挙動: 再スキャンは daemon 側が自動で行うため数分で再構築される。
+# Scanopy server の /data 用 PVC (Piraeus DRBD 3レプリカ)。
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -10,7 +6,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: local-path
+  storageClassName: piraeus-storage
   resources:
     requests:
       storage: 5Gi
