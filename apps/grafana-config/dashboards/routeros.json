@@ -1150,7 +1150,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^Value$/",
+          "fields": "/^mtxrSystemBoardName$/",
           "values": false
         },
         "text": {},
@@ -1167,9 +1167,7 @@
       "transformations": [
         {
           "id": "labelsToFields",
-          "options": {
-            "valueLabel": "mtxrSystemBoardName"
-          }
+          "options": {}
         }
       ],
       "title": "ボード名",
@@ -1214,7 +1212,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^Value$/",
+          "fields": "/^mtxrSystemModel$/",
           "values": false
         },
         "text": {},
@@ -1231,9 +1229,7 @@
       "transformations": [
         {
           "id": "labelsToFields",
-          "options": {
-            "valueLabel": "mtxrSystemModel"
-          }
+          "options": {}
         }
       ],
       "title": "モデル名",
@@ -1278,7 +1274,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^Value$/",
+          "fields": "/^mtxrSystemCurrentVersion$/",
           "values": false
         },
         "text": {},
@@ -1295,9 +1291,7 @@
       "transformations": [
         {
           "id": "labelsToFields",
-          "options": {
-            "valueLabel": "mtxrSystemCurrentVersion"
-          }
+          "options": {}
         }
       ],
       "title": "RouterOSバージョン",
