@@ -17,13 +17,5 @@ resources:
   - lan-service.yaml
   - alertmanager-lan-service.yaml
 
-configMapGenerator:
-  # SNMP Exporter 設定 (MikroTik RouterOS)
-  - name: snmp-config
-    files:
-      - snmp.yml
-    options:
-      disableNameSuffixHash: true
-
 generators:
   - secret-generator.yaml
