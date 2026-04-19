@@ -16,16 +16,3 @@
 - `secrets/scanopy-secrets.enc.yaml` : daemon API key / OIDC client_secret (pre-provisioned 強ランダム値)
 
 discovery データは再スキャンで復元可能なので CNPG HA / Barman は不要。
-
-## 初回セットアップ
-
-事前値の取得: `sops -d apps/scanopy/secrets/scanopy-secrets.enc.yaml`
-
-1. **Authentik** で OAuth2/OIDC Provider `scanopy` を作成 (Client Secret に事前値を貼付、Redirect URI: `https://scanopy.shinbunbun.com/oauth/callback`)、Application `scanopy` を紐付け
-2. **PR マージ** → ApplicationSet 自動検出 (namespace=scanopy)
-3. **Scanopy UI** (http://192.168.128.16:60072) で初期管理ユーザ登録 → Daemon API Key 設定に事前値を入力 → Settings > Authentication > OIDC 有効化
-4. **RouterOS SNMP** (任意、検出強化):
-   ```
-   /snmp community add name=scanopy addresses=192.168.1.0/24,192.168.128.0/24 read-access=yes
-   /snmp set enabled=yes
-   ```
