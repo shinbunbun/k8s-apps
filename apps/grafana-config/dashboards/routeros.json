@@ -1164,6 +1164,14 @@
           "refId": "A"
         }
       ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "valueLabel": "mtxrSystemBoardName"
+          }
+        }
+      ],
       "title": "ボード名",
       "type": "stat"
     },
@@ -1220,6 +1228,14 @@
           "refId": "A"
         }
       ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "valueLabel": "mtxrSystemModel"
+          }
+        }
+      ],
       "title": "モデル名",
       "type": "stat"
     },
@@ -1274,6 +1290,14 @@
           "format": "table",
           "instant": true,
           "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "valueLabel": "mtxrSystemCurrentVersion"
+          }
         }
       ],
       "title": "RouterOSバージョン",
