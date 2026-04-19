@@ -1,0 +1,2 @@
+apps/*/secrets/secret.yaml
+infrastructure/*/secrets/secret.yaml
