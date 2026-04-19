@@ -539,12 +539,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8",
+          "expr": "rate(mktxp_interface_rx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8",
           "refId": "A",
           "legendFormat": "受信 {{name}}"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8",
+          "expr": "-rate(mktxp_interface_tx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8",
           "refId": "B",
           "legendFormat": "送信 {{name}}"
         }
@@ -628,12 +628,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} and mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} > 0",
+          "expr": "rate(mktxp_interface_rx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} and mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} > 0",
           "refId": "A",
           "legendFormat": "受信 {{name}}"
         },
         {
-          "expr": "rate(mktxp_interface_tx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} and mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} > 0",
+          "expr": "rate(mktxp_interface_tx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} and mktxp_interface_rate{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"} > 0",
           "refId": "B",
           "legendFormat": "送信 {{name}}"
         }
@@ -712,12 +712,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_rx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "A",
           "legendFormat": "受信ドロップ {{name}}"
         },
         {
-          "expr": "rate(mktxp_interface_tx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_tx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "B",
           "legendFormat": "送信ドロップ {{name}}"
         }
@@ -798,12 +798,12 @@
       },
       "targets": [
         {
-          "expr": "mktxp_interface_rx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}",
+          "expr": "mktxp_interface_rx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}",
           "refId": "A",
           "legendFormat": "受信ドロップ {{name}}"
         },
         {
-          "expr": "mktxp_interface_tx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}",
+          "expr": "mktxp_interface_tx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}",
           "refId": "B",
           "legendFormat": "送信ドロップ {{name}}"
         }
@@ -1011,12 +1011,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_error{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_rx_error_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "A",
           "legendFormat": "受信エラー {{name}}"
         },
         {
-          "expr": "rate(mktxp_interface_tx_error{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_tx_error_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "B",
           "legendFormat": "送信エラー {{name}}"
         }
@@ -1687,12 +1687,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"ipipv6-tunnel1\"}[5m]) * 8",
+          "expr": "rate(mktxp_interface_rx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"ipipv6-tunnel1\"}[5m]) * 8",
           "refId": "A",
           "legendFormat": "受信 (v6plus)"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"ipipv6-tunnel1\"}[5m]) * 8",
+          "expr": "-rate(mktxp_interface_tx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"ipipv6-tunnel1\"}[5m]) * 8",
           "refId": "B",
           "legendFormat": "送信 (v6plus)"
         }
@@ -1732,12 +1732,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"ether3\"}[5m]) * 8",
+          "expr": "rate(mktxp_interface_rx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"ether3\"}[5m]) * 8",
           "refId": "A",
           "legendFormat": "受信 (ether3)"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"ether3\"}[5m]) * 8",
+          "expr": "-rate(mktxp_interface_tx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"ether3\"}[5m]) * 8",
           "refId": "B",
           "legendFormat": "送信 (ether3)"
         }
@@ -1777,12 +1777,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"wg-home\"}[5m]) * 8",
+          "expr": "rate(mktxp_interface_rx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"wg-home\"}[5m]) * 8",
           "refId": "A",
           "legendFormat": "受信 (wg-home)"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_byte{instance=\"192.168.1.1\",job=\"routeros\",name=\"wg-home\"}[5m]) * 8",
+          "expr": "-rate(mktxp_interface_tx_byte_total{instance=\"192.168.1.1\",job=\"routeros\",name=\"wg-home\"}[5m]) * 8",
           "refId": "B",
           "legendFormat": "送信 (wg-home)"
         }
@@ -2030,12 +2030,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_packet{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_rx_packet_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "A",
           "legendFormat": "受信 {{name}}"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_packet{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "-rate(mktxp_interface_tx_packet_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "B",
           "legendFormat": "送信 {{name}}"
         }
@@ -2075,12 +2075,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mktxp_interface_rx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "rate(mktxp_interface_rx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "A",
           "legendFormat": "受信ディスカード {{name}}"
         },
         {
-          "expr": "-rate(mktxp_interface_tx_drop{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
+          "expr": "-rate(mktxp_interface_tx_drop_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\"$interface\"}[5m])",
           "refId": "B",
           "legendFormat": "送信ディスカード {{name}}"
         }

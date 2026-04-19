@@ -104,7 +104,7 @@ spec:
 
       # インターフェースエラー率
       - alert: RouterOSHighErrorRate
-        expr: 'rate(mktxp_interface_rx_error{job="routeros"}[5m]) > 100 or rate(mktxp_interface_tx_error{job="routeros"}[5m]) > 100'
+        expr: 'rate(mktxp_interface_rx_error_total{job="routeros"}[5m]) > 100 or rate(mktxp_interface_tx_error_total{job="routeros"}[5m]) > 100'
         for: 5m
         labels:
           severity: warning
@@ -114,7 +114,7 @@ spec:
 
       # パケットドロップ率
       - alert: RouterOSHighPacketDropRate
-        expr: 'rate(mktxp_interface_rx_drop{job="routeros"}[5m]) > 1000 or rate(mktxp_interface_tx_drop{job="routeros"}[5m]) > 1000'
+        expr: 'rate(mktxp_interface_rx_drop_total{job="routeros"}[5m]) > 1000 or rate(mktxp_interface_tx_drop_total{job="routeros"}[5m]) > 1000'
         for: 5m
         labels:
           severity: warning
@@ -124,7 +124,7 @@ spec:
 
       # インターフェース帯域使用率 (mktxp_interface_rate は monitor collector がリンク速度 bps を返す)
       - alert: RouterOSHighBandwidthUsage
-        expr: '(rate(mktxp_interface_rx_byte{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8) or (rate(mktxp_interface_tx_byte{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8)'
+        expr: '(rate(mktxp_interface_rx_byte_total{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8) or (rate(mktxp_interface_tx_byte_total{job="routeros"}[5m]) * 8 / ignoring(__name__) mktxp_interface_rate{job="routeros"} > 0.8)'
         for: 5m
         labels:
           severity: warning
@@ -278,7 +278,7 @@ spec:
 
       # RouterOSインターフェースエラー率（wg-home は閾値緩和）
       - alert: RouterOSInterfaceErrors
-        expr: '(rate(mktxp_interface_rx_error{job="routeros",name!="wg-home"}[5m]) > 0.01 or rate(mktxp_interface_tx_error{job="routeros",name!="wg-home"}[5m]) > 0.01) or (rate(mktxp_interface_rx_error{job="routeros",name="wg-home"}[5m]) > 0.1 or rate(mktxp_interface_tx_error{job="routeros",name="wg-home"}[5m]) > 0.1)'
+        expr: '(rate(mktxp_interface_rx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01 or rate(mktxp_interface_tx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01) or (rate(mktxp_interface_rx_error_total{job="routeros",name="wg-home"}[5m]) > 0.1 or rate(mktxp_interface_tx_error_total{job="routeros",name="wg-home"}[5m]) > 0.1)'
         for: 5m
         labels:
           severity: warning
@@ -318,7 +318,7 @@ spec:
 
       # WireGuardトラフィック停止検知
       - alert: RouterOSWireGuardNoTraffic
-        expr: 'rate(mktxp_interface_rx_byte{job="routeros",name="wg-home"}[10m]) == 0 and rate(mktxp_interface_tx_byte{job="routeros",name="wg-home"}[10m]) == 0'
+        expr: 'rate(mktxp_interface_rx_byte_total{job="routeros",name="wg-home"}[10m]) == 0 and rate(mktxp_interface_tx_byte_total{job="routeros",name="wg-home"}[10m]) == 0'
         for: 10m
         labels:
           severity: warning
@@ -338,7 +338,7 @@ spec:
 
       # WAN 物理 IF (ether3) トラフィック停止
       - alert: RouterOSWANNoTraffic
-        expr: 'rate(mktxp_interface_rx_byte{job="routeros",name="ether3"}[10m]) == 0'
+        expr: 'rate(mktxp_interface_rx_byte_total{job="routeros",name="ether3"}[10m]) == 0'
         for: 10m
         labels:
           severity: critical
@@ -348,7 +348,7 @@ spec:
 
       # パケットドロップ率 (mktxp では drop が IF-MIB ifInDiscards 相当)
       - alert: RouterOSPacketDiscardsHigh
-        expr: 'rate(mktxp_interface_rx_drop{job="routeros"}[5m]) > 100 or rate(mktxp_interface_tx_drop{job="routeros"}[5m]) > 100'
+        expr: 'rate(mktxp_interface_rx_drop_total{job="routeros"}[5m]) > 100 or rate(mktxp_interface_tx_drop_total{job="routeros"}[5m]) > 100'
         for: 5m
         labels:
           severity: warning
