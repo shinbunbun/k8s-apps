@@ -539,12 +539,12 @@
       },
       "targets": [
         {
-          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr!=\"\"}[5m]) * 8",
+          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m]) * 8",
           "refId": "A",
           "legendFormat": "受信 {{ifDescr}}"
         },
         {
-          "expr": "-rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr!=\"\"}[5m]) * 8",
+          "expr": "-rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m]) * 8",
           "refId": "B",
           "legendFormat": "送信 {{ifDescr}}"
         }
@@ -628,12 +628,12 @@
       },
       "targets": [
         {
-          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr!=\"\"}[5m]) * 8 / (ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\"} * 1000000) and ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\"} > 0",
+          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m]) * 8 / (ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"} * 1000000) and ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"} > 0",
           "refId": "A",
           "legendFormat": "受信 {{ifDescr}}"
         },
         {
-          "expr": "rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr!=\"\"}[5m]) * 8 / (ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\"} * 1000000) and ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\"} > 0",
+          "expr": "rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m]) * 8 / (ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"} * 1000000) and ifHighSpeed{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"} > 0",
           "refId": "B",
           "legendFormat": "送信 {{ifDescr}}"
         }
@@ -712,12 +712,12 @@
       },
       "targets": [
         {
-          "expr": "rate(mtxrInterfaceRxDrop{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "expr": "rate(mtxrInterfaceRxDrop{instance=\"192.168.1.1\",job=\"routeros\",mtxrInterfaceName=~\"$interface\"}[5m])",
           "refId": "A",
           "legendFormat": "受信ドロップ {{mtxrInterfaceName}}"
         },
         {
-          "expr": "rate(mtxrInterfaceTxDrop{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "expr": "rate(mtxrInterfaceTxDrop{instance=\"192.168.1.1\",job=\"routeros\",mtxrInterfaceName=~\"$interface\"}[5m])",
           "refId": "B",
           "legendFormat": "送信ドロップ {{mtxrInterfaceName}}"
         }
@@ -798,12 +798,12 @@
       },
       "targets": [
         {
-          "expr": "mtxrInterfaceRxDrop{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "expr": "mtxrInterfaceRxDrop{instance=\"192.168.1.1\",job=\"routeros\",mtxrInterfaceName=~\"$interface\"}",
           "refId": "A",
           "legendFormat": "受信ドロップ {{mtxrInterfaceName}}"
         },
         {
-          "expr": "mtxrInterfaceTxDrop{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "expr": "mtxrInterfaceTxDrop{instance=\"192.168.1.1\",job=\"routeros\",mtxrInterfaceName=~\"$interface\"}",
           "refId": "B",
           "legendFormat": "送信ドロップ {{mtxrInterfaceName}}"
         }
@@ -1023,14 +1023,14 @@
       },
       "targets": [
         {
-          "expr": "rate(ifInErrors{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "expr": "rate(ifInErrors{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
           "refId": "A",
-          "legendFormat": "受信エラー Interface {{ifIndex}}"
+          "legendFormat": "受信エラー {{ifDescr}}"
         },
         {
-          "expr": "rate(ifOutErrors{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "expr": "rate(ifOutErrors{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
           "refId": "B",
-          "legendFormat": "送信エラー Interface {{ifIndex}}"
+          "legendFormat": "送信エラー {{ifDescr}}"
         }
       ],
       "title": "インターフェースエラー数/秒",
@@ -1091,9 +1091,9 @@
       },
       "targets": [
         {
-          "expr": "(hrStorageUsed{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"131072\"} / hrStorageSize{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"131072\"}) * 100",
+          "expr": "(hrStorageUsed{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex!=\"65536\"} / hrStorageSize{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex!=\"65536\"}) * 100",
           "refId": "A",
-          "legendFormat": "システムディスク"
+          "legendFormat": "{{hrStorageDescr}} ({{hrStorageIndex}})"
         }
       ],
       "title": "ディスク使用率",
@@ -1544,26 +1544,15 @@
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
+          "color": { "mode": "thresholds" },
           "mappings": [
             {
               "options": {
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                },
-                "2": {
-                  "text": "DOWN",
-                  "color": "red"
-                }
+                "1": { "text": "UP", "color": "green" },
+                "2": { "text": "DOWN", "color": "red" }
               },
               "type": "value"
             }
@@ -1571,72 +1560,44 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
             ]
           }
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 64
-      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 64 },
       "id": 36,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "text": {},
         "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifIndex=\"10\"}",
+          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ipipv6-tunnel1\"}",
           "refId": "A",
-          "legendFormat": "PPPoE接続"
+          "legendFormat": "WAN v6plus (ipipv6-tunnel1)"
         }
       ],
-      "title": "PPPoE接続状態",
+      "title": "WAN (v6plus トンネル)",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
+          "color": { "mode": "thresholds" },
           "mappings": [
             {
               "options": {
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                },
-                "2": {
-                  "text": "DOWN",
-                  "color": "red"
-                }
+                "1": { "text": "UP", "color": "green" },
+                "2": { "text": "DOWN", "color": "red" }
               },
               "type": "value"
             }
@@ -1644,129 +1605,257 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
             ]
           }
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 64
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 64 },
+      "id": 43,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "auto"
       },
+      "targets": [
+        {
+          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ether3\"}",
+          "refId": "A",
+          "legendFormat": "WAN 物理 (ether3)"
+        }
+      ],
+      "title": "WAN (物理 ether3)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "1": { "text": "UP", "color": "green" },
+                "2": { "text": "DOWN", "color": "red" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 64 },
+      "id": 44,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"bridge1\"}",
+          "refId": "A",
+          "legendFormat": "LAN (bridge1)"
+        }
+      ],
+      "title": "LAN (bridge1)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "1": { "text": "UP", "color": "green" },
+                "2": { "text": "DOWN", "color": "red" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 64 },
       "id": 37,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "text": {},
         "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifIndex=\"12\"}",
+          "expr": "ifOperStatus{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"wg-home\"}",
           "refId": "A",
           "legendFormat": "WireGuard (wg-home)"
         }
       ],
-      "title": "WireGuard接続状態",
+      "title": "WireGuard (wg-home)",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisLabel": "",
             "axisPlacement": "auto",
-            "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "stacking": { "group": "A", "mode": "none" }
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "bps"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 68
-      },
-      "id": 38,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 68 },
+      "id": 45,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
       },
       "targets": [
         {
-          "expr": "rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifIndex=\"12\"}[5m]) * 8",
+          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ipipv6-tunnel1\"}[5m]) * 8",
           "refId": "A",
-          "legendFormat": "WireGuard送信"
+          "legendFormat": "受信 (v6plus)"
+        },
+        {
+          "expr": "-rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ipipv6-tunnel1\"}[5m]) * 8",
+          "refId": "B",
+          "legendFormat": "送信 (v6plus)"
         }
       ],
-      "title": "WireGuardトラフィック（送信のみ）",
-      "description": "注: RouterOSの制限により、WireGuard受信トラフィックは正しく計測されません",
+      "title": "WAN v6plus トラフィック",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 68 },
+      "id": 46,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ether3\"}[5m]) * 8",
+          "refId": "A",
+          "legendFormat": "受信 (ether3)"
+        },
+        {
+          "expr": "-rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"ether3\"}[5m]) * 8",
+          "refId": "B",
+          "legendFormat": "送信 (ether3)"
+        }
+      ],
+      "title": "WAN 物理 (ether3) トラフィック",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 76 },
+      "id": 38,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(ifHCInOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"wg-home\"}[5m]) * 8",
+          "refId": "A",
+          "legendFormat": "受信 (wg-home)"
+        },
+        {
+          "expr": "-rate(ifHCOutOctets{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=\"wg-home\"}[5m]) * 8",
+          "refId": "B",
+          "legendFormat": "送信 (wg-home)"
+        }
+      ],
+      "title": "WireGuard トラフィック",
       "type": "timeseries"
     },
     {
@@ -1775,7 +1864,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 76
+        "y": 84
       },
       "id": 39,
       "title": "ログ",
@@ -1790,7 +1879,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 85
       },
       "id": 40,
       "options": {
@@ -1868,7 +1957,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 89
+        "y": 97
       },
       "id": 41,
       "options": {
@@ -1947,7 +2036,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 89
+        "y": 97
       },
       "id": 42,
       "options": {
@@ -1969,6 +2058,309 @@
       ],
       "title": "トピック別分布",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 105 },
+      "id": 47,
+      "title": "パケット詳細",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 106 },
+      "id": 48,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(ifHCInUcastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "A",
+          "legendFormat": "受信 {{ifDescr}}"
+        },
+        {
+          "expr": "-rate(ifHCOutUcastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "B",
+          "legendFormat": "送信 {{ifDescr}}"
+        }
+      ],
+      "title": "Unicast パケットレート",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 106 },
+      "id": 49,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(ifHCInBroadcastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "A",
+          "legendFormat": "受信Broadcast {{ifDescr}}"
+        },
+        {
+          "expr": "rate(ifHCInMulticastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "B",
+          "legendFormat": "受信Multicast {{ifDescr}}"
+        },
+        {
+          "expr": "-rate(ifHCOutBroadcastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "C",
+          "legendFormat": "送信Broadcast {{ifDescr}}"
+        },
+        {
+          "expr": "-rate(ifHCOutMulticastPkts{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "D",
+          "legendFormat": "送信Multicast {{ifDescr}}"
+        }
+      ],
+      "title": "Broadcast/Multicast パケットレート",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "pps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 114 },
+      "id": 50,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "rate(ifInDiscards{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "A",
+          "legendFormat": "受信ディスカード {{ifDescr}}"
+        },
+        {
+          "expr": "-rate(ifOutDiscards{instance=\"192.168.1.1\",job=\"routeros\",ifDescr=~\"$interface\"}[5m])",
+          "refId": "B",
+          "legendFormat": "送信ディスカード {{ifDescr}}"
+        }
+      ],
+      "title": "IF-MIB ディスカード率 (標準)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 122 },
+      "id": 51,
+      "title": "ハードウェア詳細",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 123 },
+      "id": 52,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "hrProcessorLoad{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A",
+          "legendFormat": "Core {{hrDeviceIndex}}"
+        }
+      ],
+      "title": "CPU コア別負荷",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 123 },
+      "id": 53,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "hrStorageUsed{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"65536\"} * hrStorageAllocationUnits{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"65536\"}",
+          "refId": "A",
+          "legendFormat": "使用量"
+        }
+      ],
+      "title": "メモリ使用量",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 123 },
+      "id": 54,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "hrStorageSize{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"65536\"} * hrStorageAllocationUnits{instance=\"192.168.1.1\",job=\"routeros\",hrStorageIndex=\"65536\"}",
+          "refId": "A",
+          "legendFormat": "総量"
+        }
+      ],
+      "title": "メモリ総量",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 127 },
+      "id": 55,
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "hrProcessorLoad{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A",
+          "legendFormat": "Core {{hrDeviceIndex}}"
+        }
+      ],
+      "title": "CPU コア別負荷 (現在値)",
+      "type": "bargauge"
     }
   ],
   "refresh": "30s",
@@ -1980,7 +2372,35 @@
     "network"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "interface",
+        "label": "Interface",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "query": {
+          "qryType": 1,
+          "query": "label_values(ifDescr{job=\"routeros\"}, ifDescr)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".+",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [],
+        "regex": "",
+        "sort": 1,
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
