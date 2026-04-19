@@ -30,6 +30,40 @@ spec:
       # k8s が namespace 内 Service から自動注入する SCANOPY_SERVER_PORT 等の
       # 環境変数が Scanopy 自身の SCANOPY_* 設定と衝突するため無効化する。
       enableServiceLinks: false
+      # OIDC 設定ファイル /oidc.toml を initContainer でレンダリング。
+      # Scanopy Community Edition は UI から SSO 設定不可 (oidc.toml mount 方式のみ) で
+      # かつ client_id/client_secret を env 直書きしたくないため Secret 参照の env を
+      # initContainer で展開して共有 emptyDir に書き出す。
+      initContainers:
+        - name: render-oidc
+          image: busybox:1.37
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              cat > /oidc/oidc.toml <<EOF
+              [[oidc_providers]]
+              name = "Authentik"
+              slug = "authentik"
+              issuer_url = "https://auth.shinbunbun.com/application/o/scanopy"
+              client_id = "${OAUTH_CLIENT_ID}"
+              client_secret = "${OAUTH_CLIENT_SECRET}"
+              EOF
+              chmod 0400 /oidc/oidc.toml
+          env:
+            - name: OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: scanopy-secrets
+                  key: oauth-client-id
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: scanopy-secrets
+                  key: oauth-client-secret
+          volumeMounts:
+            - name: oidc-config
+              mountPath: /oidc
       containers:
         - name: server
           image: ghcr.io/scanopy/scanopy/server:latest
@@ -91,7 +125,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            # oidc.toml は ルート /oidc.toml に single-file mount。
+            - name: oidc-config
+              mountPath: /oidc.toml
+              subPath: oidc.toml
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: scanopy-server-data
+        - name: oidc-config
+          emptyDir: {}
