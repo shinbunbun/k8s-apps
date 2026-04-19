@@ -316,16 +316,6 @@ spec:
           summary: "WireGuard interface is down"
           description: "WireGuard interface (wg-home) has been down for more than 2 minutes."
 
-      # WireGuardトラフィック停止検知
-      - alert: RouterOSWireGuardNoTraffic
-        expr: 'rate(mktxp_interface_rx_byte_total{job="routeros",name="wg-home"}[10m]) == 0 and rate(mktxp_interface_tx_byte_total{job="routeros",name="wg-home"}[10m]) == 0'
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "No WireGuard traffic detected"
-          description: "No traffic has been detected on WireGuard interface (wg-home) for more than 10 minutes."
-
       # v6plus/MAP-E トンネルダウン（IPv4 WAN）
       - alert: RouterOSV6PlusTunnelDown
         expr: 'mktxp_interface_running{job="routeros",name="ipipv6-tunnel1"} == 0'
