@@ -14,7 +14,7 @@ resources:
   - server-deployment.yaml
   - server-service.yaml
   - server-lan-service.yaml
-  - daemon-daemonset.yaml
+  - daemon-deployment.yaml
 
 generators:
   - secret-generator.yaml

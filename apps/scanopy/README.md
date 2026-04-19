@@ -11,7 +11,7 @@
 
 - `postgres-*.yaml` : `postgres:17-alpine` 単一 Pod + Piraeus PVC 2Gi
 - `server-*.yaml` : server Deployment + PVC 5Gi + ClusterIP + LAN LB (192.168.128.16)
-- `daemon-daemonset.yaml` : hostNetwork DaemonSet (CAP_NET_RAW/ADMIN) 全ノード
+- `daemon-deployment.yaml` : hostNetwork Deployment replicas:1 (CAP_NET_RAW/ADMIN、同一 LAN なので 1 Pod で十分)
 - `secrets/scanopy-postgres.enc.yaml` : DB username/password
 - `secrets/scanopy-secrets.enc.yaml` : daemon API key / OIDC client_secret (pre-provisioned 強ランダム値)
 
