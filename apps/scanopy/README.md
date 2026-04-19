@@ -11,8 +11,7 @@
   └─ scanopy.shinbunbun.com
        └─ [cloudflared-k3s] → Service scanopy-server (ClusterIP :60072)
                                 └─ Deployment scanopy-server (PVC /data 5Gi)
-                                     └─ CNPG Cluster scanopy-db (PostgreSQL 17)
-                                          └─ Barman Cloud Plugin → MinIO
+                                     └─ Deployment scanopy-postgres (postgres:17-alpine, PVC 2Gi)
 
 [LAN 192.168.1.0/24]
   └─ Service scanopy-lan (LoadBalancer VIP 192.168.128.16:60072)
@@ -28,18 +27,20 @@
 
 | ファイル | 役割 |
 |---|---|
-| `postgres-cluster.yaml` | CNPG Cluster (instances: 2, storage 2Gi, Barman) |
-| `objectstore.yaml` | Barman Cloud ObjectStore (MinIO) |
-| `scheduled-backup.yaml` | 毎日 03:30 JST の base backup |
-| `server-pvc.yaml` | /data 用 PVC (local-path, 5Gi) |
+| `postgres-pvc.yaml` | PostgreSQL 用 PVC (local-path 2Gi) |
+| `postgres-deployment.yaml` | `postgres:17-alpine` 単一 Pod (docker-compose と同構成) |
+| `postgres-service.yaml` | ClusterIP Service :5432 |
+| `server-pvc.yaml` | server /data 用 PVC (local-path 5Gi) |
 | `server-deployment.yaml` | Scanopy server Deployment (replicas: 1, Recreate) |
 | `server-service.yaml` | ClusterIP Service (cloudflared 用) |
 | `server-lan-service.yaml` | LoadBalancer Service (LAN VIP 192.168.128.16) |
 | `daemon-daemonset.yaml` | Scanopy daemon DaemonSet (hostNetwork, 全ノード) |
 | `secret-generator.yaml` | KSOPS generator |
-| `secrets/scanopy-db-app.enc.yaml` | DB basic-auth secret (CNPG bootstrap 参照) |
+| `secrets/scanopy-postgres.enc.yaml` | PostgreSQL username/password |
 | `secrets/scanopy-secrets.enc.yaml` | daemon API key + OIDC client_secret |
-| `secrets/cnpg-minio-credentials.enc.yaml` | MinIO 資格情報 (他 CNPG アプリから複製) |
+
+Scanopy discovery データは再スキャンで復元可能なため CNPG HA + Barman バックアップは
+採用していない。docker-compose と同様の単一 postgres:17-alpine + PVC 構成。
 
 シークレットは**事前プロビジョン方式**で本リポジトリに暗号化コミット済み。
 `daemon-api-key` / `oauth-client-secret` は openssl で生成した強ランダム値 (64B+) を

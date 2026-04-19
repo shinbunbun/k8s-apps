@@ -2,20 +2,14 @@
 #
 # ApplicationSet (applicationsets/apps-appset.yaml) が apps/scanopy を
 # 自動検出して ArgoCD Application を生成する。namespace は scanopy。
-#
-# commonAnnotations の ServerSideApply=true は CNPG Cluster の plugins[].enabled
-# field owner を argocd-controller 側に固定するため (grafana-config と同じ理由)。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: scanopy
 
-commonAnnotations:
-  argocd.argoproj.io/sync-options: ServerSideApply=true
-
 resources:
-  - postgres-cluster.yaml
-  - objectstore.yaml
-  - scheduled-backup.yaml
+  - postgres-pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
   - server-pvc.yaml
   - server-deployment.yaml
   - server-service.yaml

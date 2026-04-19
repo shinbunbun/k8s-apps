@@ -7,9 +7,8 @@
 #   server は /data (PVC, RWO) と stickyな状態を持つため HA 化しない。
 #   RollingUpdate だと新旧 Pod が同じ PVC を RWO で奪い合い deadlock するので Recreate。
 #
-# SCANOPY_DATABASE_URL は scanopy-db-app Secret (CNPG bootstrap で生成される
-# basic-auth type, keys: username/password) と service DNS scanopy-db-rw から
-# initContainer で組み立てて ENV に渡す。
+# SCANOPY_DATABASE_URL は scanopy-postgres Secret (username/password) と
+# Service scanopy-postgres:5432 から env 展開で組み立てる。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,7 +40,7 @@ spec:
             - name: SCANOPY_PUBLIC_URL
               value: https://scanopy.shinbunbun.com
             - name: SCANOPY_DB_HOST
-              value: scanopy-db-rw.scanopy.svc.cluster.local
+              value: scanopy-postgres.scanopy.svc.cluster.local
             - name: SCANOPY_DB_PORT
               value: "5432"
             - name: SCANOPY_DB_NAME
@@ -49,12 +48,12 @@ spec:
             - name: SCANOPY_DB_USER
               valueFrom:
                 secretKeyRef:
-                  name: scanopy-db-app
+                  name: scanopy-postgres
                   key: username
             - name: SCANOPY_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: scanopy-db-app
+                  name: scanopy-postgres
                   key: password
             # SCANOPY_DATABASE_URL を sidecar なしで構築。
             # upstream が URL 形式のみ受け付ける場合は以下に切り替える:

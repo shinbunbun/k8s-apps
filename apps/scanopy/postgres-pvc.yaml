@@ -1,0 +1,14 @@
+# PostgreSQL 用 PVC。
+# Scanopy discovery データは再スキャンで復元可能なため、ノード障害で PVC が失われても
+# server 再起動後に daemon が自動で再 discovery して数分で再構築される。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: scanopy-postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
