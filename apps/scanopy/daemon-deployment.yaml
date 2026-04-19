@@ -1,18 +1,16 @@
 # Scanopy Daemon (ネットワークスキャナ)
 #
-# docker-compose.yml の daemon は network_mode: host で動くため k8s では
-# hostNetwork: true + dnsPolicy: ClusterFirstWithHostNet にして両立させる。
-#   - hostNetwork: true → 192.168.1.0/24 LAN に直接到達 (L2 broadcast/ICMP/SNMP 可)
-#   - dnsPolicy: ClusterFirstWithHostNet → Pod から cluster.local を解決
+# Pod network モード (hostNetwork: false) で動作。
+#   - LAN 192.168.1.0/24: Cilium masquerade egress 経由で ICMP/SNMP 到達可
+#   - LB VIP 192.168.128.0/24: Cilium datapath (eBPF) で TCP 到達可
+#     (ICMP は Cilium が LB IP で応答しないため TCP 公開ポートベースで検出)
 #
-# 全ノードが同一 LAN セグメント (192.168.1.0/24) のため daemon は 1 つで LAN 全体を
-# discovery できる。DaemonSet にすると同じセグメントを複数 daemon がスキャンして
-# server 側で重複レポートになるだけなので Deployment replicas:1 とする。
-# ノード障害時は Deployment が別ノードに Pod を再スケジュールする。
+# hostNetwork: true にすると k3s ノード自身の kernel route に 192.168.128.0/24 が
+# ないため LB VIP に到達できない (RouterOS 経由で ICMP redirect ループ) ので
+# Pod network 方式を採用。失うのは L2 LLDP だが、RouterOS の LLDP 情報は SNMP で
+# 取得可能なため実害なし。
 #
-# capabilities:
-#   NET_RAW  - raw socket (ICMP ping, ARP)
-#   NET_ADMIN - interface inspection
+# Deployment replicas:1、ノード障害時は別ノードに再スケジュール。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,8 +31,6 @@ spec:
     spec:
       # k8s Service 自動注入 env var との衝突を防ぐため無効化。
       enableServiceLinks: false
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: daemon
           image: ghcr.io/scanopy/scanopy/daemon:latest
@@ -42,13 +38,12 @@ spec:
           ports:
             - name: health
               containerPort: 60073
-              hostPort: 60073
               protocol: TCP
           securityContext:
             capabilities:
               add:
-                - NET_RAW
-                - NET_ADMIN
+                - NET_RAW   # ICMP ping / raw socket
+                - NET_ADMIN # interface inspection
           env:
             - name: SCANOPY_LOG_LEVEL
               value: info
