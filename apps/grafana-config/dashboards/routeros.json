@@ -1904,12 +1904,13 @@
       },
       "targets": [
         {
-          "expr": "sum(count_over_time({job=\"routeros\", ident=~\"$ident\"} |~ \"error|warning|critical\" [5m]))",
+          "expr": "sum by (level) (count_over_time({job=\"routeros\", level=~\"error|warn|warning\", ident!=\"cache\"} [5m]))",
           "refId": "A",
-          "legendFormat": "エラー/警告"
+          "legendFormat": "{{level}}"
         }
       ],
-      "title": "エラー/警告レート",
+      "title": "エラー/警告レート (level 別、cache ノイズ除外)",
+      "description": "structured log level ラベルベース。ident=cache (DNS cache full ノイズ) は除外",
       "type": "timeseries"
     },
     {
@@ -1983,13 +1984,111 @@
       },
       "targets": [
         {
-          "expr": "sum by (ident) (count_over_time({job=\"routeros\", ident=~\"$ident\"} [5m]))",
+          "expr": "topk(10, sum by (ident) (count_over_time({job=\"routeros\", ident!~\"cache|question|answer|authority|additional|id|done|query\"} [5m])))",
           "refId": "A",
           "legendFormat": "{{ident}}"
         }
       ],
-      "title": "ident 別ログ件数",
+      "title": "ident 別ログ件数 (top 10、DNS 内部 ident 除外)",
+      "description": "DNS debug の question/answer/authority/additional/id/done/query を除外して、オペレーションに有用な ident の top 10 を表示",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 237 },
+      "id": 201,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{job=\"routeros\", ident=~\"user|auth|packet\"} |~ \"logged in|logged out|publickey|userauth failure\"",
+          "refId": "A"
+        }
+      ],
+      "title": "SSH 認証イベント (成功/失敗)",
+      "description": "login/logout + SSH handshake イベント。wgissuer / mktxp / admin 以外のユーザー名や userauth failure 急増は要調査",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 237 },
+      "id": 202,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{job=\"routeros\", ident=\"wireguard\"} |~ \"peers (add|remove)\"",
+          "refId": "A"
+        }
+      ],
+      "title": "WireGuard peer 変更監査",
+      "description": "peer-issuer (wgissuer) が発行する CI peer の add/remove。急激な増減は peer-issuer 側の不調兆候",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "cps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 245 },
+      "id": 203,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({job=\"routeros\"} |~ \"dns server failure\"[5m]))",
+          "refId": "A",
+          "legendFormat": "dns server failure rate"
+        }
+      ],
+      "title": "DNS upstream 失敗レート",
+      "description": "v6plus NGN resolver の応答失敗レート。RouterOSDNSUpstreamFailure アラート (0.5/s for 5m) の相関確認に使う",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 245 },
+      "id": 204,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{job=\"routeros\", level=\"error\", ident!=\"cache\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "非 cache エラー (要注目)",
+      "description": "cache 以外の error level ログ。RouterOSErrorLogDetected アラートのトリガー対象と同じフィルタ",
+      "type": "logs"
     },
     {
       "collapsed": false,
