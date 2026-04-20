@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mktxp-config
+data:
+  mktxp.conf: |
+    [home-router]
+        enabled = True
+        hostname = 192.168.1.1
+        port = 8729
+        credentials_file = /etc/mktxp-credentials/credentials.yaml
+        use_ssl = True
+        no_ssl_certificate = True
+        ssl_certificate_verify = False
+        plaintext_login = True
+
+        health = False
+        installed_packages = True
+        dhcp = True
+        dhcp_lease = True
+
+        connections = True
+        connection_stats = True
+
+        interface = True
+        # TODO: 上流バグ (parse_mkt_uptime が last_handshake=None の peer で落ちる)
+        #       が解消したら True に戻す。https://github.com/akpw/mktxp の main
+        #       HEAD (2026-04-01) 時点で wireguard_ds.py line 53 が
+        #       "expected string or bytes-like object, got 'NoneType'"
+        #       を catch して全 peer メトリクスを抑止する。
+        wireguard_peers = False
+        bridge_vlan = False
+
+        route = True
+        pool = True
+        firewall = True
+        neighbor = True
+        address_list = wg-admin,wg-ci,deploy-servers
+        dns = True
+
+        ipv6_route = True
+        ipv6_pool = True
+        ipv6_firewall = True
+        ipv6_neighbor = True
+
+        poe = False
+        monitor = True
+        netwatch = False
+        public_ip = True
+        wireless = False
+        wireless_clients = False
+        capsman = False
+        capsman_clients = False
+        w60g = False
+
+        eoip = False
+        gre = False
+        ipip = True
+        lte = False
+        ipsec = False
+        switch_port = False
+
+        kid_control_assigned = False
+        kid_control_dynamic = False
+
+        user = True
+        queue = True
+
+        bfd = False
+        bgp = True
+        routing_stats = True
+        certificate = True
+        container = False
+
+        interface_name_format = name
+        check_for_updates = True
