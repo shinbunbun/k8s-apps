@@ -3128,6 +3128,129 @@
       ],
       "title": "インストール済みパッケージ",
       "type": "table"
+    },
+    {
+      "type": "row",
+      "id": 160,
+      "title": "DNS / Public IP",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 218 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "orange", "value": 95 }
+            ]
+          },
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 219 },
+      "id": 161,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "mktxp_dns_info{instance=\"192.168.1.1\",job=\"routeros\",property=\"cache_used\"} / ignoring(property) mktxp_dns_info{instance=\"192.168.1.1\",job=\"routeros\",property=\"cache_size\"} * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "DNS キャッシュ使用率",
+      "description": "RouterOS DNS キャッシュ使用率。RouterOS は cache_size 到達後 LRU 追い出しなので、高使用率は正常。急低下は cache-size 変更の兆候",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 6, "y": 219 },
+      "id": 162,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "mktxp_dns_info{instance=\"192.168.1.1\",job=\"routeros\",property=\"cache_size\"}",
+          "refId": "A",
+          "legendFormat": "cache_size"
+        },
+        {
+          "expr": "mktxp_dns_info{instance=\"192.168.1.1\",job=\"routeros\",property=\"cache_used\"}",
+          "refId": "B",
+          "legendFormat": "cache_used"
+        }
+      ],
+      "title": "DNS キャッシュサイズ / 使用量",
+      "description": "RouterOS /ip dns の cache-size (設定値) と実際のキャッシュ使用量",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "custom": { "align": "auto", "displayMode": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 219 },
+      "id": 163,
+      "options": { "showHeader": true, "sortBy": [] },
+      "description": "mktxp_public_ip_address_info のラベル表示。DDNS 未設定時は dns_name=\"ddns disabled\", public_address / public_address_ipv6 が空",
+      "targets": [
+        { "expr": "mktxp_public_ip_address_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true, "instance": true, "job": true,
+              "routerboard_name": true, "routerboard_address": true
+            },
+            "indexByName": { "public_address": 0, "public_address_ipv6": 1, "dns_name": 2 },
+            "renameByName": {
+              "public_address": "IPv4",
+              "public_address_ipv6": "IPv6",
+              "dns_name": "DDNS 名"
+            }
+          }
+        }
+      ],
+      "title": "Public IP",
+      "type": "table"
     }
   ],
   "refresh": "30s",
