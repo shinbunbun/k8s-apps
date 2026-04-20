@@ -51,18 +51,26 @@ spec:
               cpu: "200m"
           volumeMounts:
             # mktxp は起動時に _mktxp.conf を自動生成するため、/etc/mktxp 自体は
-            # 書き込み可能な emptyDir にして、秘匿情報を含む mktxp.conf のみ
-            # Secret から subPath マウントで注入する。
+            # 書き込み可能な emptyDir。feature toggle は ConfigMap から、
+            # username/password は Secret から別マウントで注入する
+            # (mktxp.conf の credentials_file = /etc/mktxp-credentials/... で参照)。
             - name: config
               mountPath: /etc/mktxp
             - name: mktxp-conf
               mountPath: /etc/mktxp/mktxp.conf
               subPath: mktxp.conf
               readOnly: true
+            - name: mktxp-credentials
+              mountPath: /etc/mktxp-credentials
+              readOnly: true
       volumes:
         - name: config
           emptyDir: {}
         - name: mktxp-conf
+          configMap:
+            name: mktxp-config
+            defaultMode: 0444
+        - name: mktxp-credentials
           secret:
-            secretName: mktxp-config
+            secretName: mktxp-credentials
             defaultMode: 0400

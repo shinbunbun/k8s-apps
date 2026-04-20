@@ -8,71 +8,10 @@
 |---|---|
 | `deployment.yaml` | Deployment (1 replica, non-root UID 1000) |
 | `service.yaml` | ClusterIP Service :49090 (vmagent scrape 対象) |
-| `secret-generator.yaml` | KSOPS で secrets/secret.enc.yaml を復号 |
-| `secrets/secret.enc.yaml` | mktxp.conf (password 含む) を SOPS-Age 暗号化したもの |
+| `configmap.yaml` | **ConfigMap `mktxp-config`**: feature toggles を含む mktxp.conf (plaintext、git 可視) |
+| `secret-generator.yaml` | KSOPS で secrets/credentials.enc.yaml を復号 |
+| `secrets/credentials.enc.yaml` | **Secret `mktxp-credentials`**: username/password のみ (SOPS-Age 暗号化、最小) |
 | `kustomization.yaml` | リソース+ksops generator |
-
-## デプロイ手順
-
-### Phase 0: RouterOS 側 (手動)
-
-```rsc
-/user group add name=mktxp policy=api,read,rest-api,!write,!policy,!test,!sensitive,!romon,!sniff,!ftp,!telnet
-/user add name=mktxp group=mktxp password=<RANDOM_32CHAR>
-/ip service set api-ssl disabled=no address=192.168.1.0/24
-# API-SSL を使うため api (8728) は基本有効のままで address 制限を追加推奨:
-/ip service set api address=192.168.1.0/24
-```
-
-検証: `ssh admin@192.168.1.1 "/user print where name=mktxp"` で group=mktxp 確認。翌日の `routeros-backup` CronJob で `routeros-backups/routeros.rsc` に `/ip service` 等が反映される。
-
-### Phase 1: Secret 暗号化 (パスワードを更新する場合)
-
-リポジトリルートの `.sops.yaml` で `apps/*/secrets/*.enc.yaml` の age recipient が設定済み。平文 Secret を用意して sops で in-place 暗号化する:
-
-```bash
-cd k8s-apps/apps/mktxp/secrets
-cat > secret.yaml <<'EOF'
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mktxp-config
-type: Opaque
-stringData:
-  mktxp.conf: |
-    [home-router]
-        enabled = True
-        hostname = 192.168.1.1
-        port = 8729
-        username = mktxp
-        password = <RouterOS の mktxp ユーザのパスワード>
-        use_ssl = True
-        # ... (feature toggles は既存の secret.enc.yaml を sops -d で参照)
-EOF
-cp secret.yaml secret.enc.yaml
-# stringData 配下の値のみ暗号化 (apiVersion / kind / metadata は平文のまま)
-# 既存 apps/google-calendar-bot/secrets/secret.enc.yaml と同じ方針
-sops -e -i --encrypted-regex '^stringData$' secret.enc.yaml
-rm secret.yaml
-git add secret.enc.yaml
-```
-
-既存内容を編集するだけなら `sops secret.enc.yaml` で $EDITOR が開き、保存時に自動再暗号化 (sops metadata に `encrypted_regex` が記録されているため再指定不要)。
-
-### Phase 2: ArgoCD sync
-
-PR マージ後 ApplicationSet が自動検出 (namespace=mktxp)。確認:
-
-```bash
-kubectl -n mktxp get deploy,svc,pod
-kubectl -n mktxp logs deploy/mktxp --tail=50
-kubectl -n mktxp port-forward svc/mktxp 49090:49090
-curl -s http://localhost:49090/metrics | grep -c '^mktxp_'
-```
-
-## Scrape 設定
-
-`apps/victoriametrics-config/scrape-config-secret.yaml` の `routeros` job を mktxp 向けに書き換える (別 commit で実施)。
 
 ## 主要メトリクス対応表 (SNMP → mktxp)
 
@@ -109,4 +48,4 @@ curl -s http://localhost:49090/metrics | grep -c '^mktxp_'
 | `health` | x86 RouterOS は HW センサー非対応 |
 | `wireless` / `capsman` / `poe` | x86 に該当機能なし |
 | `netwatch` | RouterOS 側 `/tool netwatch` 未定義 |
-| `public_ip` / `dns` / `certificate` / `bfd` | 未導入 (将来的に別 PR で段階的有効化) |
+| `bfd` | RouterOS 側 `/routing bfd` 未定義 |
