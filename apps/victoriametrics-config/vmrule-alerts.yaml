@@ -92,15 +92,15 @@ spec:
           summary: "RouterOS has been restarted"
           description: "RouterOS device uptime counter reset detected ({{ $value }} resets in last hour)"
 
-      # DHCP枯渇警告
+      # DHCP枯渇警告 (IPv4 pool=dhcp、/ip pool ranges=192.168.1.2-253 → 252 addr)
       - alert: DHCPPoolNearExhaustion
-        expr: 'sum(mktxp_dhcp_lease_active_count{job="routeros"}) > 200'
+        expr: 'mktxp_ip_pool_used{job="routeros",pool="dhcp"} / 252 > 0.85'
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "DHCP pool near exhaustion"
-          description: "Active DHCP leases ({{ $value }}) approaching pool limit (80% threshold)"
+          summary: "DHCP pool near exhaustion ({{ $value | humanizePercentage }})"
+          description: "IPv4 DHCP pool usage is above 85% ({{ $value | humanizePercentage }} of 252 addr). Consider extending the pool range or reducing lease time."
 
       # インターフェースエラー率
       - alert: RouterOSHighErrorRate
