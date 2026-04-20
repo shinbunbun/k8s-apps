@@ -2703,6 +2703,431 @@
       "title": "IF link flap 回数 (累計)",
       "description": "インターフェースの link-down イベント累計 (mktxp_link_downs_total)。短期間に増加すると物理/隣接側の不安定を示す",
       "type": "timeseries"
+    },
+    {
+      "type": "row",
+      "id": 130,
+      "title": "Firewall 流量",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 186 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 187 },
+      "id": 131,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "topk(10, rate(mktxp_firewall_filter_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "title": "Firewall filter bytes rate (IPv4, top 10)",
+      "description": "mktxp_firewall_filter_total を rate 化 (bytes/s)。name ラベルに chain/action/comment/out_interface/protocol が含まれる",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 187 },
+      "id": 132,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "topk(10, rate(mktxp_firewall_filter_ipv6_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "title": "Firewall filter bytes rate (IPv6, top 10)",
+      "description": "mktxp_firewall_filter_ipv6_total を rate 化。v6plus 経由の forward established が大半を占める",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 195 },
+      "id": 133,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "rate(mktxp_firewall_nat_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "refId": "A",
+          "legendFormat": "NAT {{name}}"
+        },
+        {
+          "expr": "rate(mktxp_firewall_mangle_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "refId": "B",
+          "legendFormat": "mangle v4 {{name}}"
+        },
+        {
+          "expr": "rate(mktxp_firewall_mangle_ipv6_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m])",
+          "refId": "C",
+          "legendFormat": "mangle v6 {{name}}"
+        }
+      ],
+      "title": "NAT / mangle bytes rate",
+      "description": "srcnat masquerade の流量 (WAN 出力実績) と MSS clamp mangle の流量",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 195 },
+      "id": 134,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "rate(mktxp_firewall_filter_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\".* \\\\| drop \\\\|.*\"}[5m])",
+          "refId": "A",
+          "legendFormat": "v4 {{name}}"
+        },
+        {
+          "expr": "rate(mktxp_firewall_filter_ipv6_total{instance=\"192.168.1.1\",job=\"routeros\",name=~\".* \\\\| drop \\\\|.*\"}[5m])",
+          "refId": "B",
+          "legendFormat": "v6 {{name}}"
+        }
+      ],
+      "title": "Drop ルール流量 (action=drop のみ)",
+      "description": "drop action を含む firewall ルールの bytes/s。急増はスキャン/攻撃兆候",
+      "type": "timeseries"
+    },
+    {
+      "type": "row",
+      "id": 140,
+      "title": "DHCP Pool / セキュリティ / 属性",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 201 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "max": 252,
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 202 },
+      "id": 141,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "mktxp_ip_pool_used{instance=\"192.168.1.1\",job=\"routeros\",pool=\"dhcp\"}",
+          "refId": "A",
+          "legendFormat": "{{pool}}"
+        }
+      ],
+      "title": "DHCP Pool 使用 (IPv4, 192.168.1.2-253 = 252 addr)",
+      "description": "mktxp_ip_pool_used の絶対値。max=252 は /ip pool print のレンジから算出。70%=176, 90%=226",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 202 },
+      "id": 142,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_ip_pool_used_ipv6{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A",
+          "legendFormat": "{{pool}}"
+        }
+      ],
+      "title": "IPv6 pool 使用 (v6plus PD)",
+      "description": "mktxp_ip_pool_used_ipv6。ngn-pd は v6plus のプレフィックス委任プール",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 202 },
+      "id": 143,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_firewall_address_list_selected_count{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A",
+          "legendFormat": "{{list}}"
+        }
+      ],
+      "title": "Firewall address list エントリ数",
+      "description": "wg-admin / wg-ci / deploy-servers の登録数",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "custom": { "align": "auto", "displayMode": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 208 },
+      "id": 144,
+      "options": { "showHeader": true, "sortBy": [] },
+      "description": "mktxp_active_users_info。name/group/address/via (api/ssh/winbox) を表示",
+      "targets": [
+        { "expr": "mktxp_active_users_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true, "instance": true, "job": true,
+              "routerboard_name": true, "routerboard_address": true
+            },
+            "indexByName": { "name": 0, "group": 1, "address": 2, "via": 3 },
+            "renameByName": {
+              "name": "ユーザー",
+              "group": "グループ",
+              "address": "接続元",
+              "via": "経路"
+            }
+          }
+        }
+      ],
+      "title": "Active login users",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "custom": { "align": "auto", "displayMode": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 208 },
+      "id": 145,
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "IF", "desc": false }] },
+      "description": "mktxp_interface_type_info + mktxp_interface_comment_info の join 表示",
+      "targets": [
+        { "expr": "mktxp_interface_type_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "format": "table", "instant": true },
+        { "expr": "mktxp_interface_comment_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "B", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "name" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time 1": true, "Time 2": true,
+              "Value #A": true, "Value #B": true,
+              "__name__ 1": true, "__name__ 2": true,
+              "instance 1": true, "instance 2": true,
+              "job 1": true, "job 2": true,
+              "routerboard_name 1": true, "routerboard_name 2": true,
+              "routerboard_address 1": true, "routerboard_address 2": true
+            },
+            "indexByName": { "name": 0, "type": 1, "comment": 2 },
+            "renameByName": { "name": "IF", "type": "タイプ", "comment": "コメント" }
+          }
+        }
+      ],
+      "title": "インターフェース属性",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 214 },
+      "id": 151,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_system_cpu_count{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU コア数",
+      "description": "mktxp_system_cpu_count (x86 Intel)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "custom": { "align": "auto", "displayMode": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 18, "x": 6, "y": 214 },
+      "id": 152,
+      "options": { "showHeader": true, "sortBy": [] },
+      "description": "インストール済みパッケージ一覧 (disabled=true は未使用パッケージ)",
+      "targets": [
+        { "expr": "mktxp_installed_packages_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true, "instance": true, "job": true,
+              "routerboard_name": true, "routerboard_address": true
+            },
+            "indexByName": { "name": 0, "version": 1, "disabled": 2, "build_time": 3 },
+            "renameByName": {
+              "name": "パッケージ",
+              "version": "バージョン",
+              "disabled": "無効",
+              "build_time": "ビルド日時"
+            }
+          }
+        }
+      ],
+      "title": "インストール済みパッケージ",
+      "type": "table"
     }
   ],
   "refresh": "30s",
