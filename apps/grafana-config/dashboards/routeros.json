@@ -3251,6 +3251,107 @@
       ],
       "title": "Public IP",
       "type": "table"
+    },
+    {
+      "type": "row",
+      "id": 170,
+      "title": "Top talker (アクティブ接続数)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 225 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "custom": { "align": "auto", "displayMode": "color-text" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "接続数" },
+            "properties": [{ "id": "custom.displayMode", "value": "color-background" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 226 },
+      "id": 171,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "接続数", "desc": true }]
+      },
+      "description": "mktxp_connection_stats を src_address (ホスト) 別に表示した top talker 一覧。値は同時 open 接続数",
+      "targets": [
+        {
+          "expr": "topk(20, mktxp_connection_stats{instance=\"192.168.1.1\",job=\"routeros\"})",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "__name__": true, "instance": true, "job": true,
+              "routerboard_name": true, "routerboard_address": true
+            },
+            "indexByName": { "dhcp_name": 0, "src_address": 1, "Value": 2, "dst_addresses": 3 },
+            "renameByName": {
+              "dhcp_name": "ホスト",
+              "src_address": "送信元",
+              "Value": "接続数",
+              "dst_addresses": "主要な宛先"
+            }
+          }
+        }
+      ],
+      "title": "Top talker (ホスト別接続数、top 20)",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 226 },
+      "id": 172,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["lastNotNull", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "topk(5, sum by (dhcp_name, src_address) (mktxp_connection_stats{instance=\"192.168.1.1\",job=\"routeros\"}))",
+          "refId": "A",
+          "legendFormat": "{{dhcp_name}} ({{src_address}})"
+        }
+      ],
+      "title": "Top 5 ホスト 接続数推移",
+      "description": "各ホストの接続数の時系列推移 (top 5)。急増は特定ホストの異常動作 (P2P/スキャン/マルウェア) の兆候",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
