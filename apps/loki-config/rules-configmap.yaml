@@ -125,141 +125,46 @@ data:
               summary: "Kernel panic/crash detected on {{ $labels.host }}"
               description: "Kernel panic or crash signatures detected"
     
-      # RouterOS監視アラート
+      # RouterOS 監視アラート (実ラベル: host, ident, job, level, service_name)
+      # 2026-04: topic / severity ラベルは実際のストリームに存在せず dead alert 化していた
+      # ため、実ラベルベースに刷新。reboot は mktxp の RouterOSRestarted (metric) でカバー済み。
+      # DHCP pool 枯渇は vmrule DHCPPoolNearExhaustion (metric) でカバー済み。
       - name: routeros_monitoring
         interval: 30s
         rules:
-          # RouterOS再起動検出
-          - alert: RouterOSReboot
+          # SSH userauth failure の急増 (ブルートフォース兆候)
+          - alert: RouterOSSSHAuthFailure
             expr: |
-              sum(count_over_time({job="routeros", topic="system"} |~ "system,info|logged in|system started" [10m])) by (host) > 0
-            for: 1m
+              sum(count_over_time({job="routeros", ident="packet"} |~ "userauth failure" [10m])) by (host) > 20
+            for: 2m
             labels:
               severity: warning
             annotations:
-              summary: "RouterOS reboot detected on {{ $labels.host }}"
-              description: "RouterOS has been restarted or system startup detected"
-    
-          # RouterOS設定変更検出
-          - alert: RouterOSConfigChange
+              summary: "RouterOS SSH userauth failures spike on {{ $labels.host }}"
+              description: "{{ $value }} userauth failure events in last 10m"
+
+          # 上流 DNS 応答失敗レート (NGN resolver 不調の検知)
+          - alert: RouterOSDNSUpstreamFailure
             expr: |
-              sum(count_over_time({job="routeros", topic="system"} |~ "configuration|changed by" [5m])) by (host) > 0
-            for: 1m
-            labels:
-              severity: info
-            annotations:
-              summary: "RouterOS configuration changed on {{ $labels.host }}"
-              description: "RouterOS configuration has been modified"
-    
-          # 認証失敗の多発（ブルートフォース攻撃の可能性）
-          - alert: RouterOSAuthFailures
-            expr: |
-              sum(count_over_time({job="routeros", topic="system"} |~ "login failure|authentication failed|failed login" [10m])) by (host) > 5
+              sum(rate({job="routeros"} |~ "dns server failure" [5m])) by (host) > 0.5
             for: 5m
             labels:
               severity: warning
             annotations:
-              summary: "Multiple authentication failures on RouterOS {{ $labels.host }}"
-              description: "{{ $value }} authentication failures detected in the last 10 minutes - possible brute force attack"
-    
-          # ファイアウォールドロップの急増
-          - alert: RouterOSFirewallDrops
-            expr: |
-              sum(rate({job="routeros", topic="firewall"} |~ "dropped|reject" [5m])) by (host) > 10
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High firewall drop rate on RouterOS {{ $labels.host }}"
-              description: "Firewall is dropping {{ $value }} packets/sec - possible attack or misconfiguration"
-    
-          # VPN接続の異常切断
-          - alert: RouterOSVPNDisconnect
-            expr: |
-              sum(count_over_time({job="routeros", topic="ipsec"} |~ "connection terminated|connection closed|phase1 failed" [10m])) by (host) > 3
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "VPN connection issues on RouterOS {{ $labels.host }}"
-              description: "{{ $value }} VPN disconnections detected in the last 10 minutes"
-    
-          # DHCP枯渇警告
-          - alert: RouterOSDHCPPoolExhausted
-            expr: |
-              sum(count_over_time({job="routeros", topic="dhcp"} |~ "no free address|address pool exhausted" [10m])) by (host) > 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "DHCP pool exhausted on RouterOS {{ $labels.host }}"
-              description: "DHCP address pool has no available addresses"
-    
-          # DHCPエラーの急増
-          - alert: RouterOSDHCPErrors
-            expr: |
-              sum(rate({job="routeros", topic="dhcp", severity=~"error|critical"} [5m])) by (host) > 0.1
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High DHCP error rate on RouterOS {{ $labels.host }}"
-              description: "DHCP service experiencing {{ $value }} errors/sec"
-    
-          # DNS解決エラー急増
-          - alert: RouterOSDNSErrors
-            expr: |
-              sum(rate({job="routeros", topic="dns"} |~ "server failure|timeout|resolution failed" [5m])) by (host) > 1
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High DNS error rate on RouterOS {{ $labels.host }}"
-              description: "DNS is experiencing {{ $value }} errors/sec"
-    
-          # 無線LAN接続問題
-          - alert: RouterOSWirelessIssues
-            expr: |
-              sum(rate({job="routeros", topic="wireless", severity=~"error|warning"} [5m])) by (host) > 0.5
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Wireless issues detected on RouterOS {{ $labels.host }}"
-              description: "Wireless interface experiencing {{ $value }} issues/sec"
-    
-          # RouterOSクリティカルエラー
-          - alert: RouterOSCriticalError
-            expr: |
-              sum(count_over_time({job="routeros", severity="critical"} [5m])) by (host, topic) > 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Critical error on RouterOS {{ $labels.host }}"
-              description: "Critical error detected in {{ $labels.topic }}: {{ $value }} occurrences in 5 minutes"
-    
-          # RouterOSシステムエラーレート
-          - alert: RouterOSHighErrorRate
-            expr: |
-              sum(rate({job="routeros", severity=~"error|critical"} [10m])) by (host) > 0.5
-            for: 10m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High error rate on RouterOS {{ $labels.host }}"
-              description: "RouterOS is experiencing {{ $value }} errors/sec sustained over 10 minutes"
-    
-          # RouterOSエラーログ即時検知
+              summary: "RouterOS upstream DNS failures on {{ $labels.host }}"
+              description: "{{ $value }} 'server failure' /sec in 5m — upstream DNS degraded"
+
+          # エラーログ即時検知 (cache ノイズ除外。cache 満杯は vmrule の
+          # RouterOSDNSCacheNearFull (metric) で予兆検知する)
           - alert: RouterOSErrorLogDetected
             expr: |
-              sum(count_over_time({job="routeros", severity=~"error|critical"} [1m])) by (host) > 0
-            for: 0s
+              sum(count_over_time({job="routeros", level="error", ident!="cache"} [5m])) by (host, ident) > 0
+            for: 1m
             labels:
               severity: warning
             annotations:
-              summary: "RouterOS error log detected on {{ $labels.host }}"
-              description: "{{ $value }} error logs detected in the last minute"
+              summary: "RouterOS error log on {{ $labels.host }} (ident={{ $labels.ident }})"
+              description: "{{ $value }} non-cache error logs in last 5m"
     
       # macOS 監視アラート
       - name: macos_monitoring

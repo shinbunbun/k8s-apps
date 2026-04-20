@@ -408,6 +408,18 @@ spec:
           summary: "RouterOS address list {{ $labels.list }} was modified"
           description: "Entry count of address list {{ $labels.list }} changed in the last 10 minutes. Verify the change was intended."
 
+      # DNS キャッシュ使用率 (cache-size 拡張推奨の予兆)
+      # cache 満杯は "full, not storing" error ログとして現れるが、ログ依存だと閾値調整
+      # できない & 満杯後検知なので手遅れ気味。メトリクスで 90% 30m 継続を捕捉する。
+      - alert: RouterOSDNSCacheNearFull
+        expr: 'mktxp_dns_info{job="routeros",property="cache_used"} / ignoring(property) mktxp_dns_info{job="routeros",property="cache_size"} > 0.9'
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS DNS cache usage {{ $value | humanizePercentage }}"
+          description: "/ip dns set cache-size=<N>KiB で容量拡張を推奨 (現在の消費: {{ $value | humanizePercentage }} が 30 分継続)"
+
   # ディスクヘルスグループ
   - name: disk-health
     interval: 30s
