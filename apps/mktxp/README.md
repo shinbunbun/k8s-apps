@@ -86,10 +86,27 @@ curl -s http://localhost:49090/metrics | grep -c '^mktxp_'
 | `mtxrInterfaceRxDrop / TxDrop` | `mktxp_interface_rx_drop / _tx_drop` |
 | `mtxrInterfaceRxError / TxError` | `mktxp_interface_rx_error / _tx_error` |
 | `mtxrDHCPLeaseCount` | `mktxp_dhcp_lease_active_count` |
-| (なし) | `mktxp_last_handshake` (WireGuard peer) |
 | (なし) | `mktxp_dhcp_lease_info` (per-lease detail) |
 | (なし) | `mktxp_ip_connections_total` |
-| (なし) | `mktxp_bgp_established` / `_uptime` (BGP) |
+| (なし) | `mktxp_ip_pool_used` (DHCP プール占有) |
+| (なし) | `mktxp_link_downs_total` (link flap 累計) |
+| (なし) | `mktxp_bgp_established` / `_uptime` / `_prefix_count` / `_sessions_info` |
+| (なし) | `mktxp_bgp_remote_messages_total` / `_local_messages_total` |
+| (なし) | `mktxp_bgp_remote_bytes_total` / `_local_bytes_total` |
+| (なし) | `mktxp_routes_total_routes` / `_protocol_count{protocol=bgp/connect/...}` (IPv4 / `_ipv6`) |
+| (なし) | `mktxp_routing_stats_process_time_total` / `_private_mem` / `_shared_mem` (BGP daemon 可観測性) |
+| (なし) | `mktxp_firewall_filter_total` / `_nat_total` / `_mangle_total` (IPv4 / `_ipv6_total`) |
+| (なし) | `mktxp_firewall_address_list*` (WG admin/CI, deploy-servers) |
 | `mtxrSystemRebootCount` | `resets(mktxp_system_uptime[1h])` で近似 |
 | `mtxrSystemBadBlocks` | (mktxp に無し) — 廃止 |
 | `mtxrSystemUSBPowerResets` | (mktxp に無し、x86 RouterOS では元々対象外) |
+
+## 無効化されているコレクター (意図的)
+
+| コレクター | 無効理由 |
+|---|---|
+| `wireguard_peers` | 上流バグ: `last_handshake=None` の peer で `parse_mkt_uptime()` が `TypeError`。1.2.18+ で修正されたら有効化 + ダッシュボード パネル 58 を table 型に復元。関連 issue は [akpw/mktxp](https://github.com/akpw/mktxp) を watch |
+| `health` | x86 RouterOS は HW センサー非対応 |
+| `wireless` / `capsman` / `poe` | x86 に該当機能なし |
+| `netwatch` | RouterOS 側 `/tool netwatch` 未定義 |
+| `public_ip` / `dns` / `certificate` / `bfd` | 未導入 (将来的に別 PR で段階的有効化) |

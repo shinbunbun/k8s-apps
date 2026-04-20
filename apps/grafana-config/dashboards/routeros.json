@@ -2198,109 +2198,14 @@
       "type": "bargauge"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "custom": { "align": "auto", "displayMode": "auto" }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "handshake age" },
-            "properties": [
-              { "id": "unit", "value": "s" },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    { "color": "green", "value": null },
-                    { "color": "yellow", "value": 180 },
-                    { "color": "red", "value": 600 }
-                  ]
-                }
-              },
-              { "id": "custom.displayMode", "value": "color-background" }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "rx" },
-            "properties": [ { "id": "unit", "value": "bytes" } ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "tx" },
-            "properties": [ { "id": "unit", "value": "bytes" } ]
-          }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 127 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 127 },
       "id": 58,
-      "options": { "showHeader": true, "sortBy": [] },
-      "description": "WireGuard ピアごとの最終ハンドシェイクからの経過時間と累積転送量",
-      "targets": [
-        {
-          "expr": "time() - mktxp_last_handshake{instance=\"192.168.1.1\",job=\"routeros\"}",
-          "refId": "A",
-          "format": "table",
-          "instant": true
-        },
-        {
-          "expr": "mktxp_peer_rx{instance=\"192.168.1.1\",job=\"routeros\"}",
-          "refId": "B",
-          "format": "table",
-          "instant": true
-        },
-        {
-          "expr": "mktxp_peer_tx{instance=\"192.168.1.1\",job=\"routeros\"}",
-          "refId": "C",
-          "format": "table",
-          "instant": true
-        }
-      ],
-      "transformations": [
-        {
-          "id": "seriesToColumns",
-          "options": { "byField": "name" }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true, "Time 1": true, "Time 2": true, "Time 3": true,
-              "__name__": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true,
-              "instance": true, "instance 1": true, "instance 2": true, "instance 3": true,
-              "job": true, "job 1": true, "job 2": true, "job 3": true,
-              "interface 2": true, "interface 3": true,
-              "comment 2": true, "comment 3": true,
-              "allowed_address 2": true, "allowed_address 3": true,
-              "current_endpoint_address 2": true, "current_endpoint_address 3": true,
-              "current_endpoint_port 2": true, "current_endpoint_port 3": true
-            },
-            "indexByName": {
-              "name": 0,
-              "comment": 1,
-              "allowed_address": 2,
-              "current_endpoint_address": 3,
-              "Value #A": 4,
-              "Value #B": 5,
-              "Value #C": 6
-            },
-            "renameByName": {
-              "name": "peer",
-              "comment": "備考",
-              "allowed_address": "allowed",
-              "current_endpoint_address": "endpoint",
-              "Value #A": "handshake age",
-              "Value #B": "rx",
-              "Value #C": "tx"
-            }
-          }
-        }
-      ],
-      "title": "WireGuard ピア状態",
-      "type": "table"
+      "type": "text",
+      "title": "WireGuard ピア状態 (mktxp 上流バグ修正待ち)",
+      "options": {
+        "mode": "markdown",
+        "content": "### WireGuard ピア状態は現在 no-data 状態です\n\nmktxp 1.2.17 の `wireguard_peer` コレクターは `last_handshake` が null の peer で `parse_mkt_uptime()` が `TypeError: expected string or bytes-like object, got 'NoneType'` を投げるため、`mktxp.conf` で `wireguard_peers = False` に固定しています。\n\n上流 [akpw/mktxp](https://github.com/akpw/mktxp) で修正された 1.2.18+ がリリースされたら `k8s-apps/apps/mktxp/secrets/secret.enc.yaml` で `wireguard_peers = True` に戻し、このパネルを旧 table ビュー (peer / handshake age / rx / tx) に復元してください。\n\n**代替確認手段**:\n- 疎通: 「接続状態」Row の **WireGuard (wg-home)** パネル (interface_running)\n- 流量: 同 Row の **WireGuard トラフィック** パネル (interface rx/tx bytes rate)\n- アラート: `RouterOSWireGuardDown` (wg-home interface_running == 0) で critical 検知済み"
+      }
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -2429,6 +2334,375 @@
       "title": "BGP セッション状態",
       "description": "k3s ノードへの BGP peer セッション (mktxp_bgp_established)",
       "type": "stat"
+    },
+    {
+      "type": "row",
+      "id": 100,
+      "title": "BGP 詳細 (k3s peers)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 147 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 300 },
+              { "color": "green", "value": 3600 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 148 },
+      "id": 101,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_bgp_uptime{instance=\"192.168.1.1\",job=\"routeros\"} / 1000",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "title": "BGP セッション uptime",
+      "description": "BGP peer ごとのセッション確立後経過時間 (秒)。短い値が続く場合は flap を疑う",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 148 },
+      "id": 102,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "text": {},
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_bgp_prefix_count{instance=\"192.168.1.1\",job=\"routeros\"}",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "title": "BGP 受信 prefix 数",
+      "description": "peer ごとに受信している prefix 数。Cilium LoadBalancer IP の広告数と一致することが期待される",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "cps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 154 },
+      "id": 103,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "expr": "rate(mktxp_bgp_remote_messages_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m])", "refId": "A", "legendFormat": "IN {{name}}" },
+        { "expr": "rate(mktxp_bgp_local_messages_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m])", "refId": "B", "legendFormat": "OUT {{name}}" }
+      ],
+      "title": "BGP メッセージレート",
+      "description": "KEEPALIVE/UPDATE レート (msg/s)。急増は flap/再収束の兆候",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 154 },
+      "id": 104,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "expr": "rate(mktxp_bgp_remote_bytes_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m]) * 8", "refId": "A", "legendFormat": "IN {{name}}" },
+        { "expr": "rate(mktxp_bgp_local_bytes_total{instance=\"192.168.1.1\",job=\"routeros\"}[5m]) * 8", "refId": "B", "legendFormat": "OUT {{name}}" }
+      ],
+      "title": "BGP 制御トラフィック",
+      "description": "BGP セッションの制御プレーン帯域",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "custom": { "align": "auto", "displayMode": "auto" }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 160 },
+      "id": 105,
+      "options": { "showHeader": true, "sortBy": [] },
+      "description": "mktxp_bgp_sessions_info の静的属性 (AS, AFI, remote_address)",
+      "targets": [
+        { "expr": "mktxp_bgp_sessions_info{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true, "Value": true, "__name__": true, "instance": true, "job": true,
+              "routerboard_name": true, "routerboard_address": true
+            },
+            "indexByName": {
+              "name": 0, "remote_address": 1, "remote_as": 2, "local_as": 3, "remote_afi": 4, "local_afi": 5
+            },
+            "renameByName": {
+              "name": "peer",
+              "remote_address": "remote",
+              "remote_as": "remote AS",
+              "local_as": "local AS",
+              "remote_afi": "remote AFI",
+              "local_afi": "local AFI"
+            }
+          }
+        }
+      ],
+      "title": "BGP セッション属性",
+      "type": "table"
+    },
+    {
+      "type": "row",
+      "id": 110,
+      "title": "RIB / Routing Process",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 166 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 167 },
+      "id": 111,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "expr": "mktxp_routes_protocol_count{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "legendFormat": "{{protocol}}" }
+      ],
+      "title": "RIB プロトコル別経路数 (IPv4)",
+      "description": "IPv4 RIB のプロトコル別経路数。BGP 経路数の増減が Cilium BGP advertise と一致するか確認",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 167 },
+      "id": 112,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "expr": "mktxp_routes_protocol_count_ipv6{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "legendFormat": "{{protocol}}" }
+      ],
+      "title": "RIB プロトコル別経路数 (IPv6)",
+      "description": "IPv6 RIB。v6plus 運用では dynamic/connect が主。BGP は現状 0",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 173 },
+      "id": 113,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "rate(mktxp_routing_stats_process_time_total{instance=\"192.168.1.1\",job=\"routeros\",tasks=~\"BGP service|bgp-.*\"}[5m])",
+          "refId": "A",
+          "legendFormat": "{{tasks}}"
+        }
+      ],
+      "title": "Routing プロセス CPU 時間 rate",
+      "description": "BGP daemon と peer 別 output プロセスの CPU 使用 (rate over 5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 173 },
+      "id": 114,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "expr": "mktxp_routing_stats_private_mem{instance=\"192.168.1.1\",job=\"routeros\",tasks=~\"BGP service|bgp-.*\"} + mktxp_routing_stats_shared_mem{instance=\"192.168.1.1\",job=\"routeros\",tasks=~\"BGP service|bgp-.*\"}",
+          "refId": "A",
+          "legendFormat": "{{tasks}}"
+        }
+      ],
+      "title": "Routing プロセス メモリ",
+      "description": "BGP 関連プロセスの Private+Shared memory 使用量",
+      "type": "timeseries"
+    },
+    {
+      "type": "row",
+      "id": 120,
+      "title": "インターフェース Link Flap",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 179 },
+      "panels": []
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 180 },
+      "id": 121,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "expr": "mktxp_link_downs_total{instance=\"192.168.1.1\",job=\"routeros\"}", "refId": "A", "legendFormat": "{{name}}" }
+      ],
+      "title": "IF link flap 回数 (累計)",
+      "description": "インターフェースの link-down イベント累計 (mktxp_link_downs_total)。短期間に増加すると物理/隣接側の不安定を示す",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
