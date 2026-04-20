@@ -266,9 +266,9 @@ spec:
   - name: routeros
     interval: 30s
     rules:
-      # RouterOSインターフェースダウン（重要IFのみ: ether1/ether4/wg-home/ipipv6-tunnel1）
+      # RouterOSインターフェースダウン（重要IFのみ: ether1/ether3(WAN)/ether4/wg-home/ipipv6-tunnel1）
       - alert: RouterOSInterfaceDown
-        expr: 'mktxp_interface_running{job="routeros",name=~"ether1|ether4|wg-home|ipipv6-tunnel1"} == 0'
+        expr: 'mktxp_interface_running{job="routeros",name=~"ether1|ether3|ether4|wg-home|ipipv6-tunnel1"} == 0'
         for: 2m
         labels:
           severity: critical
@@ -395,6 +395,17 @@ spec:
         annotations:
           summary: "RouterOS interface {{ $labels.name }} link flapping"
           description: "Interface {{ $labels.name }} has flapped {{ $value }} times in the last hour."
+
+      # Address list のエントリ数変化検知 (セキュリティ監査目的)
+      # wg-admin / wg-ci / deploy-servers は手動管理のリストで、自動変更は想定外
+      - alert: RouterOSAddressListChanged
+        expr: 'changes(mktxp_firewall_address_list_selected_count{job="routeros",list=~"wg-admin|wg-ci|deploy-servers"}[10m]) > 0'
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS address list {{ $labels.list }} was modified"
+          description: "Entry count of address list {{ $labels.list }} changed in the last 10 minutes. Verify the change was intended."
 
   # ディスクヘルスグループ
   - name: disk-health
