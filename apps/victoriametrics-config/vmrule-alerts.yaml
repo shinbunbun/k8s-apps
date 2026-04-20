@@ -346,16 +346,6 @@ spec:
           summary: "High packet drop rate on RouterOS interface {{ $labels.name }}"
           description: "Interface {{ $labels.name }} is dropping packets at > 100/s (current: {{ $value }}/s)"
 
-      # WireGuard ピアの handshake 失効検知 (モバイル端末は comment に "iPhone" を含むため除外)
-      - alert: RouterOSWireGuardPeerStale
-        expr: 'time() - mktxp_last_handshake{job="routeros",interface="wg-home",comment!~".*(iPhone|iphone|Android|mobile).*"} > 600'
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "WireGuard peer {{ $labels.comment }} handshake stale"
-          description: "Peer {{ $labels.comment }} ({{ $labels.allowed_address }}) last handshake was {{ $value | humanizeDuration }} ago."
-
       # IP connection tracking スパイク検知
       - alert: RouterOSFWConnectionsSpike
         expr: 'mktxp_ip_connections_total{job="routeros"} > 10000'
@@ -375,6 +365,36 @@ spec:
         annotations:
           summary: "RouterOS BGP session down ({{ $labels.name }})"
           description: "BGP session {{ $labels.name }} is not in established state for 2 minutes. k3s LoadBalancer IP announcement affected."
+
+      # BGP セッション flap 検知 (established だが uptime が短い状態が継続)
+      - alert: RouterOSBGPSessionFlapping
+        expr: 'mktxp_bgp_established{job="routeros"} == 1 and mktxp_bgp_uptime{job="routeros"} / 1000 < 300'
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS BGP session flapping ({{ $labels.name }})"
+          description: "Session uptime has stayed below 300s for 10 minutes — peer keeps resetting."
+
+      # BGP established だが prefix を受信できていない (Cilium 側 advertise 停止)
+      - alert: RouterOSBGPNoPrefixesReceived
+        expr: 'mktxp_bgp_established{job="routeros"} == 1 and mktxp_bgp_prefix_count{job="routeros"} == 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS BGP session has no received prefixes ({{ $labels.name }})"
+          description: "Session {{ $labels.name }} is up but 0 prefixes are being received. Cilium on the peer may have stopped advertising LoadBalancer IPs."
+
+      # インターフェース Link flap (重要 IF のみ)
+      - alert: RouterOSInterfaceLinkFlap
+        expr: 'increase(mktxp_link_downs_total{job="routeros",name=~"ether1|ether3|ether4|wg-home|ipipv6-tunnel1|bridge1"}[1h]) >= 3'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS interface {{ $labels.name }} link flapping"
+          description: "Interface {{ $labels.name }} has flapped {{ $value }} times in the last hour."
 
   # ディスクヘルスグループ
   - name: disk-health
