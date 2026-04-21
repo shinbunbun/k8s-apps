@@ -35,6 +35,12 @@ spec:
           # chart 側 appVersion より新しい Grafana を使うための tag 上書き
           tag: "12.4.2"
 
+        # Logs Drilldown アプリ (Loki ログの Top values / パターン検出 / 自動グルーピング UI)。
+        # OpenSearch Discover 相当の UX を Grafana 内で提供する。
+        # chart の plugins: 配列は runtime に `grafana-cli plugins install` で展開される。
+        plugins:
+          - grafana-lokiexplore-app
+
         admin:
           existingSecret: grafana-secrets
           userKey: admin-user

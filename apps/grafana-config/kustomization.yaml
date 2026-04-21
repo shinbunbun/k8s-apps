@@ -83,6 +83,13 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-discover
+    files:
+      - dashboards/logs-discover.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
   - name: grafana-dashboard-cilium
     files:
       - dashboards/cilium.json

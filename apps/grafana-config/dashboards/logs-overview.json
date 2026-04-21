@@ -506,6 +506,163 @@
         }
       ],
       "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 27},
+      "id": 40,
+      "panels": [],
+      "title": "長期トレンド (Recording Rule 由来、VictoriaMetrics 1 年保持)",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "description": "Loki Ruler の log_errors_total (host/service/level 別) を VM に remote_write したもの。1 年レンジを右上の Time range で選択可能。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "stacking": {"mode": "normal"}},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "id": 41,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["sum", "lastNotNull"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum by (host) (increase(log_errors_total[$__interval]))",
+          "legendFormat": "{{ host }}"
+        }
+      ],
+      "title": "エラー件数 (host 別、$__interval)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "description": "level (error/critical/alert/emergency) 別のエラー推移。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15, "stacking": {"mode": "normal"}},
+          "unit": "short",
+          "color": {"mode": "palette-classic"}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "emergency"},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "dark-red"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "critical"},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "error"},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]
+          }
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "id": 42,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["sum", "lastNotNull"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum by (level) (increase(log_errors_total[$__interval]))",
+          "legendFormat": "{{ level }}"
+        }
+      ],
+      "title": "エラー件数 (level 別、$__interval)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "description": "過去 30 日の累積イベント数。0 件が正常。発生した場合は host 単位で確認。",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 10}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 36},
+      "id": 43,
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum(increase(oom_kill_events_total[30d]))",
+          "legendFormat": "OOM Kill"
+        },
+        {
+          "refId": "B",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum(increase(disk_io_errors_total[30d]))",
+          "legendFormat": "Disk I/O"
+        },
+        {
+          "refId": "C",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum(increase(kernel_panic_events_total[30d]))",
+          "legendFormat": "Kernel Panic"
+        }
+      ],
+      "title": "重大イベント 30日合計",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "description": "auth_failures_total (systemd-journal の PAM/sshd) と routeros_ssh_authfail_total (RouterOS) の推移。ブルートフォース兆候を長期で追う。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 16, "x": 8, "y": 36},
+      "id": 44,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["sum"]},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum by (host) (increase(auth_failures_total[$__interval]))",
+          "legendFormat": "systemd: {{ host }}"
+        },
+        {
+          "refId": "B",
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "sum by (host) (increase(routeros_ssh_authfail_total[$__interval]))",
+          "legendFormat": "routeros: {{ host }}"
+        }
+      ],
+      "title": "認証失敗推移 (systemd + routeros)",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 27,

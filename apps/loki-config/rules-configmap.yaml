@@ -5,9 +5,65 @@ metadata:
   namespace: loki
 data:
   rules.yaml: |
-    # Loki用アラートルール
+    # Loki用アラートルール + Recording Rule
     # このファイルはLokiのルーラーで評価される
+    # Recording Rule の結果は rulerConfig.remote_write で VictoriaMetrics に送信される
+    # (application.yaml:rulerConfig.remote_write 参照)。
     groups:
+      # Recording Rule: ログから統計メトリクスを抽出し VM 1 年 retention に保存
+      # 既存の LogQL alert は下の logs_analysis グループ等に残して並行運用し、
+      # 新規ダッシュボード・アラートは可能な限りこちらの series を参照する。
+      - name: logs_recording
+        interval: 30s
+        rules:
+          # エラーログ数 (host / service / level 別)
+          # rate(log_errors_total[5m]) でエラーレート、sum by(host)(increase(..[30d])) で月次推移
+          - record: log_errors_total
+            expr: |
+              sum by (host, service, level) (
+                count_over_time({job="systemd-journal", level=~"error|critical|alert|emergency"}[30s])
+              )
+          # 全ジョブのログ流量 (ingestion 傾向、キャパシティ計画)
+          - record: log_lines_total
+            expr: |
+              sum by (host, job) (count_over_time({job=~"systemd-journal|routeros|macos-unified"}[30s]))
+          # 認証失敗 (PAM/sshd ブルートフォース兆候)
+          - record: auth_failures_total
+            expr: |
+              sum by (host, service) (
+                count_over_time({job="systemd-journal"} |~ "authentication failure|Failed password|pam_unix.*authentication failure"[30s])
+              )
+          # RouterOS SSH userauth failure (外形監視では拾えない内部)
+          - record: routeros_ssh_authfail_total
+            expr: |
+              sum by (host) (count_over_time({job="routeros", ident="packet"} |~ "userauth failure"[30s]))
+          # OOM キラー発火
+          - record: oom_kill_events_total
+            expr: |
+              sum by (host) (
+                count_over_time({job="systemd-journal"} |~ "Out of memory.*Kill process|invoked oom-killer"[30s])
+              )
+          # ディスク I/O エラー (ストレージ健全性、長期傾向で SMART 故障予測に使える)
+          - record: disk_io_errors_total
+            expr: |
+              sum by (host) (count_over_time({job="systemd-journal"} |~ "I/O error|Input/output error|Buffer I/O error"[30s]))
+          # カーネルパニック / BUG / Oops
+          - record: kernel_panic_events_total
+            expr: |
+              sum by (host) (count_over_time({job="systemd-journal"} |~ "kernel panic|kernel BUG|Oops:"[30s]))
+          # systemd サービス起動イベント (flap 検知の素材)
+          - record: systemd_unit_started_total
+            expr: |
+              sum by (host, unit) (count_over_time({job="systemd-journal", unit=~".+\\.service"} |= "Started" |= "systemd"[30s]))
+          # Nginx 5xx 件数
+          - record: nginx_5xx_total
+            expr: |
+              sum by (host) (count_over_time({job="nginx", log_type="access"} | json | status >= 500 [30s]))
+          # macOS エラー / fault イベント
+          - record: macos_log_events_total
+            expr: |
+              sum by (host, level) (count_over_time({job="macos-unified", level=~"error|critical|fault"}[30s]))
+
       - name: logs_analysis
         interval: 30s
         rules:

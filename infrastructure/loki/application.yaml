@@ -121,6 +121,17 @@ spec:
             ring:
               kvstore:
                 store: memberlist
+            # Recording Rule の結果 (log_errors_total 等) を VictoriaMetrics に書き戻す。
+            # Ruler が LogQL recording rule を評価し、生成した時系列サンプルを
+            # vminsert の Prometheus remote_write 互換エンドポイントに送信する。
+            # Phase 1: これにより 30 日保持の Loki ログから抽出した統計を
+            # VM 1 年 retention に載せて長期トレンドを追える。
+            remote_write:
+              enabled: true
+              client:
+                url: http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write
+                queue_config:
+                  capacity: 10000
 
         # read/write/backend の全コンポーネントに MinIO credentials を環境変数で注入
         # (AWS SDK が AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY を自動で拾う)
