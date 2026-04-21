@@ -14,6 +14,7 @@ resources:
   - scrape-config-secret.yaml
   - vmpodscrape-cilium.yaml
   - vmservicescrape-argocd.yaml
+  - vmservicescrape-loki.yaml
   - lan-service.yaml
   - alertmanager-lan-service.yaml
 

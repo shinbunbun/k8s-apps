@@ -1,0 +1,80 @@
+# Loki メトリクス scrape 設定
+#
+# SimpleScalable デプロイの各コンポーネント (read/write/backend) が
+# port 3100 (name: http-metrics) に Prometheus 形式のメトリクスを公開する。
+# Phase 0 (ストレージ監視基盤) の一部として、以下のメトリクスを VM に取り込む:
+#
+# - loki_distributor_bytes_received_total       (ingestion 量)
+# - loki_ingester_chunks_flushed_total          (chunk 書き出し)
+# - loki_ingester_memory_chunks                 (メモリ上の chunks)
+# - loki_request_duration_seconds_bucket        (API レイテンシ)
+# - loki_ruler_wal_samples_appended_total       (Phase 1 で使う recording rule の remote_write 確認用)
+#
+# headless Service ではなく 通常の Service を拾うことで、vmagent が
+# すべての pod レプリカをエンドポイント検出し自動的に 2 レプリカ分の
+# メトリクスを収集する (app.kubernetes.io/component ごとに Service を
+# 分けているため namespace/selector はこれで十分)。
+#
+# job ラベルを relabel で統一してアラートルールから参照しやすくする。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: loki-read
+spec:
+  namespaceSelector:
+    matchNames: [loki]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/component: read
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: loki-read
+        - targetLabel: cluster
+          replacement: homelab
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: loki-write
+spec:
+  namespaceSelector:
+    matchNames: [loki]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/component: write
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: loki-write
+        - targetLabel: cluster
+          replacement: homelab
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: loki-backend
+spec:
+  namespaceSelector:
+    matchNames: [loki]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/component: backend
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: loki-backend
+        - targetLabel: cluster
+          replacement: homelab
