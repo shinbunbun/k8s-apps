@@ -1,0 +1,145 @@
+# Vector - ログアーカイブパイプライン (Fluent Forward → MinIO Parquet)
+#
+# 設計判断:
+#
+# 【目的】Fluent Bit が Loki に送っているログを、同時に Fluent Forward protocol で
+# Vector に受け、MinIO の logs-archive バケットに Parquet (zstd) で保存する。
+# Phase 2 の「分析・ML 層」の入口。DuckDB から直接 S3 上の Parquet を読める。
+#
+# 【Helm chart】vector/vector (公式)。customConfig で vector.toml 相当を
+# YAML インラインで指定。
+#
+# 【role】Aggregator (Deployment)。Fluent Bit から受け、1 Pod で集約して
+# バッチ書き出しするので StatefulSet 不要。
+#
+# 【replicas】1。ホームラボ規模ではスケール不要。MinIO への書き出しは
+# batch.timeout_secs / batch.max_bytes で平準化される。
+#
+# 【nodeSelector】homemachine (nixos.shinbunbun.com) に固定。安定稼働ノード。
+# g3pro (Intel N150) は CPU 弱、nixos-desktop は OpenSearch 撤去待ちで不確実。
+#
+# 【ストレージ】S3 (MinIO、endpoint 内部 Service)。
+# credentials は vector-minio-credentials Secret (KSOPS) を envFrom で注入。
+# AWS SDK 互換の AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY を読む。
+#
+# 【スキーマ】transforms.enrich で archived_at (now) と date (timestamp から派生)
+# を追加し、全フィールドを Parquet に書き出す。スキーマを後で拡張しても
+# 後方互換性を保つため、host/service/level/message/timestamp/labels/job を
+# 暗黙に持つ dynamic schema を採用 (Vector の Parquet encoding はデフォルトで
+# フィールドを動的に推論)。
+#
+# 【port】
+# - 24224/TCP: Fluent Forward protocol (Fluent Bit からの入力)
+# - 9598/TCP: Prometheus exporter (Vector 自体のメトリクス、Phase 0 の
+#             storage-capacity ダッシュボードで監視)
+#
+# 【sync-wave】10: minio-tenant (bucket 作成) より後。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: log-archiver-vector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.vector.dev
+    chart: vector
+    # Chart 0.51.0 = Vector 0.54.0-distroless-libc (2026-03 時点 最新安定)。
+    # https://github.com/vectordotdev/helm-charts/releases
+    # 将来 chart が更新されたらこの tag を上げる。
+    targetRevision: "0.51.0"
+    helm:
+      valuesObject:
+        role: Aggregator
+        replicas: 1
+
+        # homemachine (nixos.shinbunbun.com) に固定配置
+        nodeSelector:
+          kubernetes.io/hostname: nixos
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # MinIO credentials を環境変数として注入 (AWS SDK 標準)
+        envFrom:
+          - secretRef:
+              name: vector-minio-credentials
+
+        # Vector 自身の Prometheus メトリクスを VMAgent が拾えるように
+        # Prometheus exporter sink を有効化する (下の customConfig 参照)。
+        # ついでに追加の Service port も開ける。
+        service:
+          enabled: true
+          ports:
+            - name: fluent
+              port: 24224
+              protocol: TCP
+              targetPort: 24224
+            - name: metrics
+              port: 9598
+              protocol: TCP
+              targetPort: 9598
+
+        # Vector のパイプライン定義 (vector.toml 相当の YAML)
+        # customConfig を指定すると chart の default config を無視する。
+        customConfig:
+          data_dir: /vector-data-dir
+          api:
+            enabled: true
+            address: 0.0.0.0:8686
+          sources:
+            # Fluent Bit からの Fluent Forward 入力
+            fluent_bit_forward:
+              type: fluent
+              address: 0.0.0.0:24224
+            # Vector 自身のメトリクス
+            vector_metrics:
+              type: internal_metrics
+          transforms:
+            # timestamp から date フィールドを派生させ、Parquet partitioning に使う
+            enrich:
+              type: remap
+              inputs: [fluent_bit_forward]
+              source: |
+                .archived_at = now()
+                .date = format_timestamp!(.timestamp, format: "%Y-%m-%d")
+          sinks:
+            # MinIO (S3 互換) へ Parquet + zstd で書き出し
+            # raw/date=YYYY-MM-DD/hour=HH/ prefix で 5 分ごとの小ファイル生成。
+            # 日次 CronJob (Phase 2b) で daily/date=YYYY-MM-DD/logs.parquet に compact。
+            minio_parquet_raw:
+              type: aws_s3
+              inputs: [enrich]
+              bucket: logs-archive
+              endpoint: http://minio.minio-tenant.svc.cluster.local
+              region: us-east-1
+              # auth は envFrom 由来の AWS_* 環境変数を暗黙に読む
+              key_prefix: "raw/date=%Y-%m-%d/hour=%H/"
+              encoding:
+                codec: parquet
+              compression: zstd
+              batch:
+                timeout_secs: 300
+                max_bytes: 104857600 # 100 MiB
+            # Prometheus メトリクス exporter (VMAgent scrape 対象)
+            prometheus_exporter:
+              type: prometheus_exporter
+              inputs: [vector_metrics]
+              address: 0.0.0.0:9598
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: log-archiver-vector
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

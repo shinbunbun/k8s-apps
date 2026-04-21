@@ -89,3 +89,9 @@ spec:
     - name: loki-ruler
     - name: loki-admin
     - name: cnpg-backups
+    # Phase 2: Vector が systemd-journal / syslog / macos ログを
+    # Fluent Forward プロトコルで受けて Parquet zstd で書き出すアーカイブ。
+    # raw/date=YYYY-MM-DD/hour=HH/ に 5 分ごとの小ファイル、日次 CronJob で
+    # daily/date=YYYY-MM-DD/logs.parquet に compact する。
+    # ライフサイクル (保持期間) は未設定: 実データ量が見えてから Phase 3 で調整。
+    - name: logs-archive

@@ -1,0 +1,29 @@
+# Vector 自身の Prometheus メトリクスを VMAgent に取り込む VMServiceScrape
+#
+# Vector は customConfig の prometheus_exporter sink で自身の内部メトリクス
+# (vector_events_in_total, vector_events_out_total, vector_component_errors_total
+# など) を port 9598 に expose する。
+#
+# infrastructure/log-archiver-vector の Helm chart が自動生成する Service の
+# "metrics" port (9598) を拾う。Phase 0 の storage-capacity ダッシュボードで
+# Vector の入出力と MinIO バケット成長を横並び比較できるようにする目的。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: log-archiver-vector
+spec:
+  namespaceSelector:
+    matchNames: [log-archiver-vector]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vector
+      app.kubernetes.io/instance: log-archiver-vector
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: vector
+        - targetLabel: cluster
+          replacement: homelab

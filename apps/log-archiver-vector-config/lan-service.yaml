@@ -1,0 +1,29 @@
+# Vector LAN 内アクセス用 LoadBalancer Service
+#
+# Fluent Bit (NixOS/macOS 各ホスト含む) から Vector に Fluent Forward で
+# ログを送るためのエンドポイント。既存の grafana-lan (.11) / vmselect-lan (.12) /
+# vmalertmanager-lan (.13) / loki-lan (.14) / hubble-ui-lan (.15) /
+# scanopy-lan (.16) に続き、.17 を割当。
+#
+# Cilium LB IPAM で固定 VIP。Cilium BGP で 192.168.128.0/24 を RouterOS に
+# 広告しているため LAN 内から到達可能。
+#
+# Vector Helm chart が生成する Service (ClusterIP) をさらにこの LoadBalancer で
+# 公開する構成。selector で Helm chart の Deployment pod を対象にする。
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-lan
+  namespace: log-archiver-vector
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.17
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: log-archiver-vector
+    app.kubernetes.io/name: vector
+  ports:
+    - name: fluent
+      port: 24224
+      protocol: TCP
+      targetPort: 24224
