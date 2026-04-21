@@ -9,14 +9,17 @@
 # 【Helm chart】vector/vector (公式)。customConfig で vector.toml 相当を
 # YAML インラインで指定。
 #
-# 【role】Aggregator (Deployment)。Fluent Bit から受け、1 Pod で集約して
-# バッチ書き出しするので StatefulSet 不要。
+# 【role】Aggregator (Deployment)。Fluent Bit から受けて集約してバッチ書き出し
+# するので StatefulSet 不要。
 #
-# 【replicas】1。ホームラボ規模ではスケール不要。MinIO への書き出しは
-# batch.timeout_secs / batch.max_bytes で平準化される。
+# 【replicas】2。HA (Helm upgrade / node 障害時のログロスト軽減)。
+# 処理能力は 1 pod で十分 (ホームラボ規模 1-5 GB/日)。2 pod の主目的は可用性。
+# 各 pod が Fluent Forward 入力を独立で処理し、MinIO には UUID ベースの
+# ファイル名で別々に書き出す (衝突なし、compaction CronJob が統合)。
 #
-# 【nodeSelector】homemachine (nixos.shinbunbun.com) に固定。安定稼働ノード。
-# g3pro (Intel N150) は CPU 弱、nixos-desktop は OpenSearch 撤去待ちで不確実。
+# 【affinity】podAntiAffinity preferredDuringSchedulingIgnoredDuringExecution
+# で node 分散。g3pro (Intel N150、CPU 弱) は避けたいが、Vector は軽量なので
+# preferred のまま (必須にしない)。
 #
 # 【ストレージ】S3 (MinIO、endpoint 内部 Service)。
 # credentials は vector-minio-credentials Secret (KSOPS) を envFrom で注入。
@@ -53,11 +56,20 @@ spec:
     helm:
       valuesObject:
         role: Aggregator
-        replicas: 1
+        replicas: 2
 
-        # homemachine (nixos.shinbunbun.com) に固定配置
-        nodeSelector:
-          kubernetes.io/hostname: nixos
+        # node 分散 (homemachine / nixos-desktop / g3pro のいずれかに配置、
+        # なるべく別ノードに分かれるよう preferred anti-affinity)
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: vector
+                      app.kubernetes.io/instance: log-archiver-vector
+                  topologyKey: kubernetes.io/hostname
 
         resources:
           requests:
