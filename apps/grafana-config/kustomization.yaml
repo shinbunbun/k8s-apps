@@ -205,3 +205,10 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-storage-capacity
+    files:
+      - dashboards/storage-capacity.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false

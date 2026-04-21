@@ -553,3 +553,67 @@ spec:
         annotations:
           summary: "High Loki query latency"
           description: "95th percentile query latency is {{ $value }} seconds"
+
+  # ストレージ容量監視 (Phase 0)
+  # MinIO Tenant の実効容量 (EC:3 で raw 120GiB → usable 60GiB) に対する
+  # 使用率を監視。Loki chunks や CNPG backup、将来の Parquet アーカイブなど
+  # すべてのバケットが共有で消費する。
+  # Phase 2 (Parquet アーカイブ) 着手前にこの監視が有効になっている必要がある。
+  - name: storage-capacity
+    interval: 60s
+    rules:
+      # MinIO 使用率 警告 (70% 超)
+      - alert: MinIOClusterUsageHigh
+        expr: "minio_cluster_usage_total_bytes / minio_cluster_capacity_usable_total_bytes > 0.7"
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO cluster usage exceeded 70%"
+          description: "MinIO usage is {{ $value | humanizePercentage }} of usable capacity. Consider reviewing bucket growth or planning pool expansion."
+
+      # MinIO 使用率 危険 (85% 超)
+      - alert: MinIOClusterUsageCritical
+        expr: "minio_cluster_usage_total_bytes / minio_cluster_capacity_usable_total_bytes > 0.85"
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO cluster usage exceeded 85%"
+          description: "MinIO usage is {{ $value | humanizePercentage }} of usable capacity. Immediate action required: expand pool or reduce retention."
+
+      # MinIO 容量枯渇予測 (直近 7 日の傾きで 30 日以内に満タン)
+      - alert: MinIOClusterExhaustionPredicted
+        expr: "predict_linear(minio_cluster_usage_total_bytes[7d], 86400 * 30) > minio_cluster_capacity_usable_total_bytes"
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO cluster predicted to be full within 30 days"
+          description: "Based on the last 7 days of growth, MinIO is projected to exceed capacity in 30 days. Plan pool expansion or adjust retention."
+
+      # バケット増加率急上昇 (直近 1 日の増加が過去 7 日平均の 2 倍超)
+      # 設定ミスや予期せぬログスパイクの早期検知
+      - alert: MinIOBucketGrowthSpike
+        expr: |
+          increase(minio_bucket_usage_total_bytes[1d])
+            > 2 * avg_over_time(increase(minio_bucket_usage_total_bytes[1d])[7d:1d])
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO bucket {{ $labels.bucket }} growth spike"
+          description: "Bucket {{ $labels.bucket }} grew by {{ $value | humanize1024 }} in the last day, over 2x the 7-day average."
+
+      # Loki ingestion レート急上昇 (10 分平均が 1 時間平均の 2 倍超)
+      # 設定ミスや意図しないログ増加の検知 (Parquet 側にも影響する)
+      - alert: LokiIngestionRateSpike
+        expr: |
+          sum(rate(loki_distributor_bytes_received_total[10m]))
+            > 2 * sum(rate(loki_distributor_bytes_received_total[1h]))
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki ingestion rate spike detected"
+          description: "Loki ingestion is at {{ $value | humanize }}B/s, over 2x the hourly average. Check for runaway log sources."

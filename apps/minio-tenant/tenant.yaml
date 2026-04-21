@@ -52,6 +52,12 @@ spec:
       value: "EC:3"
     - name: MINIO_BROWSER
       value: "on"
+    # Prometheus メトリクス公開モード。
+    # デフォルト (jwt) では /minio/v2/metrics/* に JWT トークンが必要だが、
+    # public にすれば VMAgent が認証なしでスクレイプできる。
+    # S3 API と console の認証は別 (root credentials は影響なし)。
+    - name: MINIO_PROMETHEUS_AUTH_TYPE
+      value: "public"
   requestAutoCert: false
   exposeServices:
     minio: false
