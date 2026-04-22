@@ -1,0 +1,49 @@
+# Garage Operator - S3 互換オブジェクトストレージ (MinIO 後継) を宣言的に管理
+#
+# rajsinghtech/garage-operator を Helm chart で導入。CRD は GarageCluster /
+# GarageBucket / GarageKey / GarageNode / GarageAdminToken の 5 種で、
+# apps/garage/ 配下の CR を監視して StatefulSet + layout + bucket + key を自動構築する。
+#
+# 【選定理由】
+# - 2026-02 の MinIO archive を受けた代替
+# - minio-operator / cnpg-operator と同じ「Operator + CR」パターンに合わせる
+# - Garage ネイティブの bootstrap (layout assign / node connect) を operator が担当し、
+#   bash スクリプトによる手続き型 bootstrap を避ける
+# - GarageKey.spec.importKey で SOPS 暗号化アクセスキーを事前生成 → import 可能
+#
+# 【sync-wave】-5 は piraeus 等より後、Loki (10) 等のクライアント Application より前。
+#
+# 【git source】operator はまだ Helm repo 公開しておらず、GitHub の charts/garage-operator/
+# を直接引く。targetRevision は release tag (v0.3.8 = 2026-04-18) に固定してアップデートは
+# manual bump とする。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: garage-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rajsinghtech/garage-operator.git
+    targetRevision: v0.3.8
+    path: charts/garage-operator
+    helm:
+      valuesObject:
+        # leader election + 2 replica で operator 自身を HA 化 (minio-operator と同パターン)
+        replicaCount: 2
+        crds:
+          install: true
+          keep: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: garage-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # CRD が大きいため client-side apply の annotation 上限回避で必須
+      - ServerSideApply=true

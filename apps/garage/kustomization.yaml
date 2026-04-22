@@ -1,0 +1,24 @@
+# Garage CR 一式 (operator は infrastructure/garage-operator/ で別管理)
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/garage を自動検出して
+# ArgoCD Application を生成。すべてのリソースを garage namespace へ。
+#
+# sync-wave:
+#   0  GarageCluster (cluster.yaml、annotations で指定)
+#   1  GarageBucket × 5 / GarageKey × 4 (buckets.yaml, keys.yaml、同上)
+# Secret 2 種は sync-wave 未指定だが、ArgoCD の Kind 順序 (Secret は CR より先) で
+# GarageCluster 到達前に作られるため問題なし。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: garage
+
+commonAnnotations:
+  argocd.argoproj.io/sync-options: ServerSideApply=true
+
+resources:
+  - cluster.yaml
+  - buckets.yaml
+  - keys.yaml
+
+generators:
+  - secret-generator.yaml

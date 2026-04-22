@@ -41,7 +41,11 @@ spec:
     - group: operator.victoriametrics.com
       kind: "*"
     # MinIO Operator の Tenant / PolicyBinding 等を apps/ 配下で使えるようにする
+    # (MinIO archive に伴い Garage へ移行中、撤去後に削除予定)
     - group: minio.min.io
+      kind: "*"
+    # Garage Operator の GarageCluster / GarageBucket / GarageKey 等を apps/ 配下で使えるようにする
+    - group: garage.rajsingh.info
       kind: "*"
     # Barman Cloud Plugin の ObjectStore CR を apps/ 配下で使えるようにする
     - group: barmancloud.cnpg.io
