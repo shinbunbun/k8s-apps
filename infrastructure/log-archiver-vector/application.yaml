@@ -79,10 +79,13 @@ spec:
             cpu: 500m
             memory: 512Mi
 
-        # MinIO credentials を環境変数として注入 (AWS SDK 標準)
+        # MinIO credentials を環境変数として注入 (AWS SDK 標準)。
+        # Secret 名は loki-minio-credentials (apps/loki-config/secrets の
+        # SOPS ファイルを流用、MAC 整合性のため同名で使用、別 namespace なので
+        # loki namespace の Secret とは衝突しない)。
         envFrom:
           - secretRef:
-              name: vector-minio-credentials
+              name: loki-minio-credentials
 
         # Vector 自身の Prometheus メトリクスを VMAgent が拾えるように
         # Prometheus exporter sink を有効化する (下の customConfig 参照)。
