@@ -1,0 +1,26 @@
+# logs-compact-cronjob - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/logs-compact-cronjob
+# を自動検出して ArgoCD Application を生成する。namespace `logs-compact-cronjob`
+# にデプロイされ、日次 01:00 JST に MinIO logs-archive/raw/ の ndjson.zst を
+# DuckDB で読んで daily/logs.parquet (Parquet zstd) に統合する CronJob を動かす。
+#
+# 【Phase 2c】ログ解析基盤の compaction 層。
+# 完了後は raw/ prefix を削除して MinIO 使用量を抑える。
+#
+# resources:
+# - cronjob.yaml            : 日次 compaction CronJob
+# - script-configmap.yaml   : Python (DuckDB + boto3) スクリプト
+#
+# generators:
+# - secret-generator.yaml   : KSOPS で loki-minio-credentials Secret を復号生成
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: logs-compact-cronjob
+
+resources:
+  - cronjob.yaml
+  - script-configmap.yaml
+
+generators:
+  - secret-generator.yaml

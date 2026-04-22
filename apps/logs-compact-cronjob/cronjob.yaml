@@ -1,0 +1,59 @@
+# 日次 compaction CronJob
+#
+# 毎日 01:00 JST に実行、前日分の logs-archive/raw/ を daily/logs.parquet に統合する。
+# Vector の batch.timeout_secs=300 (5 分) により 00:55 頃が最後の flush なので、
+# 01:00 起動時点で前日分は確定している想定。
+#
+# Image は python:3.12-slim を使い、起動時に duckdb / boto3 を pip install する
+# (毎回 20-30 秒程度)。専用イメージを焼くコスト vs 保守性のトレードオフで、
+# 日次 1 回なので pip install で十分。
+#
+# Secret `loki-minio-credentials` (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) を
+# envFrom で注入。Script は ConfigMap `logs-compact-script` から mount する。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-compact
+spec:
+  schedule: "0 1 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-compact
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: compact
+              image: python:3.12-slim
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  pip install --no-cache-dir --quiet duckdb==1.1.3 boto3==1.35.99
+                  exec python /scripts/compact.py
+              envFrom:
+                - secretRef:
+                    name: loki-minio-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 2Gi
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: logs-compact-script
