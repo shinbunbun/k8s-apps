@@ -16,6 +16,12 @@
 # 【git source】operator はまだ Helm repo 公開しておらず、GitHub の charts/garage-operator/
 # を直接引く。targetRevision は release tag (v0.3.8 = 2026-04-18) に固定してアップデートは
 # manual bump とする。
+#
+# 【image.tag override】v0.3.8 git tag 下の Chart.yaml は appVersion: "0.0.14" (stale、
+# 作者の OCI チャートは 0.3.8 に更新済みだが git repo 側は未 bump)。image tag は
+# GarageCluster の generateGarageConfig で [s3_api] セクションを常時出力するために
+# v0.3.8 image が必要で、明示 pin で追従漏れを防ぐ。operator bump 時は targetRevision と
+# image.tag を揃えて更新する。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -33,6 +39,9 @@ spec:
       valuesObject:
         # leader election + 2 replica で operator 自身を HA 化 (minio-operator と同パターン)
         replicaCount: 2
+        image:
+          # Chart.yaml の appVersion が 0.0.14 で stale なため、release tag と揃えて明示 pin
+          tag: "0.3.8"
         crds:
           install: true
           keep: true
