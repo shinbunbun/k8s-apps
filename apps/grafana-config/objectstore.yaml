@@ -1,8 +1,13 @@
-# Barman Cloud Plugin 経由で MinIO に WAL archive + base backup を書き込む設定。
+# Barman Cloud Plugin 経由で Garage に WAL archive + base backup を書き込む設定。
 #
 # destinationPath の下に serverName prefix が自動で付く
 # (s3://cnpg-backups/grafana-db-v1/)。1 バケットに複数 Cluster を共存可能。
 # serverName は Cluster CR の spec.plugins[].parameters.serverName で指定。
+#
+# credentials Secret (cnpg-garage-credentials) は apps/garage の GarageKey
+# "cnpg" が secretTemplate で grafana NS に自動生成する (operator 管理)。
+# AWS_REGION は Garage s3Api.region="garage" と一致する必要があり、s3Credentials.region で
+# Secret の同フィールドを明示参照 (MinIO では region 省略可だったが Garage は必須)。
 #
 # retentionPolicy "14d" は 15 日以上前の base backup と WAL を削除する。
 apiVersion: barmancloud.cnpg.io/v1
@@ -12,14 +17,17 @@ metadata:
 spec:
   configuration:
     destinationPath: s3://cnpg-backups/
-    endpointURL: http://minio.minio-tenant.svc.cluster.local
+    endpointURL: http://garage.garage.svc.cluster.local:3900
     s3Credentials:
       accessKeyId:
-        name: cnpg-minio-credentials
+        name: cnpg-garage-credentials
         key: AWS_ACCESS_KEY_ID
       secretAccessKey:
-        name: cnpg-minio-credentials
+        name: cnpg-garage-credentials
         key: AWS_SECRET_ACCESS_KEY
+      region:
+        name: cnpg-garage-credentials
+        key: AWS_REGION
     wal:
       compression: gzip
     data:
