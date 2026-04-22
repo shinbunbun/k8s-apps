@@ -35,7 +35,7 @@ spec:
             - name: ROUTER_WG_IF
               value: "wg-home"
             - name: WG_MTU
-              value: "1392"
+              value: "1400"
             - name: WG_KEEPALIVE
               value: "25"
             - name: DEFAULT_TTL
