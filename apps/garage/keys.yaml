@@ -31,7 +31,7 @@ spec:
     secretRef:
       name: garage-s3-keys
       namespace: garage
-    accessKeyIDKey: LOKI_KEY_ID
+    accessKeyIdKey: LOKI_KEY_ID
     secretAccessKeyKey: LOKI_SECRET
   bucketPermissions:
     - bucketRef: loki-chunks
@@ -61,7 +61,7 @@ spec:
     secretRef:
       name: garage-s3-keys
       namespace: garage
-    accessKeyIDKey: CNPG_KEY_ID
+    accessKeyIdKey: CNPG_KEY_ID
     secretAccessKeyKey: CNPG_SECRET
   bucketPermissions:
     - bucketRef: cnpg-backups
@@ -83,7 +83,7 @@ spec:
     secretRef:
       name: garage-s3-keys
       namespace: garage
-    accessKeyIDKey: VECTOR_KEY_ID
+    accessKeyIdKey: VECTOR_KEY_ID
     secretAccessKeyKey: VECTOR_SECRET
   bucketPermissions:
     - bucketRef: logs-archive
@@ -105,7 +105,7 @@ spec:
     secretRef:
       name: garage-s3-keys
       namespace: garage
-    accessKeyIDKey: COMPACT_KEY_ID
+    accessKeyIdKey: COMPACT_KEY_ID
     secretAccessKeyKey: COMPACT_SECRET
   bucketPermissions:
     - bucketRef: logs-archive
