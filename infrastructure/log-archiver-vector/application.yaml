@@ -26,10 +26,14 @@
 # AWS SDK 互換の AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY を読む。
 #
 # 【スキーマ】transforms.enrich で archived_at (now) と date (timestamp から派生)
-# を追加し、全フィールドを Parquet に書き出す。スキーマを後で拡張しても
-# 後方互換性を保つため、host/service/level/message/timestamp/labels/job を
-# 暗黙に持つ dynamic schema を採用 (Vector の Parquet encoding はデフォルトで
-# フィールドを動的に推論)。
+# を追加し、全フィールドを ndjson (改行区切り JSON) で書き出す。
+# 注: Vector 0.54 時点で aws_s3 sink の encoding.codec に parquet は未対応
+# (avro/cef/csv/gelf/json/logfmt/native/native_json/otlp/protobuf/raw_message/
+#  text/syslog のみ)。
+# そのため Vector は ndjson を出力し、Phase 2c の compaction CronJob で
+# DuckDB が read_ndjson_auto() で読み取って Parquet zstd に変換する 2 段構成。
+# スキーマは動的 (host/service/level/message/timestamp/labels/job を暗黙に持つ)、
+# DuckDB 側で read_ndjson_auto が推論する。
 #
 # 【port】
 # - 24224/TCP: Fluent Forward protocol (Fluent Bit からの入力)
@@ -126,10 +130,11 @@ spec:
                 .archived_at = now()
                 .date = format_timestamp!(.timestamp, format: "%Y-%m-%d")
           sinks:
-            # MinIO (S3 互換) へ Parquet + zstd で書き出し
+            # MinIO (S3 互換) へ ndjson + zstd で書き出し
             # raw/date=YYYY-MM-DD/hour=HH/ prefix で 5 分ごとの小ファイル生成。
-            # 日次 CronJob (Phase 2b) で daily/date=YYYY-MM-DD/logs.parquet に compact。
-            minio_parquet_raw:
+            # 日次 compaction CronJob (Phase 2c) で DuckDB が読んで
+            # daily/date=YYYY-MM-DD/logs.parquet (Parquet zstd) に変換する。
+            minio_ndjson_raw:
               type: aws_s3
               inputs: [enrich]
               bucket: logs-archive
@@ -138,7 +143,9 @@ spec:
               # auth は envFrom 由来の AWS_* 環境変数を暗黙に読む
               key_prefix: "raw/date=%Y-%m-%d/hour=%H/"
               encoding:
-                codec: parquet
+                codec: json
+              # aws_s3 sink は codec=json の時 default で newline_delimited framing
+              # を適用するため出力は ndjson (1 行 1 JSON オブジェクト)。
               compression: zstd
               batch:
                 timeout_secs: 300
