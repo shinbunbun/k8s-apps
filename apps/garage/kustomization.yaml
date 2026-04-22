@@ -3,10 +3,11 @@
 # ApplicationSet (applicationsets/apps-appset.yaml) が apps/garage を自動検出して
 # ArgoCD Application を生成。すべてのリソースを garage namespace へ。
 #
-# 依存関係 (sync-wave):
-#   -1  admin token / pre-generated keys Secret (KSOPS)
-#    0  GarageCluster → StatefulSet + layout bootstrap
-#    1  GarageBucket × 5, GarageKey × 4 (importKey で SOPS secret を参照)
+# sync-wave:
+#   0  GarageCluster (cluster.yaml、annotations で指定)
+#   1  GarageBucket × 5 / GarageKey × 4 (buckets.yaml, keys.yaml、同上)
+# Secret 2 種は sync-wave 未指定だが、ArgoCD の Kind 順序 (Secret は CR より先) で
+# GarageCluster 到達前に作られるため問題なし。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: garage

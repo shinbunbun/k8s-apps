@@ -6,17 +6,23 @@
 #   同じキー ID / シークレットを Garage に import する
 # - これにより PR-2 でクライアント namespace 側にも同値の SOPS Secret を配置すれば、
 #   AWS SDK から直接 endpoint=garage.garage.svc / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY で接続可能
-# - キーローテーションは SOPS Secret の値を更新 + operator が reconcile で import 更新
+# - キーローテーション手順は未検証。operator 実装依存で、同じ metadata.name のまま key ID を
+#   変更しても反映されない可能性があるため、初回運用時は GarageKey CR を delete → recreate が確実。
+#   実機で SOPS Secret 更新のみで反映されるか確認してからコメントを上書き予定。
 #
 # 【権限マッピング】
 #   loki    → loki-chunks / loki-ruler / loki-admin を owner (read + write + 設定変更)
 #   cnpg    → cnpg-backups を owner (Barman の lifecycle 操作で管理権限が要る)
-#   vector  → logs-archive を write-only に近い owner (retention 設定用 owner も維持)
+#   vector  → logs-archive を owner (retention lifecycle 設定用に owner 維持)
 #   compact → logs-archive を read + write (DuckDB で読み込み → Parquet を上書き)
+#
+# sync-wave 1: GarageCluster (wave 0) と GarageBucket (wave 1) と同時 apply で operator reconcile 任せ
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
 metadata:
   name: loki
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -45,6 +51,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
 metadata:
   name: cnpg
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -65,6 +73,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
 metadata:
   name: vector
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -85,6 +95,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
 metadata:
   name: compact
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage

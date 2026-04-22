@@ -15,20 +15,27 @@
 # 【メタデータ】storage.metadata に別 PVC 5Gi。Garage は LMDB メタを頻繁に書くため
 # データ領域と分離しておくと FS キャッシュが暖まりやすい (operator デフォルトに近い)。
 #
-# 【image】operator の defaultGarageImage (v2.2.0) を使用。v2.x は 2025-06 リリース
-# 以降安定、CNPG Barman / Loki AWS SDK との互換性も v1 同等。
+# 【image】spec.image で明示 pin。operator の defaultGarageImage に暗黙依存すると
+# operator bump で Garage 本体が意図せず上がり metadata format 互換で事故る可能性があるため。
+# v2.x は 2025-06 以降安定、CNPG Barman / Loki AWS SDK との互換性も v1 同等。
 #
 # 【tokens】admin/metrics 両方とも事前生成 SOPS Secret を渡す。operator はこの token で
 # Garage admin API に接続して layout / key 管理を行う。
+# metricsRequireToken は PR-1 では false で起動し、PR-2 で VictoriaMetrics 側に
+# Bearer token を渡す scrape config を追加してから true に切替。
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageCluster
 metadata:
   name: garage
   labels:
     app.kubernetes.io/name: garage
+  annotations:
+    # operator CRD が登録され、operator Pod が Ready になってから CR を apply させる
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   replicas: 3
   zone: dc1
+  image: dxflrs/garage:v2.2.0
 
   replication:
     factor: 3
@@ -66,7 +73,8 @@ spec:
     metricsTokenSecretRef:
       name: garage-admin-tokens
       key: metrics-token
-    metricsRequireToken: true
+    # PR-1 では false、PR-2 で VictoriaMetrics scrape に Bearer token 渡してから true 化
+    metricsRequireToken: false
 
   resources:
     requests:

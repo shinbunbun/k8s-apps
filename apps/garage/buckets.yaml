@@ -8,10 +8,15 @@
 #
 # quotas は homelab 規模では不要 (cluster 全体 40 GiB usable の範囲で収まる想定)。
 # 逼迫してきたら quotas.maxSize を追加して per-bucket 上限で保護する。
+#
+# sync-wave 1: GarageCluster (wave 0) が Ready になってから apply させる。
+# (CR apply だけは operator reconcile のリトライで収束するが、余計な Error ログを減らすため明示)
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageBucket
 metadata:
   name: loki-chunks
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -20,6 +25,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageBucket
 metadata:
   name: loki-ruler
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -28,6 +35,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageBucket
 metadata:
   name: loki-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -36,6 +45,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageBucket
 metadata:
   name: cnpg-backups
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
@@ -44,6 +55,8 @@ apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageBucket
 metadata:
   name: logs-archive
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   clusterRef:
     name: garage
