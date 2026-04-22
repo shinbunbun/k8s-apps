@@ -1,0 +1,46 @@
+# Garage クラスタ bootstrap Job
+#
+# StatefulSet 起動後に以下を冪等実行する:
+#   1. 3 pod の admin API (/health) が応答するまで待機
+#   2. 各 pod の node ID を収集し、相互に `node connect` で peering
+#   3. layout 未適用なら assign + apply (--version 1)
+#   4. 事前生成した access key ペアを `key import`
+#   5. バケット作成 + `bucket allow` で権限付与
+#
+# ConfigMap から bootstrap.sh を読み込み、envFrom で 3 つの Secret を注入。
+# sync-wave 5 で StatefulSet (wave 0) の後に走らせる。
+# backoffLimit 大きめ (pod 起動待ちで一時的に失敗する可能性を許容)。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-bootstrap
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: alpine:3.21
+          command: ["/bin/sh", "/scripts/bootstrap.sh"]
+          envFrom:
+            - secretRef:
+                name: garage-server-secrets
+            - secretRef:
+                name: garage-s3-keys
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: garage-config
+            defaultMode: 0755
+            items:
+              - key: bootstrap.sh
+                path: bootstrap.sh

@@ -1,0 +1,54 @@
+# Garage Service 3 種
+#
+# garage-rpc: headless (clusterIP: None) 。StatefulSet の peer 間 RPC 用。
+#   pod の stable DNS `garage-<N>.garage-rpc.garage.svc.cluster.local` を提供する。
+#
+# garage: S3 API (port 3900) を k3s 内部向けに公開する ClusterIP。
+#   Loki/CNPG Barman/Vector はここを endpoint にする。
+#
+# garage-admin: admin / metrics API (port 3903) 専用。VictoriaMetrics が scrape する。
+#   S3 と分離するのは metrics を別 Service で公開したほうが NetworkPolicy 的に扱いやすいため。
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-rpc
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: rpc
+      port: 3901
+      targetPort: 3901
+    - name: admin
+      port: 3903
+      targetPort: 3903
+  publishNotReadyAddresses: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: s3
+      port: 3900
+      targetPort: 3900
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-admin
+  labels:
+    victoriametrics.io/scrape: "true"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: garage
+  ports:
+    - name: admin
+      port: 3903
+      targetPort: 3903
