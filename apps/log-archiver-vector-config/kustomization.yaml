@@ -1,0 +1,23 @@
+# log-archiver-vector Config - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/log-archiver-vector-config
+# を自動検出して ArgoCD Application を生成する。log-archiver-vector namespace に
+# デプロイされ、infrastructure/log-archiver-vector で作成される Vector Deployment
+# と同一 namespace で共存する。
+#
+# resources:
+# - lan-service.yaml : Fluent Bit (クラスタ外ホスト含む) からの forward 用 LAN VIP
+# - VMServiceScrape  : Vector 自身の Prometheus メトリクスを VMAgent に取り込む
+#
+# generators:
+# - secret-generator.yaml : KSOPS で vector-minio-credentials Secret を復号生成
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: log-archiver-vector
+
+resources:
+  - lan-service.yaml
+  - vmservicescrape.yaml
+
+generators:
+  - secret-generator.yaml
