@@ -128,7 +128,12 @@ spec:
               inputs: [fluent_bit_forward]
               source: |
                 .archived_at = now()
-                .date = format_timestamp!(.timestamp, format: "%Y-%m-%d")
+                # .timestamp は fluent source が event time (timestamp 型) を入れるが、
+                # Fluent Bit 側の record に `timestamp` が既にある (parser で JSON 抽出した
+                # ケース等) と string で上書きされる。to_timestamp で両対応にし、変換
+                # 不能なら archive 時刻で fallback する (.date は partitioning 補助情報)。
+                ts = to_timestamp(.timestamp) ?? now()
+                .date = format_timestamp!(ts, format: "%Y-%m-%d")
           sinks:
             # MinIO (S3 互換) へ ndjson + zstd で書き出し
             # raw/date=YYYY-MM-DD/hour=HH/ prefix で 5 分ごとの小ファイル生成。
