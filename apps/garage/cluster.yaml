@@ -42,11 +42,13 @@ spec:
     consistencyMode: consistent
 
   storage:
+    # DataStorageConfig (data) は multi-disk/paths 向け設計で accessModes を取らない。
+    # 単一 PVC の場合は PVC の accessModes デフォルト (ReadWriteOnce) に委ねる。
     data:
       type: PersistentVolumeClaim
       size: 40Gi
       storageClassName: local-path
-      accessModes: [ReadWriteOnce]
+    # metadata は VolumeConfig (通常 PVC) で accessModes を許容する。
     metadata:
       type: PersistentVolumeClaim
       size: 5Gi
