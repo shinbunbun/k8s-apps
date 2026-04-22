@@ -5,9 +5,9 @@
 #
 # sync-wave:
 #   0  GarageCluster (cluster.yaml、annotations で指定)
-#   1  GarageBucket × 5 / GarageKey × 4 (buckets.yaml, keys.yaml、同上)
-# Secret 2 種は sync-wave 未指定だが、ArgoCD の Kind 順序 (Secret は CR より先) で
-# GarageCluster 到達前に作られるため問題なし。
+#   1  GarageBucket × 5 / GarageKey × 5 (buckets.yaml, keys.yaml、同上)
+# Secret 3 種 (admin-tokens / s3-keys / s3-keys-authentik) は sync-wave 未指定だが、
+# ArgoCD の Kind 順序 (Secret は CR より先) で GarageCluster 到達前に作られるため問題なし。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: garage
