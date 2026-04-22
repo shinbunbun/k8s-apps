@@ -1,5 +1,6 @@
-# Barman Cloud Plugin 経由で MinIO に WAL archive + base backup を書き込む設定。
-# grafana-config/objectstore.yaml と同じ構成。
+# Barman Cloud Plugin 経由で Garage に WAL archive + base backup を書き込む設定。
+# grafana-config/objectstore.yaml と同じ構成 (credentials Secret は authentik NS 内の
+# cnpg-garage-credentials、GarageKey "cnpg-authentik" が secretTemplate で自動生成)。
 apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
@@ -7,14 +8,17 @@ metadata:
 spec:
   configuration:
     destinationPath: s3://cnpg-backups/
-    endpointURL: http://minio.minio-tenant.svc.cluster.local
+    endpointURL: http://garage.garage.svc.cluster.local:3900
     s3Credentials:
       accessKeyId:
-        name: cnpg-minio-credentials
+        name: cnpg-garage-credentials
         key: AWS_ACCESS_KEY_ID
       secretAccessKey:
-        name: cnpg-minio-credentials
+        name: cnpg-garage-credentials
         key: AWS_SECRET_ACCESS_KEY
+      region:
+        name: cnpg-garage-credentials
+        key: AWS_REGION
     wal:
       compression: gzip
     data:
