@@ -1,0 +1,119 @@
+# Python スクリプト (DuckDB + boto3) の ConfigMap
+#
+# cronjob.yaml から /scripts/compact.py として volumeMount される。
+# CronJob の bash ラッパーが pip install の後にこのスクリプトを実行する。
+#
+# 処理:
+# 1. JST 前日を算出
+# 2. s3://logs-archive/raw/date={y}/ に ndjson.zst があるか boto3 でチェック
+# 3. DuckDB httpfs で read_ndjson_auto(glob) → COPY TO Parquet zstd
+#    (daily/date={y}/logs.parquet、1 日 1 ファイル)
+# 4. 書き込み完了後、boto3 で raw/date={y}/ を削除
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-compact-script
+data:
+  compact.py: |
+    #!/usr/bin/env python3
+    """
+    Daily compaction: logs-archive/raw/date=YYYY-MM-DD/**/*.log.zst (ndjson.zst)
+      -> logs-archive/daily/date=YYYY-MM-DD/logs.parquet (Parquet zstd)
+    """
+    import os
+    import sys
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    import boto3
+    import duckdb
+
+    ENDPOINT = "minio.minio-tenant.svc.cluster.local"
+    BUCKET = "logs-archive"
+    ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
+    SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
+
+
+    def target_date() -> str:
+        jst = ZoneInfo("Asia/Tokyo")
+        return (datetime.now(jst).date() - timedelta(days=1)).isoformat()
+
+
+    def s3_client():
+        return boto3.client(
+            "s3",
+            endpoint_url=f"http://{ENDPOINT}",
+            aws_access_key_id=ACCESS_KEY,
+            aws_secret_access_key=SECRET_KEY,
+            region_name="us-east-1",
+        )
+
+
+    def has_raw_objects(s3, prefix: str) -> bool:
+        resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, MaxKeys=1)
+        return resp.get("KeyCount", 0) > 0
+
+
+    def delete_prefix(s3, prefix: str) -> int:
+        paginator = s3.get_paginator("list_objects_v2")
+        total = 0
+        for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix):
+            contents = page.get("Contents", [])
+            if not contents:
+                continue
+            keys = [{"Key": o["Key"]} for o in contents]
+            for i in range(0, len(keys), 1000):
+                batch = keys[i : i + 1000]
+                s3.delete_objects(Bucket=BUCKET, Delete={"Objects": batch, "Quiet": True})
+                total += len(batch)
+        return total
+
+
+    def compact(target: str) -> int:
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute(
+            f"""
+            SET s3_endpoint='{ENDPOINT}';
+            SET s3_access_key_id='{ACCESS_KEY}';
+            SET s3_secret_access_key='{SECRET_KEY}';
+            SET s3_use_ssl=false;
+            SET s3_url_style='path';
+            """
+        )
+        src = f"s3://{BUCKET}/raw/date={target}/**/*.log.zst"
+        dst = f"s3://{BUCKET}/daily/date={target}/logs.parquet"
+        con.execute(
+            f"""
+            COPY (SELECT * FROM read_ndjson_auto('{src}', compression='zstd'))
+            TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD);
+            """
+        )
+        rows = con.execute(f"SELECT COUNT(*) FROM '{dst}'").fetchone()[0]
+        return int(rows)
+
+
+    def main() -> int:
+        target = target_date()
+        print(f"[compact] target date (JST): {target}", flush=True)
+
+        s3 = s3_client()
+        raw_prefix = f"raw/date={target}/"
+
+        if not has_raw_objects(s3, raw_prefix):
+            print(f"[compact] no objects under {raw_prefix}, skip", flush=True)
+            return 0
+
+        rows = compact(target)
+        print(
+            f"[compact] wrote {rows} rows to daily/date={target}/logs.parquet",
+            flush=True,
+        )
+
+        deleted = delete_prefix(s3, raw_prefix)
+        print(f"[compact] deleted {deleted} objects under {raw_prefix}", flush=True)
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
