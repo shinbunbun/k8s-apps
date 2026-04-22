@@ -2,19 +2,27 @@
 #
 # 【設計】
 # - クライアントごとに独立したアクセスキーを発行し、必要なバケットにのみ read/write を許可
-# - importKey.secretRef で事前生成の SOPS Secret (garage-s3-keys) を参照し、
-#   同じキー ID / シークレットを Garage に import する
-# - これにより PR-2 でクライアント namespace 側にも同値の SOPS Secret を配置すれば、
-#   AWS SDK から直接 endpoint=garage.garage.svc / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY で接続可能
+# - importKey.secretRef で事前生成の SOPS Secret (garage-s3-keys, garage-s3-keys-authentik)
+#   を参照し、同じキー ID / シークレットを Garage に import する
+# - secretTemplate でクライアント namespace に operator が直接 Secret を生成
+#   (cross-namespace 対応、operator は Secret の ClusterRole 所持)
+# - クライアント側は endpoint だけ自前設定、credential は operator 生成 Secret をマウント
 # - キーローテーション手順は未検証。operator 実装依存で、同じ metadata.name のまま key ID を
 #   変更しても反映されない可能性があるため、初回運用時は GarageKey CR を delete → recreate が確実。
-#   実機で SOPS Secret 更新のみで反映されるか確認してからコメントを上書き予定。
 #
 # 【権限マッピング】
-#   loki    → loki-chunks / loki-ruler / loki-admin を owner (read + write + 設定変更)
-#   cnpg    → cnpg-backups を owner (Barman の lifecycle 操作で管理権限が要る)
-#   vector  → logs-archive を owner (retention lifecycle 設定用に owner 維持)
-#   compact → logs-archive を read + write (DuckDB で読み込み → Parquet を上書き)
+#   loki           → loki-chunks / loki-ruler / loki-admin を owner
+#   cnpg           → cnpg-backups を owner (grafana-db の Barman が使用)
+#   cnpg-authentik → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
+#   vector         → logs-archive を owner (retention lifecycle 設定用)
+#   compact        → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
+#
+# 【出力 Secret 構造】
+#   各 GarageKey は secretTemplate で AWS SDK 標準形式の Secret を生成:
+#     - AWS_ACCESS_KEY_ID
+#     - AWS_SECRET_ACCESS_KEY
+#     - AWS_REGION (= "garage"、Garage は region 必須)
+#   endpoint は includeEndpoint: false で出力しない (クライアント側で endpoint 明示設定)
 #
 # sync-wave 1: GarageCluster (wave 0) と GarageBucket (wave 1) と同時 apply で operator reconcile 任せ
 apiVersion: garage.rajsingh.info/v1alpha1
@@ -46,6 +54,13 @@ spec:
       read: true
       write: true
       owner: true
+  secretTemplate:
+    name: loki-garage-credentials
+    namespace: loki
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
 ---
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
@@ -68,6 +83,43 @@ spec:
       read: true
       write: true
       owner: true
+  secretTemplate:
+    # grafana-db 用。authentik-db は独立キー (下の cnpg-authentik) を使う
+    name: cnpg-garage-credentials
+    namespace: grafana
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+---
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: cnpg-authentik
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage
+  name: cnpg-authentik
+  importKey:
+    secretRef:
+      name: garage-s3-keys-authentik
+      namespace: garage
+    accessKeyIdKey: CNPG_AUTHENTIK_KEY_ID
+    secretAccessKeyKey: CNPG_AUTHENTIK_SECRET
+  bucketPermissions:
+    - bucketRef: cnpg-backups
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: cnpg-garage-credentials
+    namespace: authentik
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
 ---
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
@@ -90,6 +142,13 @@ spec:
       read: true
       write: true
       owner: true
+  secretTemplate:
+    name: vector-garage-credentials
+    namespace: log-archiver-vector
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
 ---
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageKey
@@ -111,3 +170,10 @@ spec:
     - bucketRef: logs-archive
       read: true
       write: true
+  secretTemplate:
+    name: compact-garage-credentials
+    namespace: logs-compact-cronjob
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
