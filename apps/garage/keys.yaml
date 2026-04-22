@@ -1,0 +1,101 @@
+# Garage アクセスキー定義 (operator が garage-s3-keys Secret から import してバケット権限を付与)
+#
+# 【設計】
+# - クライアントごとに独立したアクセスキーを発行し、必要なバケットにのみ read/write を許可
+# - importKey.secretRef で事前生成の SOPS Secret (garage-s3-keys) を参照し、
+#   同じキー ID / シークレットを Garage に import する
+# - これにより PR-2 でクライアント namespace 側にも同値の SOPS Secret を配置すれば、
+#   AWS SDK から直接 endpoint=garage.garage.svc / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY で接続可能
+# - キーローテーションは SOPS Secret の値を更新 + operator が reconcile で import 更新
+#
+# 【権限マッピング】
+#   loki    → loki-chunks / loki-ruler / loki-admin を owner (read + write + 設定変更)
+#   cnpg    → cnpg-backups を owner (Barman の lifecycle 操作で管理権限が要る)
+#   vector  → logs-archive を write-only に近い owner (retention 設定用 owner も維持)
+#   compact → logs-archive を read + write (DuckDB で読み込み → Parquet を上書き)
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: loki
+spec:
+  clusterRef:
+    name: garage
+  name: loki
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIDKey: LOKI_KEY_ID
+    secretAccessKeyKey: LOKI_SECRET
+  bucketPermissions:
+    - bucketRef: loki-chunks
+      read: true
+      write: true
+      owner: true
+    - bucketRef: loki-ruler
+      read: true
+      write: true
+      owner: true
+    - bucketRef: loki-admin
+      read: true
+      write: true
+      owner: true
+---
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: cnpg
+spec:
+  clusterRef:
+    name: garage
+  name: cnpg
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIDKey: CNPG_KEY_ID
+    secretAccessKeyKey: CNPG_SECRET
+  bucketPermissions:
+    - bucketRef: cnpg-backups
+      read: true
+      write: true
+      owner: true
+---
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: vector
+spec:
+  clusterRef:
+    name: garage
+  name: vector
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIDKey: VECTOR_KEY_ID
+    secretAccessKeyKey: VECTOR_SECRET
+  bucketPermissions:
+    - bucketRef: logs-archive
+      read: true
+      write: true
+      owner: true
+---
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: compact
+spec:
+  clusterRef:
+    name: garage
+  name: compact
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIDKey: COMPACT_KEY_ID
+    secretAccessKeyKey: COMPACT_SECRET
+  bucketPermissions:
+    - bucketRef: logs-archive
+      read: true
+      write: true

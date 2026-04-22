@@ -1,0 +1,76 @@
+# Garage クラスタ (StatefulSet + layout を operator が reconcile)
+#
+# 【HA 設計】
+# - replicas: 3 + topologySpreadConstraints.whenUnsatisfiable: DoNotSchedule で
+#   3 ノードに 1 pod ずつ強制分散
+# - replication.factor=3 + consistencyMode=consistent で 2/3 quorum。
+#   1 ノード障害 (= 2 pod 稼働) でも read/write 継続。
+#   RF=2 だとコンシステントモードの write quorum=2/2 となり 1 ノード障害で書き込めない。
+#
+# 【容量】data 40Gi × 3 = raw 120 GiB、RF=3 で usable ~40 GiB。
+# 現 MinIO EC:3 の 60 GiB からは縮小するが、Loki 実測 21 GB + CNPG 14d + Vector で
+# 当面十分。逼迫時は storage.data.size を上げて StatefulSet を再作成する
+# (local-path は online resize 未対応、PR-1 の制約を継承)。
+#
+# 【メタデータ】storage.metadata に別 PVC 5Gi。Garage は LMDB メタを頻繁に書くため
+# データ領域と分離しておくと FS キャッシュが暖まりやすい (operator デフォルトに近い)。
+#
+# 【image】operator の defaultGarageImage (v2.2.0) を使用。v2.x は 2025-06 リリース
+# 以降安定、CNPG Barman / Loki AWS SDK との互換性も v1 同等。
+#
+# 【tokens】admin/metrics 両方とも事前生成 SOPS Secret を渡す。operator はこの token で
+# Garage admin API に接続して layout / key 管理を行う。
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageCluster
+metadata:
+  name: garage
+  labels:
+    app.kubernetes.io/name: garage
+spec:
+  replicas: 3
+  zone: dc1
+
+  replication:
+    factor: 3
+    consistencyMode: consistent
+
+  storage:
+    data:
+      type: PersistentVolumeClaim
+      size: 40Gi
+      storageClassName: local-path
+      accessModes: [ReadWriteOnce]
+    metadata:
+      type: PersistentVolumeClaim
+      size: 5Gi
+      storageClassName: local-path
+      accessModes: [ReadWriteOnce]
+    metadataAutoSnapshotInterval: "6h"
+
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: garage
+
+  s3api:
+    region: garage
+
+  admin:
+    enabled: true
+    adminTokenSecretRef:
+      name: garage-admin-tokens
+      key: admin-token
+    metricsTokenSecretRef:
+      name: garage-admin-tokens
+      key: metrics-token
+    metricsRequireToken: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi

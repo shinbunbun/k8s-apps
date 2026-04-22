@@ -1,11 +1,12 @@
-# Garage - S3 互換オブジェクトストレージ (MinIO 後継)
+# Garage CR 一式 (operator は infrastructure/garage-operator/ で別管理)
 #
-# MinIO (community edition) が 2026-02-13 に archive されたため、
-# Loki チャンク / CNPG Barman バックアップ / Vector log-archive の
-# S3 バックエンドを Garage に移行する。
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/garage を自動検出して
+# ArgoCD Application を生成。すべてのリソースを garage namespace へ。
 #
-# ApplicationSet (applicationsets/apps-appset.yaml) が apps/garage を
-# 自動検出して ArgoCD Application を生成。すべてのリソースを garage namespace へ。
+# 依存関係 (sync-wave):
+#   -1  admin token / pre-generated keys Secret (KSOPS)
+#    0  GarageCluster → StatefulSet + layout bootstrap
+#    1  GarageBucket × 5, GarageKey × 4 (importKey で SOPS secret を参照)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: garage
@@ -14,10 +15,9 @@ commonAnnotations:
   argocd.argoproj.io/sync-options: ServerSideApply=true
 
 resources:
-  - configmap.yaml
-  - services.yaml
-  - statefulset.yaml
-  - cluster-bootstrap-job.yaml
+  - cluster.yaml
+  - buckets.yaml
+  - keys.yaml
 
 generators:
   - secret-generator.yaml
