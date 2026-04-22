@@ -1,4 +1,4 @@
-# Loki - ログ集約 (SimpleScalable, HA, MinIO 背景)
+# Loki - ログ集約 (SimpleScalable, HA, Garage 背景)
 #
 # 設計判断:
 #
@@ -11,12 +11,13 @@
 # spike は ingester WAL で吸収できる想定)。read は比較的安全に HPA 化できるが
 # Phase 1 では固定 replicas で十分。
 #
-# 【ストレージ】v13 + TSDB + S3 (infrastructure/minio-operator + minio-tenant)。
-# 旧 NixOS Loki の v11/BoltDB/filesystem から完全新規スキーマで起動、
-# 過去 30 日分のログは移行しない (retention 切れとともに自然消失)。
-# bucketNames は Tenant CRD で宣言作成済みの loki-chunks / loki-ruler / loki-admin。
-# 認証情報は loki-minio-credentials Secret (KSOPS) を extraEnvFrom で AWS SDK 標準キー
-# (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY) として注入し、Helm values には書かない。
+# 【ストレージ】v13 + TSDB + S3 (infrastructure/garage-operator + apps/garage)。
+# 2026-04 に MinIO (community edition) archive に伴い Garage へ移行。
+# bucketNames は GarageBucket CR で宣言済みの loki-chunks / loki-ruler / loki-admin。
+# 認証情報は loki-garage-credentials Secret を extraEnvFrom で AWS SDK 標準キー
+# (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION) として注入。
+# この Secret は Garage Operator が GarageKey CR の secretTemplate で loki NS に
+# 直接生成するため、KSOPS による SOPS ファイル配置は不要。
 #
 # 【Ruler】backend ターゲットに含まれる ruler が apps/loki-config/rules-configmap.yaml
 # をマウントして LogQL rule を評価、VMAlertmanager LAN VIP (192.168.128.13:9093) に送信。
@@ -29,7 +30,7 @@
 # - Grafana datasource: loki-gateway ClusterIP (chart が自動生成する nginx) 経由で読み取り
 # - 外部公開なし (Cloudflare Tunnel にも載せない、LAN 限定)
 #
-# sync-wave: 10 は minio-operator (-5) より後、Tenant 初期化後にデプロイされる位置。
+# sync-wave: 10 は garage-operator (-5) より後、GarageCluster/Bucket/Key 初期化後にデプロイ。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -48,7 +49,7 @@ spec:
       valuesObject:
         deploymentMode: SimpleScalable
 
-        # chart 同梱の MinIO subchart は使わず、infrastructure/minio-operator 側を参照
+        # chart 同梱の MinIO subchart は使わず、外部 Garage (apps/garage) を参照
         minio:
           enabled: false
         # test pod / monitoring 系は不要
@@ -91,11 +92,12 @@ spec:
               ruler: loki-ruler
               admin: loki-admin
             s3:
-              endpoint: minio.minio-tenant.svc.cluster.local
-              region: us-east-1
+              endpoint: garage.garage.svc.cluster.local:3900
+              region: garage
               s3ForcePathStyle: true
               insecure: true
-              # access_key_id / secret_access_key は env 経由 (loki-minio-credentials Secret)
+              # access_key_id / secret_access_key は env 経由 (loki-garage-credentials Secret)
+              # この Secret は Garage Operator が GarageKey CR の secretTemplate で自動生成
           limits_config:
             retention_period: 720h
             ingestion_rate_mb: 50
@@ -122,13 +124,13 @@ spec:
               kvstore:
                 store: memberlist
 
-        # read/write/backend の全コンポーネントに MinIO credentials を環境変数で注入
-        # (AWS SDK が AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY を自動で拾う)
+        # read/write/backend の全コンポーネントに Garage credentials を環境変数で注入
+        # (AWS SDK が AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION を自動で拾う)
         read:
           replicas: 2
           extraEnvFrom:
             - secretRef:
-                name: loki-minio-credentials
+                name: loki-garage-credentials
           affinity:
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
@@ -144,7 +146,7 @@ spec:
           replicas: 2
           extraEnvFrom:
             - secretRef:
-                name: loki-minio-credentials
+                name: loki-garage-credentials
           affinity:
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
@@ -160,7 +162,7 @@ spec:
           replicas: 2
           extraEnvFrom:
             - secretRef:
-                name: loki-minio-credentials
+                name: loki-garage-credentials
           # Ruler が tenant "fake" のルールを評価するため、
           # loki-rules ConfigMap を /var/loki/rules/fake にマウント
           extraVolumes:

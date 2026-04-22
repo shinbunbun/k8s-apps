@@ -17,5 +17,5 @@ resources:
   - lan-service.yaml
   - rules-configmap.yaml
 
-generators:
-  - secret-generator.yaml
+# KSOPS による Secret 生成は廃止 (loki-minio-credentials は撤去済み)。
+# Loki は Garage Operator が secretTemplate で自動生成する loki-garage-credentials を使う。
