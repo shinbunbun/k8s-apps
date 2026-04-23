@@ -28,8 +28,9 @@ data:
     import boto3
     import duckdb
 
-    ENDPOINT = "minio.minio-tenant.svc.cluster.local"
+    ENDPOINT = "garage.garage.svc.cluster.local:3900"
     BUCKET = "logs-archive"
+    REGION = os.environ.get("AWS_REGION", "garage")
     ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
     SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
 
@@ -45,7 +46,7 @@ data:
             endpoint_url=f"http://{ENDPOINT}",
             aws_access_key_id=ACCESS_KEY,
             aws_secret_access_key=SECRET_KEY,
-            region_name="us-east-1",
+            region_name=REGION,
         )
 
 

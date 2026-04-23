@@ -8,8 +8,10 @@
 # (毎回 20-30 秒程度)。専用イメージを焼くコスト vs 保守性のトレードオフで、
 # 日次 1 回なので pip install で十分。
 #
-# Secret `loki-minio-credentials` (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) を
-# envFrom で注入。Script は ConfigMap `logs-compact-script` から mount する。
+# Secret `compact-garage-credentials` (Garage Operator が GarageKey "compact" の
+# secretTemplate で logs-compact-cronjob NS に自動生成; AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY / AWS_REGION を含む) を envFrom で注入。
+# Script は ConfigMap `logs-compact-script` から mount する。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -42,7 +44,7 @@ spec:
                   exec python /scripts/compact.py
               envFrom:
                 - secretRef:
-                    name: loki-minio-credentials
+                    name: compact-garage-credentials
               resources:
                 requests:
                   cpu: 100m
