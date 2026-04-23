@@ -1,8 +1,13 @@
-# Cilium / Hubble メトリクスを VMPodScrape で収集
+# Cilium メトリクスを VMPodScrape で収集
 #
 # 公式ダッシュボードが前提とする k8s_app / io_cilium_app / pod / namespace ラベルを
 # 付与するため、kubernetes Pod discovery ベースのスクレイプに切替。
-# (従来の static_configs は scrape-config-secret.yaml に残し、段階移行後に別 PR で削除)
+#
+# Hubble flow メトリクス (per-namespace × per-pod の多次元ラベル) は
+# カーディナリティが極端に高く (約 187k シリーズ) トラブルシュート目的では
+# Hubble UI を直接参照する方が実用的なため、VMPodScrape からは除外する。
+# cilium-agent の運用メトリクス (drop/endpoint/policy/kvstore 等) と
+# cilium-operator メトリクスのみ残す。
 #
 # kustomization の namespace: victoriametrics が効いて各 VMPodScrape は
 # victoriametrics ns に配置される。cross-namespace の対象 Pod は
@@ -33,16 +38,6 @@ spec:
           replacement: cilium-agent
         - targetLabel: cluster
           replacement: homelab
-    - port: hubble-metrics    # 9965: Hubble メトリクス (同一 Pod の別ポート)
-      path: /metrics
-      interval: 30s
-      relabelConfigs:
-        - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
-          targetLabel: k8s_app
-        - targetLabel: job
-          replacement: hubble
-        - targetLabel: cluster
-          replacement: homelab
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMPodScrape
@@ -63,27 +58,5 @@ spec:
           targetLabel: io_cilium_app
         - targetLabel: job
           replacement: cilium-operator
-        - targetLabel: cluster
-          replacement: homelab
----
-apiVersion: operator.victoriametrics.com/v1beta1
-kind: VMPodScrape
-metadata:
-  name: hubble-relay
-spec:
-  namespaceSelector:
-    matchNames: [kube-system]
-  selector:
-    matchLabels:
-      k8s-app: hubble-relay
-  podMetricsEndpoints:
-    - port: prometheus        # 9966 (Pod 側コンテナ port 名。Service の metrics と混同注意)
-      path: /metrics
-      interval: 30s
-      relabelConfigs:
-        - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
-          targetLabel: k8s_app
-        - targetLabel: job
-          replacement: hubble-relay
         - targetLabel: cluster
           replacement: homelab
