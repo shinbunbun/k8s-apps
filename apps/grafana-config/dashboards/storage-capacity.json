@@ -12,11 +12,11 @@
       }
     ]
   },
-  "description": "MinIO 容量、バケット別使用量、Loki ingestion、Parquet アーカイブ (Phase 2 以降) を統合監視。Phase 0: ストレージ監視基盤。",
+  "description": "Garage クラスタのノード別 disk 使用量、Loki ingestion、Parquet アーカイブ (Phase 2 以降) を統合監視。per-bucket 使用量は Garage の /metrics に無いため表示しない (garage bucket list を別途参照)。",
   "editable": true,
   "graphTooltip": 1,
   "id": null,
-  "tags": ["storage", "minio", "loki", "capacity"],
+  "tags": ["storage", "garage", "loki", "capacity"],
   "timezone": "browser",
   "title": "Storage Capacity",
   "uid": "storage-capacity",
@@ -35,7 +35,7 @@
     {
       "type": "row",
       "id": 100,
-      "title": "MinIO 全体",
+      "title": "Garage 全体",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "collapsed": false,
       "panels": []
@@ -43,8 +43,8 @@
     {
       "type": "gauge",
       "id": 1,
-      "title": "MinIO 使用率",
-      "description": "実効容量 (EC:3 適用後、60 GiB 相当) に対する使用率。70% で warning、85% で critical のアラートが発火する。",
+      "title": "Garage Disk 使用率 (最大ノード)",
+      "description": "最も使用率の高いノードの disk 使用率。70% で warning、85% で critical のアラートが発火する (GarageDiskUsageHigh/Critical)。RF=3 で raw 120GiB → usable ~40GiB。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
       "options": {
@@ -75,7 +75,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_cluster_usage_total_bytes / minio_cluster_capacity_usable_total_bytes",
+          "expr": "max(1 - garage_local_disk_avail / garage_local_disk_total)",
           "legendFormat": "使用率"
         }
       ]
@@ -83,8 +83,8 @@
     {
       "type": "stat",
       "id": 2,
-      "title": "使用量 / 実効容量",
-      "description": "MinIO の実使用バイト数と EC:3 後の実効容量。",
+      "title": "使用量 / 実効容量 (推定)",
+      "description": "Garage ノード全体の used bytes 合計と、RF=3 前提の usable 容量 (total / 3)。正確なバケット使用量は garage bucket list コマンドで確認。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 },
       "options": {
@@ -107,22 +107,22 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_cluster_usage_total_bytes",
-          "legendFormat": "使用量"
+          "expr": "sum(garage_local_disk_total - garage_local_disk_avail)",
+          "legendFormat": "使用量 (raw)"
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_cluster_capacity_usable_total_bytes",
-          "legendFormat": "実効容量"
+          "expr": "sum(garage_local_disk_total) / 3",
+          "legendFormat": "実効容量 (raw/RF)"
         }
       ]
     },
     {
       "type": "stat",
       "id": 3,
-      "title": "30 日後予測使用量",
-      "description": "過去 7 日の増加率を線形外挿。実効容量を超えると MinIOClusterExhaustionPredicted アラートが発火。",
+      "title": "30 日後予測空き容量 (最小ノード)",
+      "description": "過去 7 日の空き容量トレンドを線形外挿。total の 10% 未満になると GarageDiskExhaustionPredicted アラートが発火。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
       "options": {
@@ -149,15 +149,15 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "predict_linear(minio_cluster_usage_total_bytes[7d], 86400 * 30)",
-          "legendFormat": "30 日後予測"
+          "expr": "min(predict_linear(garage_local_disk_avail[7d], 86400 * 30))",
+          "legendFormat": "30 日後予測空き (最小)"
         }
       ]
     },
     {
       "type": "row",
       "id": 101,
-      "title": "MinIO 使用量推移",
+      "title": "Garage ノード別使用量推移",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
       "collapsed": false,
       "panels": []
@@ -165,8 +165,8 @@
     {
       "type": "timeseries",
       "id": 4,
-      "title": "MinIO 全体使用量推移",
-      "description": "クラスタ全体の使用量 vs 実効容量。日次の増加傾向を確認。",
+      "title": "Garage ノード別 disk 使用量",
+      "description": "各 Garage ノードの disk used (raw)。ノード単位の偏りと日次の増加傾向を確認。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
       "fieldConfig": {
@@ -197,22 +197,16 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_cluster_usage_total_bytes",
-          "legendFormat": "使用量"
-        },
-        {
-          "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_cluster_capacity_usable_total_bytes",
-          "legendFormat": "実効容量"
+          "expr": "garage_local_disk_total - garage_local_disk_avail",
+          "legendFormat": "{{ instance }}"
         }
       ]
     },
     {
       "type": "timeseries",
       "id": 5,
-      "title": "バケット別使用量",
-      "description": "loki-chunks / cnpg-backups / logs-archive (Phase 2 以降) など各バケットの使用量推移。",
+      "title": "Garage ノード別 disk 空き容量",
+      "description": "各ノードの残り空き容量 (garage_local_disk_avail)。赤点線 (閾値) を下回ると容量枯渇アラート域。per-bucket 使用量は Garage の /metrics に無いため表示不可、`garage bucket list` で確認する。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "fieldConfig": {
@@ -221,22 +215,21 @@
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
-            "fillOpacity": 15,
-            "stacking": { "mode": "normal" }
+            "fillOpacity": 10
           }
         },
         "overrides": []
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] },
+        "tooltip": { "mode": "multi", "sort": "asc" }
       },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-          "expr": "minio_bucket_usage_total_bytes",
-          "legendFormat": "{{ bucket }}"
+          "expr": "garage_local_disk_avail",
+          "legendFormat": "{{ instance }}"
         }
       ]
     },

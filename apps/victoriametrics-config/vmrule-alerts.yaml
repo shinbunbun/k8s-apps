@@ -555,55 +555,55 @@ spec:
           description: "95th percentile query latency is {{ $value }} seconds"
 
   # ストレージ容量監視 (Phase 0)
-  # MinIO Tenant の実効容量 (EC:3 で raw 120GiB → usable 60GiB) に対する
-  # 使用率を監視。Loki chunks や CNPG backup、将来の Parquet アーカイブなど
-  # すべてのバケットが共有で消費する。
-  # Phase 2 (Parquet アーカイブ) 着手前にこの監視が有効になっている必要がある。
+  # Garage クラスタの実効容量 (RF=3 で raw 120GiB → usable ~40GiB) を監視。
+  # Loki chunks / CNPG backup / Parquet アーカイブが共有で消費する。
+  # Garage は per-bucket 使用量を /metrics に出さないため、node ごとの local disk
+  # 空き容量 (garage_local_disk_avail / garage_local_disk_total) で判定する。
+  # bucket 別の growth spike は Garage の admin API (garage bucket list) を定期的に
+  # 問い合わせる別 exporter が必要になるため、本 rule では監視しない。
   - name: storage-capacity
     interval: 60s
     rules:
-      # MinIO 使用率 警告 (70% 超)
-      - alert: MinIOClusterUsageHigh
-        expr: "minio_cluster_usage_total_bytes / minio_cluster_capacity_usable_total_bytes > 0.7"
+      # Garage node 使用率 警告 (空き 30% 未満 = 使用率 70% 超、任意 1 ノードで発報)
+      - alert: GarageDiskUsageHigh
+        expr: "min(garage_local_disk_avail / garage_local_disk_total) < 0.3"
         for: 30m
         labels:
           severity: warning
         annotations:
-          summary: "MinIO cluster usage exceeded 70%"
-          description: "MinIO usage is {{ $value | humanizePercentage }} of usable capacity. Consider reviewing bucket growth or planning pool expansion."
+          summary: "Garage node disk free below 30%"
+          description: "At least one Garage node has less than 30% free disk. Available: {{ $value | humanizePercentage }}. Consider PVC 拡張 or retention 調整."
 
-      # MinIO 使用率 危険 (85% 超)
-      - alert: MinIOClusterUsageCritical
-        expr: "minio_cluster_usage_total_bytes / minio_cluster_capacity_usable_total_bytes > 0.85"
+      # Garage node 使用率 危険 (空き 15% 未満 = 使用率 85% 超、任意 1 ノード)
+      - alert: GarageDiskUsageCritical
+        expr: "min(garage_local_disk_avail / garage_local_disk_total) < 0.15"
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "MinIO cluster usage exceeded 85%"
-          description: "MinIO usage is {{ $value | humanizePercentage }} of usable capacity. Immediate action required: expand pool or reduce retention."
+          summary: "Garage node disk free below 15%"
+          description: "At least one Garage node has less than 15% free disk. Immediate action required: PVC 拡張 or retention 短縮."
 
-      # MinIO 容量枯渇予測 (直近 7 日の傾きで 30 日以内に満タン)
-      - alert: MinIOClusterExhaustionPredicted
-        expr: "predict_linear(minio_cluster_usage_total_bytes[7d], 86400 * 30) > minio_cluster_capacity_usable_total_bytes"
+      # Garage 容量枯渇予測 (直近 7 日の傾きで 30 日以内に 10% を下回る)
+      - alert: GarageDiskExhaustionPredicted
+        expr: "min(predict_linear(garage_local_disk_avail[7d], 86400 * 30)) < 0.1 * min(garage_local_disk_total)"
         for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "MinIO cluster predicted to be full within 30 days"
-          description: "Based on the last 7 days of growth, MinIO is projected to exceed capacity in 30 days. Plan pool expansion or adjust retention."
+          summary: "Garage node predicted to reach <10% free within 30 days"
+          description: "Based on the last 7 days of trend, at least one Garage node will fall below 10% free disk in 30 days. Plan PVC expansion."
 
-      # バケット増加率急上昇 (直近 1 日の増加が過去 7 日平均の 2 倍超)
-      # 設定ミスや予期せぬログスパイクの早期検知
-      - alert: MinIOBucketGrowthSpike
-        expr: |
-          increase(minio_bucket_usage_total_bytes[1d])
-            > 2 * avg_over_time(increase(minio_bucket_usage_total_bytes[1d])[7d:1d])
-        for: 2h
+      # Garage クラスタ健全性 (いずれかノード断絶) —
+      # write quorum (RF=3, consistent) は 2/3 で維持されるが検知対象
+      - alert: GarageClusterUnhealthy
+        expr: "cluster_healthy == 0"
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "MinIO bucket {{ $labels.bucket }} growth spike"
-          description: "Bucket {{ $labels.bucket }} grew by {{ $value | humanize1024 }} in the last day, over 2x the 7-day average."
+          summary: "Garage cluster unhealthy (node disconnected)"
+          description: "At least one Garage storage node is not connected. connected={{ with query \"cluster_storage_nodes_ok\" }}{{ . | first | value }}{{ end }}, total={{ with query \"cluster_storage_nodes\" }}{{ . | first | value }}{{ end }}. Check node/pod state."
 
       # Loki ingestion レート急上昇 (10 分平均が 1 時間平均の 2 倍超)
       # 設定ミスや意図しないログ増加の検知 (Parquet 側にも影響する)
