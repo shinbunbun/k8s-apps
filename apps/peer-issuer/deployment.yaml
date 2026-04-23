@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: peer-issuer
-          image: ghcr.io/shinbunbun/peer-issuer:latest
+          image: ghcr.io/shinbunbun/peer-issuer:e062593294d81ce050c2a480d9813eee6b6b2fe2
           ports:
             - containerPort: 8088
           env:
