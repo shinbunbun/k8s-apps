@@ -137,9 +137,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 42949672960 },
-              { "color": "red", "value": 55834574848 }
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 4294967296 },
+              { "color": "green", "value": 8589934592 }
             ]
           }
         },
@@ -206,7 +206,7 @@
       "type": "timeseries",
       "id": 5,
       "title": "Garage ノード別 disk 空き容量",
-      "description": "各ノードの残り空き容量 (garage_local_disk_avail)。赤点線 (閾値) を下回ると容量枯渇アラート域。per-bucket 使用量は Garage の /metrics に無いため表示不可、`garage bucket list` で確認する。",
+      "description": "各ノードの残り空き容量 (garage_local_disk_avail)。GarageDiskExhaustionPredicted アラートは 30 日後予測 < 総容量の 10% で発報。per-bucket 使用量は Garage の /metrics に無いため表示不可、`garage bucket list` で確認する。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "fieldConfig": {
