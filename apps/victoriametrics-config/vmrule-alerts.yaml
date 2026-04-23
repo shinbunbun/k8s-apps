@@ -82,15 +82,15 @@ spec:
           summary: "High CPU usage on RouterOS"
           description: "RouterOS CPU usage is above 80% (current value: {{ $value }}%)"
 
-      # RouterOS再起動検知 (uptime カウンタのリセットを検出)
+      # RouterOS再起動検知 (uptime が 10 分未満 = 再起動直後。resets() は VM で誤検出するため不採用)
       - alert: RouterOSRestarted
-        expr: 'resets(mktxp_system_uptime{job="routeros"}[1h]) > 0'
-        for: 1m
+        expr: 'mktxp_system_uptime{job="routeros"} < 600'
+        for: 2m
         labels:
           severity: warning
         annotations:
           summary: "RouterOS has been restarted"
-          description: "RouterOS device uptime counter reset detected ({{ $value }} resets in last hour)"
+          description: "RouterOS uptime is {{ $value }}s (<10m), indicating a recent restart"
 
       # DHCP枯渇警告 (IPv4 pool=dhcp、/ip pool ranges=192.168.1.2-253 → 252 addr)
       - alert: DHCPPoolNearExhaustion
