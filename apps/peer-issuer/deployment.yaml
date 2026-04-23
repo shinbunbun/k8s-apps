@@ -4,6 +4,8 @@ metadata:
   name: peer-issuer
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: peer-issuer
@@ -69,7 +71,8 @@ spec:
             periodSeconds: 10
       volumes:
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: peer-issuer-data
         - name: ssh-key
           secret:
             secretName: peer-issuer-secrets
