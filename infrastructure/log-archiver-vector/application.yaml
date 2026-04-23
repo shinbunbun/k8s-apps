@@ -1,9 +1,9 @@
-# Vector - ログアーカイブパイプライン (Fluent Forward → MinIO Parquet)
+# Vector - ログアーカイブパイプライン (Fluent Forward → Garage ndjson.zst → Parquet)
 #
 # 設計判断:
 #
 # 【目的】Fluent Bit が Loki に送っているログを、同時に Fluent Forward protocol で
-# Vector に受け、MinIO の logs-archive バケットに Parquet (zstd) で保存する。
+# Vector に受け、Garage の logs-archive バケットに Parquet (zstd) で保存する。
 # Phase 2 の「分析・ML 層」の入口。DuckDB から直接 S3 上の Parquet を読める。
 #
 # 【Helm chart】vector/vector (公式)。customConfig で vector.toml 相当を
@@ -14,16 +14,18 @@
 #
 # 【replicas】2。HA (Helm upgrade / node 障害時のログロスト軽減)。
 # 処理能力は 1 pod で十分 (ホームラボ規模 1-5 GB/日)。2 pod の主目的は可用性。
-# 各 pod が Fluent Forward 入力を独立で処理し、MinIO には UUID ベースの
+# 各 pod が Fluent Forward 入力を独立で処理し、Garage には UUID ベースの
 # ファイル名で別々に書き出す (衝突なし、compaction CronJob が統合)。
 #
 # 【affinity】podAntiAffinity preferredDuringSchedulingIgnoredDuringExecution
 # で node 分散。g3pro (Intel N150、CPU 弱) は避けたいが、Vector は軽量なので
 # preferred のまま (必須にしない)。
 #
-# 【ストレージ】S3 (MinIO、endpoint 内部 Service)。
-# credentials は vector-minio-credentials Secret (KSOPS) を envFrom で注入。
-# AWS SDK 互換の AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY を読む。
+# 【ストレージ】S3 (Garage、endpoint 内部 Service port 3900)。
+# credentials は vector-garage-credentials Secret (Garage Operator が
+# GarageKey "vector" の secretTemplate で log-archiver-vector NS に直接生成) を
+# envFrom で注入。AWS SDK 互換の AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+# AWS_REGION を読む。
 #
 # 【スキーマ】transforms.enrich で archived_at (now) と date (timestamp から派生)
 # を追加し、全フィールドを ndjson (改行区切り JSON) で書き出す。
@@ -40,7 +42,7 @@
 # - 9598/TCP: Prometheus exporter (Vector 自体のメトリクス、Phase 0 の
 #             storage-capacity ダッシュボードで監視)
 #
-# 【sync-wave】10: minio-tenant (bucket 作成) より後。
+# 【sync-wave】10: apps/garage (GarageBucket logs-archive 作成) より後。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -83,13 +85,13 @@ spec:
             cpu: 500m
             memory: 512Mi
 
-        # MinIO credentials を環境変数として注入 (AWS SDK 標準)。
-        # Secret 名は loki-minio-credentials (apps/loki-config/secrets の
-        # SOPS ファイルを流用、MAC 整合性のため同名で使用、別 namespace なので
-        # loki namespace の Secret とは衝突しない)。
+        # Garage credentials を環境変数として注入 (AWS SDK 標準)。
+        # vector-garage-credentials Secret は Garage Operator が GarageKey "vector" の
+        # secretTemplate で log-archiver-vector NS に自動生成 (apps/garage/keys.yaml)。
+        # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION の 3 フィールド。
         envFrom:
           - secretRef:
-              name: loki-minio-credentials
+              name: vector-garage-credentials
 
         # Vector 自身の Prometheus メトリクスを VMAgent が拾えるように
         # Prometheus exporter sink を有効化する (下の customConfig 参照)。
@@ -135,16 +137,16 @@ spec:
                 # (.date は partitioning 補助情報)。
                 .date = format_timestamp(.timestamp, format: "%Y-%m-%d") ?? format_timestamp!(now(), format: "%Y-%m-%d")
           sinks:
-            # MinIO (S3 互換) へ ndjson + zstd で書き出し
+            # Garage (S3 互換) へ ndjson + zstd で書き出し
             # raw/date=YYYY-MM-DD/hour=HH/ prefix で 5 分ごとの小ファイル生成。
             # 日次 compaction CronJob (Phase 2c) で DuckDB が読んで
             # daily/date=YYYY-MM-DD/logs.parquet (Parquet zstd) に変換する。
-            minio_ndjson_raw:
+            garage_ndjson_raw:
               type: aws_s3
               inputs: [enrich]
               bucket: logs-archive
-              endpoint: http://minio.minio-tenant.svc.cluster.local
-              region: us-east-1
+              endpoint: http://garage.garage.svc.cluster.local:3900
+              region: garage
               # auth は envFrom 由来の AWS_* 環境変数を暗黙に読む
               key_prefix: "raw/date=%Y-%m-%d/hour=%H/"
               encoding:
