@@ -500,7 +500,7 @@ spec:
           summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} was OOM killed"
           description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} was terminated due to OOM."
 
-      # コンテナ高CPU使用率
+      # コンテナ高CPU使用率（絶対値。limit を持たない重い pod を発見する用途）
       - alert: KubeContainerHighCPU
         expr: 'rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]) > 0.9'
         for: 10m
@@ -509,6 +509,42 @@ spec:
         annotations:
           summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} high CPU usage"
           description: "Container {{ $labels.container }} is using {{ $value }} CPU cores for more than 10 minutes."
+
+      # コンテナ CPU が limit の 80% 以上（相対比。limit に張り付く前段階で検知）
+      - alert: KubeContainerCPUNearLimit
+        expr: |
+          sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]))
+          / on(namespace, pod, container) group_left
+          sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="cpu"}) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} approaching CPU limit"
+          description: "Container is using {{ $value | humanizePercentage }} of its CPU limit for more than 10 minutes. Consider raising the limit before throttling degrades behavior."
+
+      # コンテナ CPU throttling（limit に達して実行がスケジューリング待ちになっている）
+      # container!="" フィルタで pod レベル cgroup (container="") と container レベルの重複集計を避ける
+      - alert: KubeContainerCPUThrottling
+        expr: |
+          sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD"}[5m]))
+          / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD"}[5m])) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is CPU throttled"
+          description: "Container is throttled in {{ $value | humanizePercentage }} of CFS periods for more than 10 minutes. Raise limits.cpu or reduce workload."
+
+      # スクレイプ時間が長すぎる（scrape_interval 15s に対し 5s 超は rate() 分母が歪むため）
+      - alert: ScrapeSlow
+        expr: 'scrape_duration_seconds > 5'
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow scrape: job={{ $labels.job }} instance={{ $labels.instance }}"
+          description: "scrape_duration_seconds = {{ $value }}s, exceeds scrape_interval/3. rate() timestamp spacing is drifting; check VMAgent throttling or target responsiveness."
 
   # ログベースのアラートグループ（メトリクスベース）
   - name: logs
