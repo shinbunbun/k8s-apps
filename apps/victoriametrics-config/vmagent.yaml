@@ -20,13 +20,11 @@ spec:
     key: scrape-config.yaml
   secrets:
     - vm-monitoring-token
-  # ストレージ削減: ヒストグラムの *_bucket メトリクスを drop。
-  # Cilium/Hubble 系 4 job は公式ダッシュボードの quantile パネルで
-  # bucket を必要とするため例外として保持する。
-  # (count/sum は残るので平均値は他ジョブでも計算可能)
+  # ストレージ削減: ヒストグラムの *_bucket メトリクスを全 job で drop。
+  # (count/sum は残るので平均値は計算可能。quantile が必要になった場合は
+  # 個別に drop 除外条件を追加する)
   inlineRelabelConfig:
-    - if: '{job!~"cilium-agent|cilium-operator|hubble|hubble-relay"}'
-      source_labels: [__name__]
+    - source_labels: [__name__]
       regex: '.*_bucket$'
       action: drop
   affinity:
