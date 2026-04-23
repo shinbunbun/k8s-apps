@@ -138,9 +138,13 @@ spec:
                 .date = format_timestamp(.timestamp, format: "%Y-%m-%d") ?? format_timestamp!(now(), format: "%Y-%m-%d")
           sinks:
             # Garage (S3 互換) へ ndjson + zstd で書き出し
-            # raw/date=YYYY-MM-DD/hour=HH/ prefix で 5 分ごとの小ファイル生成。
-            # 日次 compaction CronJob (Phase 2c) で DuckDB が読んで
-            # daily/date=YYYY-MM-DD/logs.parquet (Parquet zstd) に変換する。
+            # raw/source=<log_type>/date=YYYY-MM-DD/hour=HH/ prefix で
+            # 5 分ごとの小ファイル生成。source は Fluent Bit が付与する
+            # log_type (systemd / k8s-pods / routeros / macos-unified)。
+            # ソースごとにスキーマが異なるため、DuckDB read_ndjson の
+            # スキーマ推論を破綻させないよう物理ファイルを分離する。
+            # 日次 compaction CronJob (Phase 2c) で DuckDB が source 別に
+            # 読んで daily/date=.../source=.../logs.parquet に変換する。
             garage_ndjson_raw:
               type: aws_s3
               inputs: [enrich]
@@ -148,7 +152,7 @@ spec:
               endpoint: http://garage.garage.svc.cluster.local:3900
               region: garage
               # auth は envFrom 由来の AWS_* 環境変数を暗黙に読む
-              key_prefix: "raw/date=%Y-%m-%d/hour=%H/"
+              key_prefix: "raw/source={{ log_type }}/date=%Y-%m-%d/hour=%H/"
               encoding:
                 codec: json
               # aws_s3 sink は codec=json の時 default で newline_delimited framing
