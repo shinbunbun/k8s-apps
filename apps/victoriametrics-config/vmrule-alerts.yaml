@@ -554,47 +554,17 @@ spec:
           summary: "High Loki query latency"
           description: "95th percentile query latency is {{ $value }} seconds"
 
-  # ストレージ容量監視 (Phase 0)
-  # Garage クラスタの実効容量 (RF=3 で raw 120GiB → usable ~40GiB) を監視。
-  # Loki chunks / CNPG backup / Parquet アーカイブが共有で消費する。
-  # Garage は per-bucket 使用量を /metrics に出さないため、node ごとの local disk
-  # 空き容量 (garage_local_disk_avail / garage_local_disk_total) で判定する。
-  # bucket 別の growth spike は Garage の admin API (garage bucket list) を定期的に
-  # 問い合わせる別 exporter が必要になるため、本 rule では監視しない。
+  # Garage クラスタ健全性監視
+  # ディスク容量はノード全体 (ホスト FS) に対する監視が `DiskSpaceLow` (上記 system-alerts
+  # グループ、85% 閾値) で既に担保されている。
+  # local-path provisioner は PVC スコープの容量メトリクスを提供せず、Garage 自身の
+  # `garage_local_disk_*` も基盤 FS の値をそのまま返すため、PVC 別の容量監視はできない
+  # (Garage が 340 MiB しか使っていなくてもホスト FS の他ワークロードで発火するため廃止)。
+  # bucket 別の実使用量を追うには `garage bucket list` を CronJob 化して Pushgateway に
+  # 流すか、別 exporter を書く必要があり、本 rule では対象外。
   - name: storage-capacity
     interval: 60s
     rules:
-      # Garage node 使用率 警告 (空き 30% 未満 = 使用率 70% 超、該当ノードで発報)
-      # min by (instance) で発報 instance ラベルを保持し、どのノードが逼迫しているか判別可能にする
-      - alert: GarageDiskUsageHigh
-        expr: 'min by (instance) (garage_local_disk_avail{job="garage"} / garage_local_disk_total{job="garage"}) < 0.3'
-        for: 30m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Garage node {{ $labels.instance }} disk free below 30%"
-          description: "Garage node {{ $labels.instance }} has less than 30% free disk. Available: {{ $value | humanizePercentage }}. Consider PVC 拡張 or retention 調整."
-
-      # Garage node 使用率 危険 (空き 15% 未満 = 使用率 85% 超、該当ノードで発報)
-      - alert: GarageDiskUsageCritical
-        expr: 'min by (instance) (garage_local_disk_avail{job="garage"} / garage_local_disk_total{job="garage"}) < 0.15'
-        for: 10m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Garage node {{ $labels.instance }} disk free below 15%"
-          description: "Garage node {{ $labels.instance }} has less than 15% free disk. Immediate action required: PVC 拡張 or retention 短縮."
-
-      # Garage 容量枯渇予測 (直近 7 日の傾きで 30 日以内に 10% を下回る)
-      - alert: GarageDiskExhaustionPredicted
-        expr: 'min by (instance) (predict_linear(garage_local_disk_avail{job="garage"}[7d], 86400 * 30)) < 0.1 * min by (instance) (garage_local_disk_total{job="garage"})'
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: "Garage node {{ $labels.instance }} predicted to reach <10% free within 30 days"
-          description: "Based on the last 7 days of trend, Garage node {{ $labels.instance }} will fall below 10% free disk in 30 days. Plan PVC expansion."
-
       # Garage クラスタ健全性 (いずれかノード断絶) —
       # write quorum (RF=3, consistent) は 2/3 で維持されるが検知対象
       # job="garage" で他 exporter の同名メトリクスとの衝突を避ける
