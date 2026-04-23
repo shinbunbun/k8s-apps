@@ -44,7 +44,7 @@
       "type": "gauge",
       "id": 1,
       "title": "Garage Disk 使用率 (最大ノード)",
-      "description": "最も使用率の高いノードの disk 使用率。70% で warning、85% で critical のアラートが発火する (GarageDiskUsageHigh/Critical)。RF=3 で raw 120GiB → usable ~40GiB。",
+      "description": "最も使用率の高いノードの disk 使用率。local-path は PVC スコープの容量を持たないため本 metric はホスト FS 全体を指す (Garage 自身の使用量ではなく node 全体の使用率)。85% 超はノードレベルの DiskSpaceLow アラートで検知。Garage 論理使用量は `garage bucket list` で確認。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
       "options": {
@@ -122,7 +122,7 @@
       "type": "stat",
       "id": 3,
       "title": "30 日後予測空き容量 (最小ノード)",
-      "description": "過去 7 日の空き容量トレンドを線形外挿。total の 10% 未満になると GarageDiskExhaustionPredicted アラートが発火。",
+      "description": "過去 7 日のホスト FS 空き容量トレンドを線形外挿 (local-path のため PVC ではなく node 全体)。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
       "options": {
@@ -206,7 +206,7 @@
       "type": "timeseries",
       "id": 5,
       "title": "Garage ノード別 disk 空き容量",
-      "description": "各ノードの残り空き容量 (garage_local_disk_avail)。GarageDiskExhaustionPredicted アラートは 30 日後予測 < 総容量の 10% で発報。per-bucket 使用量は Garage の /metrics に無いため表示不可、`garage bucket list` で確認する。",
+      "description": "各ノードの残り空き容量 (garage_local_disk_avail は local-path の基盤 FS を返すため、厳密には node の空き容量)。per-bucket 使用量は Garage の /metrics に無いため表示不可、`garage bucket list` で確認する。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
       "fieldConfig": {
