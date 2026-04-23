@@ -19,10 +19,10 @@
 # operator bump で Garage 本体が意図せず上がり metadata format 互換で事故る可能性があるため。
 # v2.x は 2025-06 以降安定、CNPG Barman / Loki AWS SDK との互換性も v1 同等。
 #
-# 【tokens】admin/metrics 両方とも事前生成 SOPS Secret を渡す。operator はこの token で
+# 【tokens】admin のみ事前生成 SOPS Secret を渡す。operator はこの token で
 # Garage admin API に接続して layout / key 管理を行う。
-# metricsRequireToken は PR-1 では false で起動し、PR-2 で VictoriaMetrics 側に
-# Bearer token を渡す scrape config を追加してから true に切替。
+# /metrics は cluster 内限定 public (metricsTokenSecretRef 未指定)。VMAgent は別 NS で
+# cross-NS Secret 共有を避けるため、MinIO の PROMETHEUS_AUTH_TYPE=public と同等扱い。
 apiVersion: garage.rajsingh.info/v1alpha1
 kind: GarageCluster
 metadata:
@@ -72,11 +72,10 @@ spec:
     adminTokenSecretRef:
       name: garage-admin-tokens
       key: admin-token
-    metricsTokenSecretRef:
-      name: garage-admin-tokens
-      key: metrics-token
-    # PR-1 では false、PR-2 で VictoriaMetrics scrape に Bearer token 渡してから true 化
-    metricsRequireToken: false
+    # /metrics は cluster 内限定 public (ClusterIP Service garage:3903 のみ、外部公開なし)。
+    # metricsTokenSecretRef を指定すると operator が metrics_token_file を TOML に書き、
+    # Garage は Bearer 強制になる。VMAgent が別 NS なので cross-NS Secret 共有を避けるため
+    # metricsTokenSecretRef を未指定にして MinIO の PROMETHEUS_AUTH_TYPE=public と同等にする。
 
   resources:
     requests:
