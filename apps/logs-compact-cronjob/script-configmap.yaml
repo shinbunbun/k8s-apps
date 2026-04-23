@@ -83,9 +83,26 @@ data:
         )
         src = f"s3://{BUCKET}/raw/date={target}/**/*.log.zst"
         dst = f"s3://{BUCKET}/daily/date={target}/logs.parquet"
+        # Fluent Bit から forward されるログはソース種別 (systemd-journal /
+        # k3s pods / RouterOS syslog / macOS Unified) でフィールドが違う。
+        # read_ndjson_auto のデフォルト (sample_size=20480, maximum_sample_files=32)
+        # だと sample に含まれないキー (例: k3s pod の _p) が後続行で現れると
+        # "unknown key" エラーで job が落ちる。
+        # union_by_name + 全ファイル/全行サンプルでスキーマを最大和にし、
+        # ignore_errors で残り破損レコードを skip する。
         con.execute(
             f"""
-            COPY (SELECT * FROM read_ndjson_auto('{src}', compression='zstd'))
+            COPY (
+              SELECT * FROM read_json(
+                '{src}',
+                format='newline_delimited',
+                compression='zstd',
+                union_by_name=true,
+                ignore_errors=true,
+                maximum_sample_files=-1,
+                sample_size=-1
+              )
+            )
             TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD);
             """
         )
