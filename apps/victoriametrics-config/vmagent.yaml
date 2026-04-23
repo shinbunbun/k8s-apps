@@ -13,6 +13,18 @@ spec:
   # ラベル/namespace セレクタの有無によらず全て拾う。
   # (未指定時の挙動は VM Operator のバージョン依存なので明示する)
   selectAllByDefault: true
+  # Operator デフォルトの limits.cpu=200m では Cilium/Hubble の VMPodScrape
+  # 追加 (scrape job 13 → 27 / target ~80) 後に CFS throttling が発生し、
+  # scrape_duration が 0.1〜30s のバイモーダルに乱高下 → rate() の分母が歪み
+  # Node Exporter ダッシュボード等の CPU 使用率が負値になる事象が起きた。
+  # 実測で throttle ratio 54–100% を観測したため明示的に引き上げる。
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "500Mi"
+    limits:
+      cpu: "2000m"
+      memory: "1Gi"
   remoteWrite:
     - url: "http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
   additionalScrapeConfigs:
