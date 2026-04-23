@@ -276,7 +276,7 @@
       "type": "timeseries",
       "id": 7,
       "title": "Loki Chunks Flushed",
-      "description": "MinIO に書き出された chunks の累積数と速度。loki-chunks バケット成長の原動力。",
+      "description": "Garage に書き出された chunks の累積数と速度。loki-chunks バケット成長の原動力。",
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
       "fieldConfig": {
