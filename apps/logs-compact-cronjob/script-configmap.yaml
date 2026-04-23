@@ -5,10 +5,11 @@
 #
 # 処理:
 # 1. JST 前日を算出
-# 2. s3://logs-archive/raw/date={y}/ に ndjson.zst があるか boto3 でチェック
-# 3. DuckDB httpfs で read_ndjson_auto(glob) → COPY TO Parquet zstd
-#    (daily/date={y}/logs.parquet、1 日 1 ファイル)
-# 4. 書き込み完了後、boto3 で raw/date={y}/ を削除
+# 2. Vector が key_prefix=raw/source={{ log_type }}/date=... で書き出した
+#    ソース別 prefix (systemd / k8s-pods / routeros / macos-unified) を列挙
+# 3. 各 source ごとに DuckDB httpfs で read_json(glob) → COPY TO Parquet zstd
+#    (daily/date={y}/source={src}/logs.parquet、source ごとに 1 ファイル)
+# 4. 書き込み完了後、boto3 で raw/source={src}/date={y}/ を削除
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,8 +18,12 @@ data:
   compact.py: |
     #!/usr/bin/env python3
     """
-    Daily compaction: logs-archive/raw/date=YYYY-MM-DD/**/*.log.zst (ndjson.zst)
-      -> logs-archive/daily/date=YYYY-MM-DD/logs.parquet (Parquet zstd)
+    Daily compaction per source:
+      logs-archive/raw/source=<src>/date=YYYY-MM-DD/hour=HH/**/*.log.zst (ndjson.zst)
+        -> logs-archive/daily/date=YYYY-MM-DD/source=<src>/logs.parquet (Parquet zstd)
+
+    ソース (log_type) 別に物理ファイルが分かれているため、DuckDB の
+    read_json は各 source で均一スキーマを扱え、推論が安定する。
     """
     import os
     import sys
@@ -33,6 +38,11 @@ data:
     REGION = os.environ.get("AWS_REGION", "garage")
     ACCESS_KEY = os.environ["AWS_ACCESS_KEY_ID"]
     SECRET_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
+
+    # Fluent Bit の log_type に一致する想定。追加のソースが増えたら
+    # ここに足すか、raw/ 直下の source= プレフィックスを動的 list する
+    # ロジックに変える。
+    SOURCES = ["systemd", "k8s-pods", "routeros", "macos-unified"]
 
 
     def target_date() -> str:
@@ -50,7 +60,7 @@ data:
         )
 
 
-    def has_raw_objects(s3, prefix: str) -> bool:
+    def has_objects(s3, prefix: str) -> bool:
         resp = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, MaxKeys=1)
         return resp.get("KeyCount", 0) > 0
 
@@ -70,7 +80,7 @@ data:
         return total
 
 
-    def compact(target: str) -> int:
+    def configure_duckdb():
         con = duckdb.connect()
         con.execute("INSTALL httpfs; LOAD httpfs;")
         con.execute(
@@ -82,15 +92,15 @@ data:
             SET s3_url_style='path';
             """
         )
-        src = f"s3://{BUCKET}/raw/date={target}/**/*.log.zst"
-        dst = f"s3://{BUCKET}/daily/date={target}/logs.parquet"
-        # Fluent Bit から forward されるログはソース種別 (systemd-journal /
-        # k3s pods / RouterOS syslog / macOS Unified) でフィールドが違う。
-        # read_ndjson_auto のデフォルト (sample_size=20480, maximum_sample_files=32)
-        # だと sample に含まれないキー (例: k3s pod の _p) が後続行で現れると
-        # "unknown key" エラーで job が落ちる。
-        # union_by_name + 全ファイル/全行サンプルでスキーマを最大和にし、
-        # ignore_errors で残り破損レコードを skip する。
+        return con
+
+
+    def compact_source(con, target: str, source: str) -> int:
+        src = f"s3://{BUCKET}/raw/source={source}/date={target}/**/*.log.zst"
+        dst = f"s3://{BUCKET}/daily/date={target}/source={source}/logs.parquet"
+        # source 別でスキーマは均一化されているが、稀に巨大 message (スタック
+        # トレース等) が 1 行に入るので maximum_object_size を 256MB に拡大。
+        # ignore_errors は破損 ndjson 行の安全側スキップ用に残す。
         con.execute(
             f"""
             COPY (
@@ -101,7 +111,8 @@ data:
                 union_by_name=true,
                 ignore_errors=true,
                 maximum_sample_files=-1,
-                sample_size=-1
+                sample_size=-1,
+                maximum_object_size=268435456
               )
             )
             TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD);
@@ -116,20 +127,31 @@ data:
         print(f"[compact] target date (JST): {target}", flush=True)
 
         s3 = s3_client()
-        raw_prefix = f"raw/date={target}/"
+        con = configure_duckdb()
 
-        if not has_raw_objects(s3, raw_prefix):
-            print(f"[compact] no objects under {raw_prefix}, skip", flush=True)
-            return 0
+        any_processed = False
+        for source in SOURCES:
+            src_prefix = f"raw/source={source}/date={target}/"
+            if not has_objects(s3, src_prefix):
+                print(f"[compact] {source}: no objects, skip", flush=True)
+                continue
 
-        rows = compact(target)
-        print(
-            f"[compact] wrote {rows} rows to daily/date={target}/logs.parquet",
-            flush=True,
-        )
+            rows = compact_source(con, target, source)
+            print(
+                f"[compact] {source}: wrote {rows} rows to "
+                f"daily/date={target}/source={source}/logs.parquet",
+                flush=True,
+            )
 
-        deleted = delete_prefix(s3, raw_prefix)
-        print(f"[compact] deleted {deleted} objects under {raw_prefix}", flush=True)
+            deleted = delete_prefix(s3, src_prefix)
+            print(
+                f"[compact] {source}: deleted {deleted} objects under {src_prefix}",
+                flush=True,
+            )
+            any_processed = True
+
+        if not any_processed:
+            print(f"[compact] no sources had data for {target}", flush=True)
         return 0
 
 
