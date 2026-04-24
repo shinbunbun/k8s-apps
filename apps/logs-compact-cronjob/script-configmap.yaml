@@ -83,10 +83,13 @@ data:
     def configure_duckdb():
         con = duckdb.connect()
         con.execute("INSTALL httpfs; LOAD httpfs;")
-        # memory_limit を pod limit より控えめに設定し、超過しそうな
-        # ハッシュ/ソート操作は temp_directory (/tmp、emptyDir で disk
-        # backed) にスピルさせる。macos-unified のような 1 日 100 万行
-        # 超の大量ログでも OOMKill を回避する。
+        # DuckDB の read_json 内部バッファは disk spill 対象外なので、
+        # macos-unified のような大量 ndjson は in-memory で処理する
+        # しかない (spill できる operation は Hash Join / Order By 等
+        # に限られる)。memory_limit は pod limit を食い尽くさないよう
+        # 少し控えめ、temp_directory は残しておいて集計系 op では spill
+        # を効かせる (将来 Phase 2d 相当を足すときの保険)。
+        # nixos-desktop は RAM 余裕あり、ワンショット Job の一時スパイクは許容。
         con.execute(
             f"""
             SET s3_endpoint='{ENDPOINT}';
@@ -94,7 +97,7 @@ data:
             SET s3_secret_access_key='{SECRET_KEY}';
             SET s3_use_ssl=false;
             SET s3_url_style='path';
-            SET memory_limit='3GB';
+            SET memory_limit='12GB';
             SET temp_directory='/tmp/duckdb-spill';
             """
         )

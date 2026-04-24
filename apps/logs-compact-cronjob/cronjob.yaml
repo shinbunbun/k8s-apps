@@ -50,9 +50,12 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  # DuckDB が routeros / macos-unified などの大量ファイルを
-                  # 読み取る際に一時的に数 GB 使うケースがあるため余裕を持たせる
-                  memory: 4Gi
+                  # macos-unified の 1 日 100 万行超 ndjson を DuckDB の
+                  # read_json で処理する際、JSON parse バッファが disk
+                  # spill 対象外で memory_limit にぶつかる (2.7 GiB で
+                  # OOMException)。nixos-desktop は RAM 余裕ありワンショット
+                  # Job のスパイクは許容、in-memory で処理させる。
+                  memory: 16Gi
               volumeMounts:
                 - name: script
                   mountPath: /scripts
