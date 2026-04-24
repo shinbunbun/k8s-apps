@@ -1,0 +1,80 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    ":semanticCommits",
+    ":timezone(Asia/Tokyo)",
+    ":dependencyDashboard",
+  ],
+
+  commitMessageTopic: "{{depName}}",
+  commitMessageAction: "更新",
+  commitMessageExtra: "{{currentVersion}} → {{newVersion}}",
+  labels: ["dependencies", "renovate"],
+
+  schedule: ["before 9am on friday"],
+  timezone: "Asia/Tokyo",
+
+  dependencyDashboard: true,
+  dependencyDashboardTitle: "📦 Renovate Dependency Dashboard",
+
+  ignorePaths: [
+    "**/*.enc.yaml",
+    "apps/_templates/**",
+  ],
+
+  argocd: {
+    managerFilePatterns: [
+      "/^infrastructure/.+/application\\.yaml$/",
+      "/^bootstrap/.+\\.yaml$/",
+    ],
+  },
+  kubernetes: {
+    managerFilePatterns: [
+      "/^apps/.+/.+\\.yaml$/",
+      "/^infrastructure/.+/.+\\.yaml$/",
+      "/^jobs/.+\\.yaml$/",
+      "/^manifests/.+\\.yaml$/",
+    ],
+  },
+
+  packageRules: [
+    {
+      description: "Patch release は自動マージ",
+      matchUpdateTypes: ["patch"],
+      automerge: true,
+      automergeType: "pr",
+      platformAutomerge: true,
+    },
+    {
+      description: "VictoriaMetrics スタックをグループ化",
+      matchPackageNames: [
+        "victoria-metrics-operator",
+        "/^victoriametrics\\//",
+      ],
+      groupName: "victoriametrics",
+    },
+    {
+      description: "Loki / Vector 関連をグループ化",
+      matchPackageNames: ["loki", "vector", "log-archiver-vector"],
+      groupName: "loki-stack",
+    },
+    {
+      description: "CNPG 関連をグループ化",
+      matchPackageNames: ["cloudnative-pg", "/^cnpg-/"],
+      groupName: "cnpg",
+    },
+    {
+      description: "Major は手動レビュー",
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      labels: ["dependencies", "renovate", "major"],
+    },
+    {
+      description: "latest 系タグは追跡不可のため無効化",
+      matchCurrentVersion: "/^(latest|stable|main|master|edge)$/",
+      enabled: false,
+    },
+  ],
+}
