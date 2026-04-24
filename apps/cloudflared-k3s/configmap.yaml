@@ -25,10 +25,6 @@ data:
         service: http://obsidian-livesync.obsidian-livesync.svc.cluster.local:5984
         originRequest:
           httpHostHeader: private-obsidian.shinbunbun.com
-      - hostname: opensearch.shinbunbun.com
-        service: http://opensearch-dashboards.opensearch-dashboards.svc.cluster.local:5601
-        originRequest:
-          httpHostHeader: opensearch.shinbunbun.com
       - hostname: calendar-bot.shinbunbun.com
         service: http://google-calendar-bot.google-calendar-bot.svc.cluster.local:80
         originRequest:
