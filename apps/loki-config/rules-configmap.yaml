@@ -38,7 +38,7 @@ data:
           # エラーログ即時検知（1分間に1件以上でアラート）
           - alert: ErrorLogDetected
             expr: |
-              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start|docker-opensearch-dashboards-start", level="error"} [1m])) by (host) > 0
+              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start", level="error"} [1m])) by (host) > 0
             for: 0s
             labels:
               severity: warning
