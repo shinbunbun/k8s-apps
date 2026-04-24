@@ -36,7 +36,7 @@ data:
     import traceback
     from collections import defaultdict
 
-    import boto3  # noqa: F401  (migrate.py 内で未使用だが duckdb/S3経由で boto3 が必要)
+    import boto3
     import duckdb
     from opensearchpy import OpenSearch
 
@@ -67,6 +67,16 @@ data:
         )
 
 
+    def s3_client():
+        return boto3.client(
+            "s3",
+            endpoint_url=f"http://{ENDPOINT_S3}",
+            aws_access_key_id=ACCESS_KEY,
+            aws_secret_access_key=SECRET_KEY,
+            region_name=REGION,
+        )
+
+
     def list_target_indices(os_cli):
         """logs-* indices (open + close 両方) を返す"""
         resp = os_cli.cat.indices(index="logs-*", format="json", h="index,status")
@@ -75,6 +85,51 @@ data:
         # 念のため sort (決定的順序で残差が追える)
         idx.sort(key=lambda p: p[0])
         return idx
+
+
+    def scan_existing_parquets(s3):
+        """
+        S3 を走査して、各インデックスの既存 logs-opensearch-*.parquet を集計する。
+
+        Returns:
+          completed: set of index names where a 'final' suffixed file exists (= 完走)
+          partial:   dict index_name -> [S3 keys] of 'part' suffixed files (= 途中中断)
+        """
+        completed = set()
+        partial = {}
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=BUCKET, Prefix="daily/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if "/logs-opensearch-" not in key or not key.endswith(".parquet"):
+                    continue
+                filename = key.rsplit("/", 1)[1]
+                # filename = logs-opensearch-<index>-<tag>-<n>.parquet
+                stem = filename[len("logs-opensearch-") : -len(".parquet")]
+                parts = stem.rsplit("-", 2)
+                if len(parts) != 3:
+                    continue
+                index_name, tag, _ = parts
+                if tag == "final":
+                    completed.add(index_name)
+                elif tag == "part":
+                    partial.setdefault(index_name, []).append(key)
+        # final がある index の partial エントリは除外 (次回削除対象にしない)
+        for idx_name in completed:
+            partial.pop(idx_name, None)
+        return completed, partial
+
+
+    def delete_keys(s3, keys):
+        """S3 オブジェクトを 1000 件単位で一括削除"""
+        total = 0
+        for i in range(0, len(keys), 1000):
+            batch = [{"Key": k} for k in keys[i : i + 1000]]
+            s3.delete_objects(
+                Bucket=BUCKET, Delete={"Objects": batch, "Quiet": True}
+            )
+            total += len(batch)
+        return total
 
 
     def ensure_open(os_cli, index, was_closed):
@@ -240,7 +295,17 @@ data:
         )
 
         os_cli = os_client()
+        s3 = s3_client()
         con = configure_duckdb()
+
+        # 既存の Parquet を走査して、再開時の skip / cleanup 対象を決定
+        print("[migrate] scanning existing parquets under daily/ ...", flush=True)
+        completed, partial = scan_existing_parquets(s3)
+        print(
+            f"[migrate] existing state: {len(completed)} completed indices, "
+            f"{len(partial)} partial indices",
+            flush=True,
+        )
 
         indices = list_target_indices(os_cli)
         print(f"[migrate] target indices: {len(indices)}", flush=True)
@@ -248,6 +313,21 @@ data:
         grand_total = 0
         for i, (idx, status) in enumerate(indices, 1):
             was_closed = status == "close"
+            if idx in completed:
+                print(
+                    f"[migrate] [{i}/{len(indices)}] {idx} SKIP (already completed)",
+                    flush=True,
+                )
+                continue
+            if idx in partial:
+                # 途中で中断した index: 古い part-*.parquet を全削除してから再処理
+                stale = partial[idx]
+                deleted = delete_keys(s3, stale)
+                print(
+                    f"[migrate] [{i}/{len(indices)}] {idx} cleanup: "
+                    f"deleted {deleted} partial parquets before retry",
+                    flush=True,
+                )
             print(
                 f"[migrate] [{i}/{len(indices)}] {idx} (status={status})",
                 flush=True,
@@ -263,7 +343,7 @@ data:
             finally:
                 restore_state(os_cli, idx, was_closed)
 
-        print(f"[migrate] DONE. total rows: {grand_total}", flush=True)
+        print(f"[migrate] DONE. total rows this run: {grand_total}", flush=True)
         return 0
 
 
