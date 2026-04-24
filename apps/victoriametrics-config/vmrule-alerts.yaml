@@ -276,10 +276,26 @@ spec:
           summary: "RouterOS interface {{ $labels.name }} is down"
           description: "Interface {{ $labels.name }} on RouterOS has been down for more than 2 minutes."
 
-      # RouterOSインターフェースエラー率（wg-home は閾値緩和）
+      # RouterOSインターフェースエラー率 (物理 interface)
       - alert: RouterOSInterfaceErrors
-        expr: '(rate(mktxp_interface_rx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01 or rate(mktxp_interface_tx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01) or (rate(mktxp_interface_rx_error_total{job="routeros",name="wg-home"}[5m]) > 0.1 or rate(mktxp_interface_tx_error_total{job="routeros",name="wg-home"}[5m]) > 0.1)'
+        expr: '(rate(mktxp_interface_rx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01 or rate(mktxp_interface_tx_error_total{job="routeros",name!="wg-home"}[5m]) > 0.01)'
         for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on RouterOS interface {{ $labels.name }}"
+          description: "Interface {{ $labels.name }} is experiencing high error rates ({{ $value }} errors/sec)."
+
+      # RouterOSインターフェースエラー率 (wg-home 専用)
+      # wg-home は GitHub Actions runner 向け動的 peer の teardown 後に
+      # TCP retransmit tail が RouterOS で drop され tx-error burst
+      # (2-3 min, peak ~4 err/s) を生じる。これは WireGuard + 動的 peer + TCP の
+      # 組み合わせ上避けられない自然な挙動で interface 障害ではない。
+      # rate[10m] + for:15m で burst を許容しつつ持続的な異常のみ検知する。
+      # interface down 自体は別アラート RouterOSInterfaceDown (for:2m) でカバー。
+      - alert: RouterOSInterfaceErrorsWg
+        expr: 'rate(mktxp_interface_rx_error_total{job="routeros",name="wg-home"}[10m]) > 0.5 or rate(mktxp_interface_tx_error_total{job="routeros",name="wg-home"}[10m]) > 0.5'
+        for: 15m
         labels:
           severity: warning
         annotations:
