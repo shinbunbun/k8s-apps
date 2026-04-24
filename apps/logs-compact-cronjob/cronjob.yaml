@@ -57,7 +57,15 @@ spec:
                 - name: script
                   mountPath: /scripts
                   readOnly: true
+                # DuckDB が memory_limit を超えたときにスピル書き込みする先。
+                # emptyDir のデフォルトは node ディスク backed (tmpfs では
+                # ない) ので、実メモリを消費せずに大容量ソートが可能。
+                - name: duckdb-spill
+                  mountPath: /tmp/duckdb-spill
           volumes:
             - name: script
               configMap:
                 name: logs-compact-script
+            - name: duckdb-spill
+              emptyDir:
+                sizeLimit: 10Gi
