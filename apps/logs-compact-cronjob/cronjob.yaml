@@ -50,7 +50,9 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 2Gi
+                  # DuckDB が routeros / macos-unified などの大量ファイルを
+                  # 読み取る際に一時的に数 GB 使うケースがあるため余裕を持たせる
+                  memory: 4Gi
               volumeMounts:
                 - name: script
                   mountPath: /scripts
