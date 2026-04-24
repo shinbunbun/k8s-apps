@@ -19,7 +19,7 @@ metadata:
     app: opensearch-historical-migrate
 spec:
   backoffLimit: 2
-  activeDeadlineSeconds: 21600 # 6h
+  activeDeadlineSeconds: 43200 # 12h (初回実行で 6h 超過したため拡張、残余 logs-macos-* を吸収)
   ttlSecondsAfterFinished: 604800 # 7d
   template:
     metadata:
