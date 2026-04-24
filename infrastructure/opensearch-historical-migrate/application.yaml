@@ -1,0 +1,37 @@
+# OpenSearch 既存データ移行 (Phase Z) - ArgoCD Application
+#
+# k8s-apps リポジトリの jobs/opensearch-historical-migrate/ 配下を kustomize で
+# 読み込み、既存 namespace `logs-compact-cronjob` にデプロイする。
+# apps/ 配下に置かないのは ApplicationSet の自動検出 (namespace = path basename)
+# から外して既存 Secret を再利用するため。
+#
+# 【運用】Job 名 `opensearch-historical-migrate` の one-shot 実行。
+# 完了後は ttlSecondsAfterFinished (7日) で自動削除される。再実行が必要なら
+# `kubectl -n logs-compact-cronjob create job --from=job/opensearch-historical-migrate
+#   opensearch-migrate-retry-$(date +%s)` で同 ConfigMap を共有する形で作れる。
+#
+# 【prune】syncPolicy.automated.prune=false にしてある。Job 削除は人手で判断。
+# (ttl で pod が消えるが、Application CR ごと消すのは Phase Z 掃除 PR で明示的に)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opensearch-historical-migrate
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:shinbunbun/k8s-apps.git
+    targetRevision: main
+    path: jobs/opensearch-historical-migrate
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logs-compact-cronjob
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
