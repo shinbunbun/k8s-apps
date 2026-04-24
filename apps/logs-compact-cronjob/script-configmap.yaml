@@ -101,6 +101,13 @@ data:
         # source 別でスキーマは均一化されているが、稀に巨大 message (スタック
         # トレース等) が 1 行に入るので maximum_object_size を 256MB に拡大。
         # ignore_errors は破損 ndjson 行の安全側スキップ用に残す。
+        # source 別で物理ファイルを分離しているのでスキーマは均一。
+        # 当初は sample_size=-1 / maximum_sample_files=-1 で全行全ファイル
+        # サンプルにしていたが、routeros / macos-unified のような高頻度
+        # ログで pod が 2Gi メモリ制限に達して外部 kill されたため、
+        # デフォルトの控えめなサンプルに戻す。union_by_name と
+        # ignore_errors は残して同一 source 内のマイナーなフィールド
+        # 揺れに対応する。
         con.execute(
             f"""
             COPY (
@@ -110,8 +117,6 @@ data:
                 compression='zstd',
                 union_by_name=true,
                 ignore_errors=true,
-                maximum_sample_files=-1,
-                sample_size=-1,
                 maximum_object_size=268435456
               )
             )
