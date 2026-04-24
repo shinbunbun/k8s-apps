@@ -1,0 +1,26 @@
+# opensearch-historical-migrate - Kustomize エントリポイント
+#
+# 手書き Application (infrastructure/opensearch-historical-migrate/application.yaml)
+# が source.path として参照する。apps/ 配下ではないため ApplicationSet の
+# 自動生成からは除外される。Application の destination.namespace が
+# `logs-compact-cronjob` のため、kustomize 側で namespace override は不要。
+#
+# 既存 GarageKey "compact" の secretTemplate で同 namespace に生成される
+# `compact-garage-credentials` (logs-archive の read+write 権限) を
+# envFrom で再利用する。
+#
+# 【Phase Z】OpenSearch (nixos-desktop:9200) の logs-* インデックスから
+# @timestamp <= 2026-04-21 23:59:59 JST のドキュメントを
+# s3://logs-archive/daily/date=YYYY-MM-DD/source=<log_type>/logs-opensearch-<index>-*.parquet
+# に移行する one-shot Job。Vector 稼働開始日 (2026-04-22) より前の期間のみ対象で、
+# 既存 Vector 由来の logs.parquet (同 prefix) と共存する。
+#
+# resources:
+# - job.yaml              : one-shot 移行 Job
+# - script-configmap.yaml : Python スクリプト (opensearch-py + duckdb + boto3)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - job.yaml
+  - script-configmap.yaml
