@@ -24,8 +24,15 @@ spec:
     helm:
       valuesObject:
         operator:
-          # ServiceMonitor → VMServiceScrape 自動変換時に ArgoCD ignore アノテーション付与
-          prometheus_converter_add_argocd_ignore_annotations: true
+          # Prometheus Operator CRD (PodMonitor 等 monitoring.coreos.com) は cluster に
+          # インストールしておらず、自前 VM CRD のみで運用しているため converter を無効化。
+          # v0.69.0 では API group 不在時に該当コントローラを auto-disable しないバグがあり、
+          # 有効のままだと cache sync timeout で operator が CrashLoopBackOff する。
+          disable_prometheus_converter: true
+        # chart の disable_prometheus_converter は SCRAPECONFIG 用 env var を出力しない
+        # ため、新フラグ経由で全 6 種を一括 disable する (env var との二重指定で確実化)。
+        extraArgs:
+          controller.disableReconcileFor: PodMonitor,ServiceMonitor,Probe,PrometheusRule,AlertmanagerConfig,ScrapeConfig
         admissionWebhooks:
           certManager:
             enabled: false
