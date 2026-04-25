@@ -35,7 +35,7 @@ metadata:
 spec:
   replicas: 3
   zone: dc1
-  image: dxflrs/garage:v2.2.0
+  image: dxflrs/garage:v2.3.0
 
   replication:
     factor: 3
