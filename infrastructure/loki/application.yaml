@@ -44,7 +44,7 @@ spec:
     repoURL: https://grafana.github.io/helm-charts
     chart: loki
     # Chart 6.55.0 = Loki 3.6.7 (https://github.com/grafana/loki/blob/main/production/helm/loki/Chart.yaml)
-    targetRevision: "6.55.0"
+    targetRevision: "7.0.0"
     helm:
       valuesObject:
         deploymentMode: SimpleScalable
