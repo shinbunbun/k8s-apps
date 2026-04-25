@@ -58,7 +58,7 @@ spec:
     # Chart 0.51.0 = Vector 0.54.0-distroless-libc (2026-03 時点 最新安定)。
     # https://github.com/vectordotdev/helm-charts/releases
     # 将来 chart が更新されたらこの tag を上げる。
-    targetRevision: "0.51.0"
+    targetRevision: "0.52.0"
     helm:
       valuesObject:
         role: Aggregator
