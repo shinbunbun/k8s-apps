@@ -641,3 +641,51 @@ spec:
         annotations:
           summary: "Loki ingestion rate spike detected"
           description: "Loki ingestion is at {{ $value | humanize }}B/s, over 2x the hourly average. Check for runaway log sources."
+
+  # 日次 logs-compact CronJob (Phase 2c) の失敗監視
+  # CronJob は毎日 01:00 JST に走り、source 別に Garage logs-archive/raw/
+  # を Parquet に集約する。失敗が放置されると raw/ が溜まり続けるため検知する。
+  - name: log-compaction
+    interval: 60s
+    rules:
+      # 26 時間以上 (= 24h cron 1 周期 + 余裕 2h) 成功実績がない。
+      # 自動実行 (1 日 1 回) が失敗 or 動いていないことを意味する。手動 retry は
+      # last_successful_time を更新するので false positive にならない。
+      - alert: LogsCompactCronJobNoRecentSuccess
+        expr: |
+          (time() - kube_cronjob_status_last_successful_time{
+            cronjob="logs-compact",
+            namespace="logs-compact-cronjob"
+          }) > 60 * 60 * 26
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "logs-compact CronJob has no successful run in over 26h"
+          description: |
+            {{ $labels.namespace }}/{{ $labels.cronjob }} の最後の成功実行から
+            {{ $value | humanizeDuration }} 経過。01:00 JST の日次 compaction が
+            失敗している可能性。`kubectl -n logs-compact-cronjob get jobs,pods`
+            と Loki の `{namespace="logs-compact-cronjob"}` で確認すること。
+
+      # 自動実行 Job (CronJob 由来、名前末尾が数値タイムスタンプ) が backoffLimit
+      # 到達で Failed。手動 trigger (logs-compact-{retry,dbg,manual,macos}-*) は
+      # 除外して、本番自動実行のみ拾う。
+      - alert: LogsCompactJobFailed
+        expr: |
+          sum by (namespace, job_name) (
+            kube_job_failed{
+              condition="true",
+              namespace="logs-compact-cronjob",
+              job_name=~"logs-compact-[0-9]+"
+            }
+          ) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "logs-compact job {{ $labels.job_name }} failed"
+          description: |
+            {{ $labels.namespace }}/{{ $labels.job_name }} が backoffLimit に達して
+            Failed。`kubectl -n logs-compact-cronjob describe job {{ $labels.job_name }}`
+            と Loki の pod ログで原因確認を。
