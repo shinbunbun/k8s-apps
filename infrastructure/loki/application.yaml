@@ -7,9 +7,10 @@
 # memberlist で自動構成され、single-binary で起きる replicas>1 時の
 # WAL 破損リスクを回避できる。Microservices は家庭規模に過剰なので採用しない。
 #
-# 【レプリカ】各コンポーネント 2 replicas。HPA は未設定 (homelab 規模、
-# spike は ingester WAL で吸収できる想定)。read は比較的安全に HPA 化できるが
-# Phase 1 では固定 replicas で十分。
+# 【レプリカ】write/backend は 3 replicas (3 ノード分散、replication_factor: 2 と
+# 組み合わせて 1 pod 不在でも 2/3 で quorum 維持)。read は 2 replicas (quorum 不要)。
+# これによりノード障害時も rolling update 中も書き込み継続。
+# HPA は未設定 (homelab 規模、spike は ingester WAL で吸収できる想定)。
 #
 # 【ストレージ】v13 + TSDB + S3 (infrastructure/garage-operator + apps/garage)。
 # 2026-04 に MinIO (community edition) archive に伴い Garage へ移行。
@@ -144,7 +145,7 @@ spec:
                     topologyKey: kubernetes.io/hostname
 
         write:
-          replicas: 2
+          replicas: 3
           extraEnvFrom:
             - secretRef:
                 name: loki-garage-credentials
@@ -160,7 +161,7 @@ spec:
                     topologyKey: kubernetes.io/hostname
 
         backend:
-          replicas: 2
+          replicas: 3
           extraEnvFrom:
             - secretRef:
                 name: loki-garage-credentials
