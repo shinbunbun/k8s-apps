@@ -4,9 +4,14 @@
 # Vector の batch.timeout_secs=300 (5 分) により 00:55 頃が最後の flush なので、
 # 01:00 起動時点で前日分は確定している想定。
 #
-# Image は python:3.12-slim を使い、起動時に duckdb / boto3 を pip install する
+# Image は python:3.14-slim を使い、起動時に duckdb / boto3 を pip install する
 # (毎回 20-30 秒程度)。専用イメージを焼くコスト vs 保守性のトレードオフで、
 # 日次 1 回なので pip install で十分。
+#
+# duckdb は cp314 wheel を提供する 1.5.2 以降に pin する必要がある。1.1.3 は
+# cp313 までしか wheel が無く、python:3.14-slim 上ではソースビルド (g++ 不在で
+# 失敗) にフォールバックする。python image を bump する際は対応する duckdb
+# wheel の有無を併せて確認すること。
 #
 # Secret `compact-garage-credentials` (Garage Operator が GarageKey "compact" の
 # secretTemplate で logs-compact-cronjob NS に自動生成; AWS_ACCESS_KEY_ID /
@@ -40,7 +45,7 @@ spec:
               args:
                 - |
                   set -euo pipefail
-                  pip install --no-cache-dir --quiet duckdb==1.1.3 boto3==1.35.99
+                  pip install --no-cache-dir --quiet duckdb==1.5.2 boto3==1.35.99
                   exec python /scripts/compact.py
               envFrom:
                 - secretRef:
