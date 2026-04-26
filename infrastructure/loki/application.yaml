@@ -41,10 +41,13 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://grafana.github.io/helm-charts
+    # 2026-04: grafana/helm-charts の loki chart は 7.0.0 から GEL (Grafana Enterprise Logs)
+    # 専用化されたため、OSS 向け公式後継の grafana-community/helm-charts に移行。
+    # 参考: https://github.com/grafana/loki/issues/20705
+    repoURL: https://grafana-community.github.io/helm-charts
     chart: loki
-    # Chart 6.55.0 = Loki 3.6.7 (https://github.com/grafana/loki/blob/main/production/helm/loki/Chart.yaml)
-    targetRevision: "6.55.0"
+    # Chart 13.2.3 = Loki 3.7.1 (https://github.com/grafana-community/helm-charts/blob/main/charts/loki/Chart.yaml)
+    targetRevision: "13.2.3"
     helm:
       valuesObject:
         deploymentMode: SimpleScalable
@@ -68,8 +71,6 @@ spec:
           rules:
             enabled: false
           serviceMonitor:
-            enabled: false
-          selfMonitoring:
             enabled: false
 
         loki:
