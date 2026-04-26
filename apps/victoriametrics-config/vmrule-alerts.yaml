@@ -466,6 +466,21 @@ spec:
           summary: "k3s API server is down"
           description: "k3s API server has been unreachable for more than 2 minutes."
 
+      # apiserver の kubelet client (HTTP/2 接続プール) が dead-but-cached state に
+      # 陥ったときの検知。修復は当該 instance のノードで k3s 再起動。
+      - alert: ApiserverKubeletProxyHighFailureRatio
+        expr: |
+          sum by (instance) (rate(apiserver_request_total{job="k3s-apiserver",resource="nodes",subresource="proxy",code=~"5.."}[5m]))
+          /
+          sum by (instance) (rate(apiserver_request_total{job="k3s-apiserver",resource="nodes",subresource="proxy"}[5m]))
+          > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "apiserver {{ $labels.instance }} failing kubelet proxy (>50% 5xx)"
+          description: "{{ $labels.instance }} returns 5xx for >50% of /api/v1/nodes/*/proxy/* requests over 5m. Likely a stuck HTTP/2 connection in the apiserver's kubelet client cache. Restart k3s on this node to clear the connection pool."
+
       # ノード未準備
       - alert: KubeNodeNotReady
         expr: 'kube_node_status_condition{condition="Ready",status="true"} == 0'
