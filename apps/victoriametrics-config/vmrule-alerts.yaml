@@ -122,9 +122,11 @@ spec:
           summary: "High packet drop rate on RouterOS interface"
           description: "Interface {{ $labels.name }} is dropping packets at {{ $value }} packets/sec"
 
-      # インターフェース帯域使用率 (mktxp_interface_rate は monitor collector がリンク速度 Mbps を返すため *1e6 で bps 換算)
+      # インターフェース帯域使用率 (mktxp_interface_rate は monitor collector がリンク速度 Mbps を返すため /1e6 で比率化)
+      # VictoriaMetrics の MetricsQL は `vector / (vector * scalar)` の括弧を尊重せず
+      # `vector / vector * scalar` (左結合) として評価するため、連続除算 `... / rate / 1e6` で同じ式を表現する。
       - alert: RouterOSHighBandwidthUsage
-        expr: '(rate(mktxp_interface_rx_byte_total{job="routeros"}[5m]) * 8 / (mktxp_interface_rate{job="routeros"} * 1000000) > 0.8) or (rate(mktxp_interface_tx_byte_total{job="routeros"}[5m]) * 8 / (mktxp_interface_rate{job="routeros"} * 1000000) > 0.8)'
+        expr: '(rate(mktxp_interface_rx_byte_total{job="routeros"}[5m]) * 8 / mktxp_interface_rate{job="routeros"} / 1000000 > 0.8) or (rate(mktxp_interface_tx_byte_total{job="routeros"}[5m]) * 8 / mktxp_interface_rate{job="routeros"} / 1000000 > 0.8)'
         for: 5m
         labels:
           severity: warning
