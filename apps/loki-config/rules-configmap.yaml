@@ -202,3 +202,46 @@ data:
             annotations:
               summary: "macOS fault detected on {{ $labels.host }}"
               description: "{{ $value }} fault logs (critical) detected in the last minute"
+
+      # k3s Pod ログ監視アラート
+      # 2026-04: Alloy DaemonSet (infrastructure/alloy) が job=k8s-pods で
+      # 全 3 ノード (nixos-desktop / homemachine / g3pro) から Pod stdout/stderr を
+      # 収集する。システム / 観測スタック自身の namespace は Alloy 側で drop 済みだが
+      # アラート LogQL でも namespace!~ で二重除外して安全側に倒す。
+      - name: k3s_pod_monitoring
+        interval: 30s
+        rules:
+          # Pod エラーログ即時検知 (1分窓に1件以上で warning)
+          - alert: K3sPodErrorLogDetected
+            expr: |
+              sum(count_over_time({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [1m])) by (namespace, pod, host) > 0
+            for: 0s
+            labels:
+              severity: warning
+            annotations:
+              summary: "k3s pod error log detected ({{ $labels.namespace }}/{{ $labels.pod }} on {{ $labels.host }})"
+              description: "{{ $value }} error logs detected in the last minute"
+
+          # 高エラーレート (5分窓 warning)
+          - alert: K3sPodHighErrorRate5m
+            expr: |
+              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [5m])) by (namespace, pod) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+              window: 5m
+            annotations:
+              summary: "k3s pod high error rate ({{ $labels.namespace }}/{{ $labels.pod }})"
+              description: "Error rate is {{ $value }} errors/sec over 5 minutes"
+
+          # 持続的エラー (30分窓 critical)
+          - alert: K3sPodHighErrorRate30m
+            expr: |
+              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [30m])) by (namespace, pod) > 0.3
+            for: 10m
+            labels:
+              severity: critical
+              window: 30m
+            annotations:
+              summary: "k3s pod sustained errors ({{ $labels.namespace }}/{{ $labels.pod }})"
+              description: "Error rate is {{ $value }} errors/sec sustained over 30 minutes"

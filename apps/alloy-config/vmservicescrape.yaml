@@ -1,0 +1,26 @@
+# Alloy 自身の Prometheus メトリクスを VMAgent に取り込む VMServiceScrape
+#
+# Alloy はデフォルトで /metrics エンドポイント (port 12345) に自身の
+# 内部メトリクス (alloy_component_controller_running_components,
+# loki_source_kubernetes_*, loki_write_* など) を expose する。
+# DaemonSet なので各ノードの Pod を VMAgent が個別に scrape する。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: alloy
+spec:
+  namespaceSelector:
+    matchNames: [alloy]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+      app.kubernetes.io/instance: alloy
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: alloy
+        - targetLabel: cluster
+          replacement: homelab

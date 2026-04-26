@@ -1,0 +1,183 @@
+# Grafana Alloy - k3s Pod ログ収集 DaemonSet
+#
+# 設計判断:
+#
+# 【目的】k3s クラスタ全 3 ノード (nixos-desktop / homemachine / g3pro) の Pod
+# stdout/stderr ログを Loki に集約する。従来は nixos-desktop のホスト OS
+# Fluent Bit が /var/log/pods/ を tail していたが、homemachine/g3pro 上の Pod
+# ログが収集対象外になる問題があった。Promtail は 2026-03 EOL 済みのため
+# 後継の Grafana Alloy を採用。
+#
+# 【chart】grafana/alloy 1.8.0 (Alloy v1.16.0)。
+# https://github.com/grafana/alloy/releases
+#
+# 【controller】DaemonSet。各ノードに 1 Pod ずつ配置し、自ノードに乗っている
+# Pod のログだけを tail する (NODE_NAME env による node 名フィルタ)。
+# DaemonSet パターンで shared-nothing なため、1 ノード障害時も残り 2 ノードの
+# Alloy Pod が独立に動作継続する (HA は自然に担保)。
+#
+# 【ログ取得】loki.source.kubernetes (Alloy ネイティブ)。Kubernetes API の
+# pods/log エンドポイント経由で取得するため、ホストの /var/log/pods/ への
+# hostPath マウントが不要。CRI フォーマット解釈も内蔵。
+#
+# 【ラベル整合】既存 Fluent Bit (移管前は nixos-desktop で稼働) と同じ
+# job=k8s-pods, host=<node>, namespace, pod, container, level を出力する。
+# これにより既存 LogQL ダッシュボードや、apps/loki-config/rules-configmap.yaml
+# の既存アラートルール (もし job=k8s-pods を参照するものが将来追加されても)
+# 互換性を保つ。
+#
+# 【除外 namespace】kube-system / kube-public / kube-node-lease (k8s 標準)
+# + loki / victoriametrics / monitoring / alloy / log-archiver-vector
+# (観測スタック自身。自己ログをアラート対象にすると無限ループ)。
+#
+# 【Loki 送信先】loki-write.loki.svc.cluster.local:3100 (chart が自動生成する
+# write コンポーネント Service)。クラスタ内なので認証なし。LAN VIP
+# (192.168.128.14) は外部ホスト用なので使わない。
+#
+# 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 256Mi。
+# g3pro (Intel N150) でも問題ない軽量設定。ノード当たり処理量は少量。
+#
+# 【sync-wave】10: loki / log-archiver-vector と同階層 (Loki が先に立っている
+# 必要があるが、retry で吸収できるので厳密順序は不要)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: "1.8.0"
+    helm:
+      valuesObject:
+        controller:
+          type: daemonset
+
+        # NODE_NAME env を全 Pod に注入。River 設定で sys.env("NODE_NAME") として
+        # 参照し、自ノード上の Pod だけに収集対象を絞る (= 3 重取得を回避)。
+        alloy:
+          extraEnv:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # ホスト OS のログは収集しない (systemd-journal はホスト OS の
+          # Fluent Bit が引き続き担当)。
+          mounts:
+            varlog: false
+            dockercontainers: false
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+
+          configMap:
+            create: true
+            content: |
+              // ===== Service Discovery =====
+              // クラスタ全 Pod を列挙
+              discovery.kubernetes "pods" {
+                role = "pod"
+              }
+
+              // フィルタとラベル付与
+              discovery.relabel "pod_logs" {
+                targets = discovery.kubernetes.pods.targets
+
+                // DaemonSet: 自ノード上の Pod だけ keep (3 重収集回避)
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_node_name"]
+                  regex         = sys.env("NODE_NAME")
+                  action        = "keep"
+                }
+
+                // システム + 観測スタック自身の namespace は drop (自己ループ防止)
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  regex         = "kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector"
+                  action        = "drop"
+                }
+
+                // K8s メタデータ → ログラベル (既存 Fluent Bit 規約に整合)
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label  = "namespace"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_name"]
+                  target_label  = "pod"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label  = "container"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_node_name"]
+                  target_label  = "host"
+                }
+              }
+
+              // ===== Pod ログ取得 =====
+              // Kubernetes API 経由で Pod の stdout/stderr をストリーム取得
+              // (hostPath マウント不要、CRI 解釈は内蔵)
+              loki.source.kubernetes "pods" {
+                targets    = discovery.relabel.pod_logs.output
+                forward_to = [loki.process.parse.receiver]
+              }
+
+              // ===== パース =====
+              // JSON 形式ログから level を抽出してラベル化
+              // 非 JSON ログでは no-op (失敗してもパイプライン継続)
+              loki.process "parse" {
+                forward_to = [loki.write.default.receiver]
+
+                stage.json {
+                  expressions = { level = "level" }
+                }
+
+                stage.labels {
+                  values = { level = "" }
+                }
+
+                // 既存 Fluent Bit と同じ job ラベルを強制 (LogQL 互換性のため)
+                stage.static_labels {
+                  values = { job = "k8s-pods" }
+                }
+              }
+
+              // ===== Loki 送信 =====
+              // SimpleScalable mode の write コンポーネントへ直接 push
+              loki.write "default" {
+                endpoint {
+                  url = "http://loki-write.loki.svc.cluster.local:3100/loki/api/v1/push"
+                }
+              }
+
+        # serviceAccount + RBAC (chart デフォルトで pods/log, pods, namespaces
+        # など loki.source.kubernetes 必要権限が自動付与される)
+        serviceAccount:
+          create: true
+        rbac:
+          create: true
+
+        # 自身のメトリクスを VMServiceScrape で取り込むための Service
+        service:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: alloy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
