@@ -76,5 +76,15 @@
       matchCurrentVersion: "/^(latest|stable|main|master|edge)$/",
       enabled: false,
     },
+    {
+      // scanopy server image は pg_dump 17 client を内蔵しており (scanopy/scanopy@9681c1e
+      // "put PostgreSQL 17 client ahead of v16 on PATH")、upstream docker-compose.yml も
+      // postgres:17-alpine を pin している。upstream が bump するまで major は追従しない。
+      description: "scanopy の postgres major bump は upstream 追従待ち",
+      matchFileNames: ["apps/scanopy/postgres-deployment.yaml"],
+      matchPackageNames: ["postgres"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
   ],
 }
