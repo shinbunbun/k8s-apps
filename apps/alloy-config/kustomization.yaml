@@ -1,0 +1,14 @@
+# Alloy Config - Kustomize エントリポイント
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/alloy-config を
+# 自動検出して ArgoCD Application を生成する。alloy namespace にデプロイされ、
+# infrastructure/alloy で作成される Alloy DaemonSet と同一 namespace で共存する。
+#
+# resources:
+# - vmservicescrape.yaml : Alloy 自身の Prometheus メトリクスを VMAgent に取り込む
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: alloy
+
+resources:
+  - vmservicescrape.yaml
