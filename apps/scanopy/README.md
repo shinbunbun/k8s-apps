@@ -10,6 +10,7 @@
 ## 構成
 
 - `postgres-*.yaml` : `postgres:17-alpine` 単一 Pod + Piraeus PVC 2Gi
+  - upstream [scanopy/scanopy](https://github.com/scanopy/scanopy/blob/main/docker-compose.yml) の compose.yml が 17 を pin しており、scanopy server image が pg_dump 17 client を内蔵しているため、major は upstream 追従。Renovate でも major を抑止 (`renovate.json5`)
 - `server-*.yaml` : server Deployment + PVC 5Gi + ClusterIP + LAN LB (192.168.128.16)
 - `daemon-deployment.yaml` : hostNetwork Deployment replicas:1 (CAP_NET_RAW/ADMIN、同一 LAN なので 1 Pod で十分)
 - `secrets/scanopy-postgres.enc.yaml` : DB username/password
