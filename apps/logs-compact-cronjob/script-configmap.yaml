@@ -86,10 +86,13 @@ data:
         # DuckDB の read_json 内部バッファは disk spill 対象外なので、
         # macos-unified のような大量 ndjson は in-memory で処理する
         # しかない (spill できる operation は Hash Join / Order By 等
-        # に限られる)。memory_limit は pod limit を食い尽くさないよう
-        # 少し控えめ、temp_directory は残しておいて集計系 op では spill
-        # を効かせる (将来 Phase 2d 相当を足すときの保険)。
-        # nixos-desktop は RAM 余裕あり、ワンショット Job の一時スパイクは許容。
+        # に限られる)。memory_limit は pod limit (16Gi) から python ランタイム
+        # + duckdb 内部オーバーヘッド分を控除した 14GB に設定。1.1.3 では 12GB
+        # で動いていたが 1.5.2 で OOMException が出るようになったため上げた。
+        # temp_directory は残しておいて集計系 op では spill を効かせる
+        # (将来 Phase 2d 相当を足すときの保険)。
+        # preserve_insertion_order=false は COPY TO PARQUET でのメモリ節約用、
+        # 行順は (timestamp ベースで後段が並べ替えるので) 保持不要。
         con.execute(
             f"""
             SET s3_endpoint='{ENDPOINT}';
@@ -97,7 +100,8 @@ data:
             SET s3_secret_access_key='{SECRET_KEY}';
             SET s3_use_ssl=false;
             SET s3_url_style='path';
-            SET memory_limit='12GB';
+            SET memory_limit='14GB';
+            SET preserve_insertion_order=false;
             SET temp_directory='/tmp/duckdb-spill';
             """
         )
