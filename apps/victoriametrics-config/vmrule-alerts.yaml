@@ -466,6 +466,34 @@ spec:
           summary: "k3s API server is down"
           description: "k3s API server has been unreachable for more than 2 minutes."
 
+      # apiserver → kubelet proxy が 5xx を返す状態の検知
+      #
+      # 2026-04: alloy DaemonSet 投入時に発覚した障害の再発検知用。
+      # 特定の apiserver プロセスの kubelet client (Go HTTP/2 transport pool) が
+      # dead-but-cached state に陥ると nodes/<name>/proxy/* 経由の要求が 503 や
+      # context canceled で連発する。長期稼働の apiserver で発生しうる既知パターン。
+      # `kubectl logs <pod>` や `loki.source.kubernetes` の log streaming が
+      # 当該 apiserver にラウンドロビンされた時のみ無音化する症状で、症状側の
+      # 監視 (Pod ログ流入・Alloy 動作) では検知が遅れるため、発生源側 (apiserver)
+      # で 5xx 比率を直接監視する。
+      #
+      # しきい値根拠: 健全時は 0/sec、障害時は ~0.04/sec まで上昇 (実測)。
+      # ratio 0.5 (= 半数以上 5xx) で警報、5m 持続で発火。修復は当該 apiserver
+      # を載せているノードの k3s 再起動 (homemachine の場合 ssh nixos sudo
+      # systemctl restart k3s)。
+      - alert: ApiserverKubeletProxyHighFailureRatio
+        expr: |
+          sum by (instance) (rate(apiserver_request_total{job="k3s-apiserver",resource="nodes",subresource="proxy",code=~"5.."}[5m]))
+          /
+          sum by (instance) (rate(apiserver_request_total{job="k3s-apiserver",resource="nodes",subresource="proxy"}[5m]))
+          > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "apiserver {{ $labels.instance }} failing kubelet proxy (>50% 5xx)"
+          description: "{{ $labels.instance }} returns 5xx for >50% of /api/v1/nodes/*/proxy/* requests over 5m. Likely a stuck HTTP/2 connection in the apiserver's kubelet client cache. Restart k3s on this node to clear the connection pool."
+
       # ノード未準備
       - alert: KubeNodeNotReady
         expr: 'kube_node_status_condition{condition="Ready",status="true"} == 0'
