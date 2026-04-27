@@ -124,7 +124,13 @@ spec:
             vector_metrics:
               type: internal_metrics
           transforms:
-            # timestamp から date フィールドを派生させ、Parquet partitioning に使う
+            # timestamp から date / hour フィールドを派生させ、S3 partitioning に使う。
+            # JST 基準で計算する: aws_s3 sink の key_prefix で strftime (%Y-%m-%d 等)
+            # を使うと UTC で評価されてしまい、JST 基準で「昨日」を集計する
+            # compact.py と 9 時間ずれる (date=YYYY-MM-DD partition に翌日 JST 早朝
+            # 9 時間のレコードが混入し、当日 JST 早朝 9 時間のレコードは前日 partition
+            # に置き去りになる)。VRL で timezone を明示してフィールド化し、key_prefix
+            # からこれを参照することで sink 側の UTC 評価を回避する。
             enrich:
               type: remap
               inputs: [fluent_bit_forward]
@@ -133,9 +139,9 @@ spec:
                 # .timestamp は fluent source が event time (timestamp 型) を入れるが、
                 # Fluent Bit 側の record に `timestamp` が既にある (parser で JSON 抽出した
                 # ケース等) と string で上書きされる。format_timestamp の非 bang 版を
-                # 使い fallible にし、変換不能時は archive 時刻で fallback する
-                # (.date は partitioning 補助情報)。
-                .date = format_timestamp(.timestamp, format: "%Y-%m-%d") ?? format_timestamp!(now(), format: "%Y-%m-%d")
+                # 使い fallible にし、変換不能時は archive 時刻で fallback する。
+                .date = format_timestamp(.timestamp, format: "%Y-%m-%d", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%Y-%m-%d", timezone: "Asia/Tokyo")
+                .hour = format_timestamp(.timestamp, format: "%H", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%H", timezone: "Asia/Tokyo")
           sinks:
             # Garage (S3 互換) へ ndjson + zstd で書き出し
             # raw/source=<log_type>/date=YYYY-MM-DD/hour=HH/ prefix で
@@ -155,7 +161,9 @@ spec:
               # Vector の helm chart は customConfig を tpl で再評価するため、
               # Vector 自身の template ({{ field }}) を Helm にパースさせない
               # よう Go template の raw string literal ({{`...`}}) で escape する。
-              key_prefix: 'raw/source={{`{{ log_type }}`}}/date=%Y-%m-%d/hour=%H/'
+              # date / hour は enrich transform が JST で計算したフィールドを参照。
+              # strftime (%Y-%m-%d / %H) は UTC 評価のため使わない。
+              key_prefix: 'raw/source={{`{{ log_type }}`}}/date={{`{{ date }}`}}/hour={{`{{ hour }}`}}/'
               encoding:
                 codec: json
               # aws_s3 sink は codec=json の時 default で newline_delimited framing
