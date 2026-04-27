@@ -86,5 +86,18 @@
       matchUpdateTypes: ["major"],
       enabled: false,
     },
+    {
+      // 起動時 pip install の duckdb wheel と python image の cpython ABI 整合が必要。
+      // 2026-04 に renovate が python:3.12-slim → 3.14-slim を minor bump で merge し、
+      // duckdb 1.1.3 が cp314 wheel 未提供で source build にフォールバック → slim image
+      // に g++ 不在で日次 CronJob が完全停止した経緯あり (PR #196 で復旧)。
+      // 今後は python image bump 時に duckdb 側の wheel 配布状況を必ず確認したいので、
+      // major / minor の自動 PR は出さない (patch のみ追従で OK)。
+      description: "logs-compact-cronjob の python image は major/minor を自動 bump させない (duckdb wheel 整合性確認が必要)",
+      matchFileNames: ["apps/logs-compact-cronjob/cronjob.yaml"],
+      matchPackageNames: ["python"],
+      matchUpdateTypes: ["major", "minor"],
+      enabled: false,
+    },
   ],
 }
