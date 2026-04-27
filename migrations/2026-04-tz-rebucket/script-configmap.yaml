@@ -6,20 +6,26 @@ data:
   rebucket.py: |
     #!/usr/bin/env python3
     """
-    TZ re-bucket migration: UTC partition の Parquet を JST partition に再 bucket する。
+    TZ re-bucket migration: 既存 daily/date=YYYY-MM-DD/source=X/*.parquet (UTC partition、
+    schema 不統一) を、JST partition + schema 統一 (json VARCHAR 1 列) に変換する。
 
-    入力:
-      Era B (2025-10-14 .. 2026-04-21): s3://logs-archive/daily/date={UTC}/source=*/<files>.parquet
-        フラット形式 (1 row = 1 record)
-      Era A (2026-04-23 .. 2026-04-26): s3://logs-archive/daily/date={UTC}/source=*/logs.parquet
-        ネスト形式 (json STRUCT(...)[], date DATE, hour VARCHAR, source VARCHAR)、UNNEST が必要
-      Era C (2026-04-27 以降): s3://logs-archive/daily/date={UTC}/source=*/<files>.parquet
-        既に JST partition、フラット形式 (新 Vector の出力)
+    入力 schema (実機調査で判明):
+      MAP        : json MAP<VARCHAR,VARCHAR> + date DATE + source VARCHAR
+                   出現: 2025-10-14, 2025-10-15, 2026-04-12 (systemd のみ、計 3 partition)
+      FLAT       : @timestamp ほか直接 column 群 (11..200+ 列)、source ごとに大幅に異なる
+                   出現: 2025-10-16 .. 2026-04-21 の大部分 (計 474 partition)
+      STRUCT_LIST: json STRUCT(...)[] + date DATE + hour VARCHAR + source VARCHAR
+                   出現: 2026-04-23 .. 2026-04-26 (Era A、計 16 partition)
 
-    出力:
-      s3://logs-archive/daily-jst/date={JST}/source=*/logs.parquet (1 (jst, src) = 1 file)
+    出力 schema 統一:
+      json VARCHAR (= 1 record の全フィールドを JSON object 文字列としたもの)
 
-    Indexed Job として動作。JOB_COMPLETION_INDEX 0..195 が JST 2025-10-14..2026-04-27 に対応。
+    JST date 抽出は to_json 後の json_extract_string(j, '$."@timestamp"') 等を COALESCE。
+    対応 timestamp フィールド: @timestamp, timestamp, time。これら全てが NULL の record は drop。
+
+    FLAT の multi-file partition では union_by_name=true で読むと file 間の型衝突が起きる
+    (例: STRUCT(host, accept) vs MAP(VARCHAR, VARCHAR))。これを避けるため、FLAT のみ
+    per-file SELECT を UNION ALL で結合する。
     """
     import json
     import os
@@ -35,17 +41,13 @@ data:
     JST_START = date(2025, 10, 14)
     JST_END = date(2026, 4, 27)
 
-    # UTC partition 単位の era 境界
-    ERA_A_START_UTC = date(2026, 4, 23)
-    ERA_C_START_UTC = date(2026, 4, 27)
-
 
     def jst_date_for_index(idx: int) -> date:
         return JST_START + timedelta(days=idx)
 
 
     def utc_partitions_for(jst_d: date) -> tuple[date, date]:
-        # JST 1 日 (00:00 .. 23:59 JST) = UTC (jst_d - 1) 15:00 .. jst_d 14:59
+        # JST 1 日 (00:00..23:59 JST) = UTC (jst_d - 1) 15:00 .. jst_d 14:59
         return (jst_d - timedelta(days=1), jst_d)
 
 
@@ -61,7 +63,7 @@ data:
 
     def configure_duckdb():
         con = duckdb.connect()
-        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
         con.execute(
             f"""
             SET s3_endpoint='{ENDPOINT}';
@@ -69,7 +71,7 @@ data:
             SET s3_secret_access_key='{os.environ["AWS_SECRET_ACCESS_KEY"]}';
             SET s3_use_ssl=false;
             SET s3_url_style='path';
-            SET memory_limit='6GB';
+            SET memory_limit='12GB';
             SET threads=4;
             SET preserve_insertion_order=false;
             SET temp_directory='/tmp/duckdb-spill';
@@ -92,81 +94,97 @@ data:
         return sources
 
 
-    def has_objects(s3, prefix: str) -> bool:
-        return s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, MaxKeys=1).get("KeyCount", 0) > 0
+    def list_files(s3, prefix: str) -> list[str]:
+        out: list[str] = []
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=BUCKET, Prefix=prefix):
+            for o in page.get("Contents", []) or []:
+                out.append(o["Key"])
+        return out
 
 
-    def detect_era(utc_d: date) -> str:
-        if utc_d >= ERA_C_START_UTC:
-            return "C"
-        if utc_d >= ERA_A_START_UTC:
-            return "A"
-        return "B"
+    def detect_schema_kind(con, sample_key: str) -> str:
+        desc = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('s3://{BUCKET}/{sample_key}')"
+        ).fetchall()
+        types = {r[0]: r[1] for r in desc}
+        if "json" in types and types["json"].startswith("MAP"):
+            return "MAP"
+        if "json" in types and types["json"].startswith("STRUCT") and types["json"].endswith("[]"):
+            return "STRUCT_LIST"
+        return "FLAT"
 
 
-    def build_select(era: str, src_glob: str) -> str:
-        # Era B/C: フラット parquet をそのまま読む。
-        # Era A: ネスト形式 (json STRUCT(...)[]) を一段 UNNEST で record 化。
-        # DuckDB の UNNEST は alias 指定が制約多いので、サブクエリで rec 列に展開してから
-        # 上位で rec.* を解凍する形式で書く (公式推奨パターン)。
-        if era in ("B", "C"):
-            return f"""
-                SELECT *,
-                       COALESCE(
-                         TRY_CAST("@timestamp" AS TIMESTAMPTZ),
-                         TRY_CAST("timestamp"  AS TIMESTAMPTZ)
-                       ) AT TIME ZONE 'Asia/Tokyo' AS _ts_jst
-                FROM read_parquet('{src_glob}', union_by_name=true)
-            """
-        # Era A: UNNEST してフラット化
-        return f"""
-            WITH src AS (
-              SELECT UNNEST(json) AS rec
-              FROM read_parquet('{src_glob}', union_by_name=true)
-            )
-            SELECT rec.*,
-                   COALESCE(
-                     TRY_CAST(rec."@timestamp" AS TIMESTAMPTZ),
-                     TRY_CAST(rec."timestamp"  AS TIMESTAMPTZ)
-                   ) AT TIME ZONE 'Asia/Tokyo' AS _ts_jst
-            FROM src
+    def build_per_partition_select(s3, con, utc_d: date, source: str) -> tuple[str, str] | None:
+        """1 つの UTC partition の入力 SELECT を構築。
+
+        Returns: (kind, sql) where sql の SELECT は 1 列 j_str VARCHAR を返す。
+                 partition が空なら None。
         """
+        prefix = f"daily/date={utc_d}/source={source}/"
+        files = list_files(s3, prefix)
+        if not files:
+            return None
+        kind = detect_schema_kind(con, files[0])
+        if kind == "MAP":
+            glob = f"s3://{BUCKET}/{prefix}*.parquet"
+            return kind, f"SELECT to_json(json) AS j_str FROM read_parquet('{glob}', union_by_name=true)"
+        if kind == "STRUCT_LIST":
+            glob = f"s3://{BUCKET}/{prefix}*.parquet"
+            return kind, (
+                "SELECT to_json(rec) AS j_str FROM ("
+                f"SELECT UNNEST(json) AS rec FROM read_parquet('{glob}', union_by_name=true)"
+                ")"
+            )
+        # FLAT: per-file UNION ALL (file 間の型衝突を吸収)
+        per_file = [
+            f"SELECT to_json(t) AS j_str FROM read_parquet('s3://{BUCKET}/{k}', union_by_name=false) t"
+            for k in files
+        ]
+        return kind, "\nUNION ALL\n".join(per_file)
 
 
     def delete_object_if_exists(s3, key: str) -> None:
-        # Garage は DeleteObject が冪等 (存在しなくても 204) なのでそのまま呼ぶ
         s3.delete_object(Bucket=BUCKET, Key=key)
 
 
     def rebucket_one(con, s3, jst_d: date, source: str) -> dict:
         u_prev, u_cur = utc_partitions_for(jst_d)
-        parts: list[tuple[str, str]] = []
+        parts: list[tuple[date, str, str]] = []  # (utc_d, kind, sql)
         for u in (u_prev, u_cur):
-            if has_objects(s3, f"daily/date={u}/source={source}/"):
-                era = detect_era(u)
-                glob = f"s3://{BUCKET}/daily/date={u}/source={source}/*.parquet"
-                parts.append((era, glob))
+            sel = build_per_partition_select(s3, con, u, source)
+            if sel is not None:
+                parts.append((u, sel[0], sel[1]))
         if not parts:
             return {"jst_date": str(jst_d), "source": source, "status": "no_input"}
 
-        select_union = "\nUNION ALL BY NAME\n".join(
-            f"SELECT * FROM ({build_select(e, g)})" for e, g in parts
-        )
+        # 各 UTC partition の SELECT を UNION ALL で結合 (1 列 j_str VARCHAR で統一済み)
+        union_sql = "\nUNION ALL\n".join(sql for _, _, sql in parts)
+
+        # JST date 抽出: COALESCE で複数 timestamp フィールドに対応
+        with_ts_sql = f"""
+            WITH s AS (
+              {union_sql}
+            )
+            SELECT j_str,
+                   COALESCE(
+                     TRY_CAST(json_extract_string(j_str, '$."@timestamp"') AS TIMESTAMPTZ),
+                     TRY_CAST(json_extract_string(j_str, '$.timestamp')   AS TIMESTAMPTZ),
+                     TRY_CAST(json_extract_string(j_str, '$.time')        AS TIMESTAMPTZ)
+                   ) AT TIME ZONE 'Asia/Tokyo' AS _ts_jst
+            FROM s
+        """
 
         dst_key = f"daily-jst/date={jst_d}/source={source}/logs.parquet"
         dst = f"s3://{BUCKET}/{dst_key}"
 
-        # 冪等: 既存出力を delete してから書き直す
         delete_object_if_exists(s3, dst_key)
 
-        # 入力 scan で in_rows / null_ts / jst_match を 1 query で取得
         row = con.execute(
             f"""
-            SELECT
-              COUNT(*) AS in_rows,
-              COUNT(*) FILTER (WHERE _ts_jst IS NULL) AS null_ts_rows,
-              COUNT(*) FILTER (WHERE _ts_jst::DATE = DATE '{jst_d}') AS jst_match_rows
-            FROM ({select_union})
+            SELECT COUNT(*),
+                   COUNT(*) FILTER (WHERE _ts_jst IS NULL),
+                   COUNT(*) FILTER (WHERE _ts_jst::DATE = DATE '{jst_d}')
+            FROM ({with_ts_sql})
             """
         ).fetchone()
         in_rows, null_ts_rows, jst_match_rows = (int(row[0]), int(row[1]), int(row[2]))
@@ -174,8 +192,8 @@ data:
         con.execute(
             f"""
             COPY (
-              SELECT * EXCLUDE(_ts_jst)
-              FROM ({select_union})
+              SELECT j_str AS json
+              FROM ({with_ts_sql})
               WHERE _ts_jst::DATE = DATE '{jst_d}'
             ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD);
             """
@@ -188,7 +206,8 @@ data:
             "null_ts_rows": null_ts_rows,
             "jst_match_rows": jst_match_rows,
             "out_rows": int(out_rows),
-            "eras": [e for e, _ in parts],
+            "kinds": [k for _, k, _ in parts],
+            "utc_partitions": [str(u) for u, _, _ in parts],
             "status": "ok",
         }
 
