@@ -166,8 +166,13 @@ spec:
               key_prefix: 'raw/source={{`{{ log_type }}`}}/date={{`{{ date }}`}}/hour={{`{{ hour }}`}}/'
               encoding:
                 codec: json
-              # aws_s3 sink は codec=json の時 default で newline_delimited framing
-              # を適用するため出力は ndjson (1 行 1 JSON オブジェクト)。
+              # codec=json だけだと Vector 0.55 では batch 全体を 1 つの JSON 配列
+              # ([{...},{...}]) として書き出すため、compact.py の read_json
+              # (newline_delimited 期待) で各ファイルが 1 行として読まれてしまう。
+              # 明示的に newline_delimited framing を指定して 1 行 1 JSON object
+              # の ndjson にし、配列ラップを回避する。
+              framing:
+                method: newline_delimited
               compression: zstd
               batch:
                 timeout_secs: 300
