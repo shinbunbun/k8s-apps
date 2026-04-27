@@ -59,6 +59,11 @@ data:
 
 
     def target_date() -> str:
+        # COMPACT_TARGET_DATE env で override 可能 (orphan 日付の手動 backfill 用)。
+        # 形式: YYYY-MM-DD (JST date)。merge mode が冪等なので何度でも再実行可。
+        override = os.environ.get("COMPACT_TARGET_DATE", "").strip()
+        if override:
+            return override
         jst = ZoneInfo("Asia/Tokyo")
         return (datetime.now(jst).date() - timedelta(days=1)).isoformat()
 
