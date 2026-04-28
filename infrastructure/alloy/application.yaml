@@ -34,6 +34,13 @@
 # write コンポーネント Service)。クラスタ内なので認証なし。LAN VIP
 # (192.168.128.14) は外部ホスト用なので使わない。
 #
+# 【長期アーカイブ】loki.process の forward_to を 2 並列にし、片方は loki.write
+# (Loki 配送、既存)、もう片方は otelcol.receiver.loki → otelcol.exporter.otlphttp
+# 経由で log-archiver-vector の OTLP HTTP receiver (4318) に push する。
+# Vector 側で source=k8s-pods として Garage S3 (logs-archive バケット) に
+# ndjson.zst で書き出され、日次 logs-compact-cronjob が DuckDB で Parquet 化する。
+# OTLP 経路に障害が出ても Loki 経路は無影響 (forward_to 2 並列、独立配送)。
+#
 # 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 256Mi。
 # g3pro (Intel N150) でも問題ない軽量設定。ノード当たり処理量は少量。
 #
@@ -137,7 +144,11 @@ spec:
               // JSON 形式ログから level を抽出してラベル化
               // 非 JSON ログでは no-op (失敗してもパイプライン継続)
               loki.process "parse" {
-                forward_to = [loki.write.default.receiver]
+                // 2 並列: Loki 配送 (短期、検索用) + OTLP 経由で archive 経路 (長期)
+                forward_to = [
+                  loki.write.default.receiver,
+                  otelcol.receiver.loki.bridge.receiver,
+                ]
 
                 stage.json {
                   expressions = { level = "level" }
@@ -158,6 +169,38 @@ spec:
               loki.write "default" {
                 endpoint {
                   url = "http://loki-write.loki.svc.cluster.local:3100/loki/api/v1/push"
+                }
+              }
+
+              // ===== Archive bridge (Loki entries → OTLP logs) =====
+              // loki.process からの Loki entries を OTLP logs に変換し、
+              // log-archiver-vector の opentelemetry source へ HTTP push する。
+              // ラベル (namespace/pod/container/host/level) は OTLP attributes に
+              // 載り、log line は body に入る。Vector 側で source=k8s-pods として
+              // Garage S3 (logs-archive) に ndjson.zst で書き出される。
+              otelcol.receiver.loki "bridge" {
+                output {
+                  logs = [otelcol.exporter.otlphttp.vector.input]
+                }
+              }
+
+              otelcol.exporter.otlphttp "vector" {
+                client {
+                  endpoint = "http://log-archiver-vector.log-archiver-vector.svc.cluster.local:4318"
+                  tls {
+                    insecure = true
+                  }
+                }
+                // Vector replicas: 2 の rolling update / OOM kill / readiness 失敗で
+                // 4318 が瞬断する想定。queue + retry で取りこぼしを抑止する
+                // (長期 archive 用途、数秒〜数十秒のバッファは許容)。
+                sending_queue {
+                  enabled       = true
+                  num_consumers = 2
+                  queue_size    = 1000
+                }
+                retry_on_failure {
+                  enabled = true
                 }
               }
 
