@@ -25,7 +25,7 @@ spec:
               name: linstorcluster
             spec:
               # linstor-csi-controller の sidecar ノイズ抑制 patch
-              # - csi-snapshotter: snapshot.storage.k8s.io CRD 未導入のため sleep 化
+              # - csi-snapshotter: snapshot.storage.k8s.io CRD 未導入のため pause image に差し替えて停止
               # - csi-attacher: linstor-csi v1.10.6 が PublishedNodeIds を空配列で
               #   返すバグ (NodesAndConditionFromResources が temporary-diskless-attach
               #   property を持つ resource のみ列挙) により reconcile-sync 周期で
