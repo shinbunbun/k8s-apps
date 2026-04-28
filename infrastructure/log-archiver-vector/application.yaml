@@ -91,7 +91,11 @@ spec:
             memory: 128Mi
           limits:
             cpu: 500m
-            memory: 512Mi
+            # Fluent Forward の長期 TCP 接続が 1 pod に張り付き、片側だけ
+            # 流量が集中する (kube-proxy/Cilium L4 LB は接続単位の分散)。
+            # 偏在側の Pod が 512Mi limit でバースト時に OOMKilled になっていたため
+            # 1Gi に引き上げ。本質的な分散は Fluent Bit 側 upstream 設定で別途対応。
+            memory: 1Gi
 
         # Garage credentials を環境変数として注入 (AWS SDK 標準)。
         # vector-garage-credentials Secret は Garage Operator が GarageKey "vector" の
