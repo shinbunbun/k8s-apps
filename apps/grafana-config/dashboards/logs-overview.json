@@ -109,7 +109,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(rate({job=~\"systemd-journal|macos-unified\"}[5m]))",
+          "expr": "sum(rate({job=~\"systemd-journal|macos-unified|k8s-pods\"}[5m]))",
           "refId": "A",
           "legendFormat": "全体"
         }
@@ -155,17 +155,17 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified\", service!~\"loki|grafana-start\", level=\"error\"} [1h]))",
+          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified|k8s-pods\", service_name!~\"loki|grafana-start\", level=\"error\"} [1h]))",
           "refId": "A",
           "legendFormat": "ERROR"
         },
         {
-          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified\", service!~\"loki|grafana-start\", level=\"warning\"} [1h]))",
+          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified|k8s-pods\", service_name!~\"loki|grafana-start\", level=\"warn\"} [1h]))",
           "refId": "B",
           "legendFormat": "WARNING"
         },
         {
-          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified\", service!~\"loki|grafana-start\", level!~\"error|warning\"} [1h]))",
+          "expr": "sum(count_over_time({job=~\"systemd-journal|macos-unified|k8s-pods\", service_name!~\"loki|grafana-start\", level!~\"error|warn\"} [1h]))",
           "refId": "C",
           "legendFormat": "INFO"
         }
@@ -242,7 +242,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum by (host) (rate({job=~\"systemd-journal|macos-unified\"}[5m]))",
+          "expr": "sum by (host) (rate({job=~\"systemd-journal|macos-unified|k8s-pods\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -322,7 +322,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "topk(10, sum by (service) (count_over_time({job=~\"systemd-journal|macos-unified\"}[5m])))",
+          "expr": "topk(10, sum by (service_name) (count_over_time({job=~\"systemd-journal|macos-unified|k8s-pods\"}[5m])))",
           "refId": "A",
           "instant": true,
           "format": "table"
@@ -338,7 +338,7 @@
             },
             "indexByName": {},
             "renameByName": {
-              "service": "サービス名"
+              "service_name": "サービス名"
             }
           }
         }
@@ -383,7 +383,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "{job=~\"systemd-journal|macos-unified\", service!~\"loki|grafana-start\", level=\"error\"}",
+          "expr": "{job=~\"systemd-journal|macos-unified|k8s-pods\", service_name!~\"loki|grafana-start\", level=\"error\"}",
           "refId": "A",
           "maxLines": 20
         }
