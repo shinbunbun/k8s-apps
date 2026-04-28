@@ -47,11 +47,11 @@ spec:
                         spec:
                           containers:
                             - name: csi-snapshotter
-                              command:
-                                - /bin/sh
-                                - -c
-                                - "trap 'exit 0' TERM; while true; do sleep 3600 & wait $!; done"
-                              args: []
+                              # csi-snapshotter image (registry.k8s.io/sig-storage/csi-snapshotter)
+                              # は distroless ベースで /bin/sh を持たないため、image ごと
+                              # pause に差し替えて何もしない sidecar 化する。
+                              image: registry.k8s.io/pause:3.10
+                              args: null
                               livenessProbe: null
                               readinessProbe: null
                             - name: csi-attacher
