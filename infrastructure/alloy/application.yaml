@@ -141,8 +141,13 @@ spec:
               }
 
               // ===== パース =====
-              // JSON 形式ログから level を抽出してラベル化
-              // 非 JSON ログでは no-op (失敗してもパイプライン継続)
+              // 多形式 level 抽出パイプライン (順次 fallback):
+              //   1) JSON   (grafana, alloy 自身など)
+              //   2) logfmt (argocd など `level=info msg=...`)
+              //   3) klog   (linstor csi / k8s native `I0428 03:51 ...`)
+              //   4) Rust tracing + ANSI 色付き (garage)
+              // 各 parser は抽出失敗時 extracted map を書き換えないので、
+              // 最初に取れた値が残る。最後に小文字化 + warning→warn 正規化。
               loki.process "parse" {
                 // 2 並列: Loki 配送 (短期、検索用) + OTLP 経由で archive 経路 (長期)
                 forward_to = [
@@ -150,10 +155,41 @@ spec:
                   otelcol.receiver.loki.bridge.receiver,
                 ]
 
+                // (1) JSON: `{"level":"info",...}`
                 stage.json {
                   expressions = { level = "level" }
                 }
 
+                // (2) logfmt: `time=... level=info msg=...`
+                stage.logfmt {
+                  mapping = { level = "" }
+                }
+
+                // (3) klog: `I0428 03:51:24.974781  100 file.go:115] ...`
+                stage.regex {
+                  expression = "^(?P<klog_severity>[IWEF])\\d{4} "
+                }
+                stage.template {
+                  source   = "level"
+                  template = "{{- if .level -}}{{ .level }}{{- else if eq .klog_severity \"I\" -}}info{{- else if eq .klog_severity \"W\" -}}warn{{- else if eq .klog_severity \"E\" -}}error{{- else if eq .klog_severity \"F\" -}}fatal{{- end -}}"
+                }
+
+                // (4) Rust tracing + ANSI: `\x1b[32m INFO\x1b[0m`
+                stage.regex {
+                  expression = "\\x1b\\[\\d+m\\s*(?P<ansi_level>TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\\s*\\x1b\\["
+                }
+                stage.template {
+                  source   = "level"
+                  template = "{{- if .level -}}{{ .level }}{{- else if .ansi_level -}}{{ .ansi_level }}{{- end -}}"
+                }
+
+                // (5) 正規化: 小文字化 + `warning` → `warn` (systemd-journal 整合)
+                stage.template {
+                  source   = "level"
+                  template = "{{ .Value | ToLower | Replace \"warning\" \"warn\" }}"
+                }
+
+                // (6) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
                 stage.labels {
                   values = { level = "" }
                 }
