@@ -452,6 +452,68 @@ spec:
           summary: "Disk errors detected on {{ $labels.instance }}"
           description: "Disk {{ $labels.device }} is reporting read/write errors. Check disk health immediately."
 
+      # smartctl_exporter 自体が応答しない（USB drop / SCSI offline 検知）
+      # nixos-desktop の外付け USB HDD が 23 日間 SCSI offline で気付かなかった事例の対策
+      - alert: SmartctlExporterDown
+        expr: 'up{job="smartctl-exporter"} == 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "smartctl-exporter on {{ $labels.instance }} is not responding"
+          description: "Disk health metrics unavailable for >5min. USB-SATA bridge offline or service stopped."
+
+      # SMART 全体ヘルス NG
+      - alert: SmartDeviceFailing
+        expr: 'smartctl_device_smart_status == 0'
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SMART overall health FAILED on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Disk overall health self-assessment indicates impending failure. Replace disk."
+
+      # 代替セクタ発生
+      - alert: SmartReallocatedSectors
+        expr: 'smartctl_device_attribute{attribute_name="Reallocated_Sector_Ct",attribute_value_type="raw"} > 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Reallocated sectors on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Disk has reallocated {{ $value }} sectors. Predictive failure indicator."
+
+      # Pending sector 発生
+      - alert: SmartPendingSectors
+        expr: 'smartctl_device_attribute{attribute_name="Current_Pending_Sector",attribute_value_type="raw"} > 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pending sectors on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Disk has {{ $value }} pending sectors awaiting reallocation."
+
+      # Load_Cycle_Count が設計限界（600,000）の 200% 超過
+      # nixos-desktop の MQ04UBD200 は 2026-04 時点で既に 804,140
+      - alert: SmartLoadCycleHigh
+        expr: 'smartctl_device_attribute{attribute_name="Load_Cycle_Count",attribute_value_type="raw"} > 1200000'
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Load_Cycle_Count on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Load Cycle count is {{ $value }} (>200% of 600k design limit). Mechanical wear; consider replacement."
+
+      # ファイルシステムが read-only に切り替わった（ext4 errors=remount-ro 検知）
+      - alert: FilesystemReadOnly
+        expr: 'node_filesystem_readonly{fstype!~"tmpfs|fuse.lxcfs|squashfs|iso9660|ramfs"} == 1'
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is read-only"
+          description: "Likely ext4 errors=remount-ro triggered by I/O errors. Investigate disk health and dmesg."
+
   # Kubernetes監視グループ
   - name: kubernetes
     interval: 30s
