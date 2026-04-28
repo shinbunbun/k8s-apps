@@ -60,11 +60,15 @@ spec:
                   # spill 対象外で memory_limit にぶつかる (2.7 GiB で
                   # OOMException)。nixos-desktop は RAM 余裕ありワンショット
                   # Job のスパイクは許容、in-memory で処理させる。
-                  # 2026-04-26 に macos-unified 圧縮サイズが 44 MiB → 128 MiB
-                  # (約 3 倍) に増加して 16Gi/memory_limit=12GB では足りなく
-                  # なったため 24Gi に拡大、script 側で memory_limit=18GB +
-                  # threads=4 で parse バッファ fan-out を抑制する。
-                  memory: 24Gi
+                  # 2026-04-26 の data 量増加 (macos 44→128 MiB、3 倍) で
+                  # 12GB memory_limit + default threads (= host CPU 数) では
+                  # parse バッファ fan-out で OOM していた。実効的な対策は
+                  # threads=4 + preserve_insertion_order=false で、これらが
+                  # 適用された後の実測ピークは 2.32 GiB (manual-backfill
+                  # 20260427-0813 で観測)。Pod limit 24Gi / memory_limit
+                  # 18GB は過剰だったので 16Gi / 12GB に戻す。実観測の
+                  # 約 5x 安全マージン残し。
+                  memory: 16Gi
               volumeMounts:
                 - name: script
                   mountPath: /scripts

@@ -109,11 +109,14 @@ data:
     def configure_duckdb():
         con = duckdb.connect()
         con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
-        # memory_limit は pod limit (24Gi) から python ランタイム + duckdb 内部
-        # オーバーヘッド分を控除した 18GB。threads=4 は read_json の per-file
-        # parse バッファ fan-out 抑制用 (maximum_object_size=256MB × 並列度 で
-        # 枯渇するのを防ぐ)。preserve_insertion_order=false は COPY TO PARQUET
-        # でのメモリ節約用 (行順は後段の timestamp sort 前提で不要)。
+        # OOM を抑止する実効的な設定は threads=4 (read_json の per-file parse
+        # バッファ fan-out 抑制、maximum_object_size=256MB × 並列度 で枯渇する
+        # のを防ぐ) と preserve_insertion_order=false (COPY TO PARQUET の
+        # メモリ節約、行順は後段 timestamp sort 前提で不要)。
+        # 実測ピーク 2.32 GiB (manual-backfill 20260427-0813)、merge mode 込み
+        # でも 3 GiB 程度想定 → memory_limit 12GB は約 5x 安全マージン。
+        # pod limit 16Gi - memory_limit 12GB = 4 GiB headroom (python +
+        # duckdb extension + boto3 + glibc allocator slack を吸収)。
         con.execute(
             f"""
             SET s3_endpoint='{ENDPOINT}';
@@ -121,7 +124,7 @@ data:
             SET s3_secret_access_key='{SECRET_KEY}';
             SET s3_use_ssl=false;
             SET s3_url_style='path';
-            SET memory_limit='18GB';
+            SET memory_limit='12GB';
             SET threads=4;
             SET preserve_insertion_order=false;
             SET temp_directory='/tmp/duckdb-spill';
