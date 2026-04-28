@@ -37,10 +37,18 @@
 # スキーマは動的 (host/service/level/message/timestamp/labels/job を暗黙に持つ)、
 # DuckDB 側で read_ndjson_auto が推論する。
 #
+# 【k8s-pods 経路】Alloy DaemonSet (infrastructure/alloy) が
+# loki.source.kubernetes で取得した Pod ログを otelcol.receiver.loki +
+# otelcol.exporter.otlphttp で OTLP 化し、本 Vector の opentelemetry source
+# (port 4318) に push する。enrich_otlp transform で .log_type = "k8s-pods"
+# を強制付与し、既存 garage_ndjson_raw sink に相乗りさせて Garage に書く。
+# compact.py の SOURCES に k8s-pods は既に含まれており、追加修正不要。
+#
 # 【port】
 # - 24224/TCP: Fluent Forward protocol (Fluent Bit からの入力)
-# - 9598/TCP: Prometheus exporter (Vector 自体のメトリクス、Phase 0 の
-#             storage-capacity ダッシュボードで監視)
+# - 4318/TCP:  OpenTelemetry HTTP (Alloy からの k8s pod ログ入力)
+# - 9598/TCP:  Prometheus exporter (Vector 自体のメトリクス、Phase 0 の
+#              storage-capacity ダッシュボードで監視)
 #
 # 【sync-wave】10: apps/garage (GarageBucket logs-archive 作成) より後。
 apiVersion: argoproj.io/v1alpha1
@@ -103,6 +111,10 @@ spec:
               port: 24224
               protocol: TCP
               targetPort: 24224
+            - name: otlp-http
+              port: 4318
+              protocol: TCP
+              targetPort: 4318
             - name: metrics
               port: 9598
               protocol: TCP
@@ -120,6 +132,17 @@ spec:
             fluent_bit_forward:
               type: fluent
               address: 0.0.0.0:24224
+            # Alloy からの OTLP HTTP 入力 (k8s pod ログ)
+            # Alloy 側で otelcol.receiver.loki が Loki entries を OTLP logs に
+            # 変換し、otelcol.exporter.otlphttp で本ポートに push する。
+            # opentelemetry source は HTTP / gRPC 両方の listener block 指定が
+            # 必須。gRPC は Service に出さないことで実質無効化。
+            alloy_otlp:
+              type: opentelemetry
+              grpc:
+                address: 0.0.0.0:4317
+              http:
+                address: 0.0.0.0:4318
             # Vector 自身のメトリクス
             vector_metrics:
               type: internal_metrics
@@ -142,6 +165,20 @@ spec:
                 # 使い fallible にし、変換不能時は archive 時刻で fallback する。
                 .date = format_timestamp(.timestamp, format: "%Y-%m-%d", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%Y-%m-%d", timezone: "Asia/Tokyo")
                 .hour = format_timestamp(.timestamp, format: "%H", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%H", timezone: "Asia/Tokyo")
+            # OTLP 経由 (Alloy → k8s pod logs) の record 用 enrich。
+            # fluent path と record schema が異なる (.body / .attributes 配下に
+            # ラベルが入る OTLP shape) ため、独立の transform にして両 path の
+            # VRL を簡潔に保つ。.log_type を "k8s-pods" に強制し、aws_s3 sink の
+            # key_prefix=raw/source={{ log_type }}/... で k8s-pods partition に
+            # 流れるようにする。compact.py の SOURCES に k8s-pods は既に含まれる。
+            enrich_otlp:
+              type: remap
+              inputs: [alloy_otlp.logs]
+              source: |
+                .log_type = "k8s-pods"
+                .archived_at = now()
+                .date = format_timestamp(.timestamp, format: "%Y-%m-%d", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%Y-%m-%d", timezone: "Asia/Tokyo")
+                .hour = format_timestamp(.timestamp, format: "%H", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%H", timezone: "Asia/Tokyo")
           sinks:
             # Garage (S3 互換) へ ndjson + zstd で書き出し
             # raw/source=<log_type>/date=YYYY-MM-DD/hour=HH/ prefix で
@@ -153,7 +190,7 @@ spec:
             # 読んで daily/date=.../source=.../logs.parquet に変換する。
             garage_ndjson_raw:
               type: aws_s3
-              inputs: [enrich]
+              inputs: [enrich, enrich_otlp]
               bucket: logs-archive
               endpoint: http://garage.garage.svc.cluster.local:3900
               region: garage
