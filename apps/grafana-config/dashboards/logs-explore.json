@@ -109,7 +109,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum(rate({job=~\"systemd-journal|macos-unified\", host=~\"$host\", service=~\"$service\", level=~\"$level\"} |~ \"$keyword\" [5m]))",
+          "expr": "sum(rate({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\", service_name=~\"$service\", level=~\"$level\"} |~ \"$keyword\" [5m]))",
           "refId": "A",
           "legendFormat": "ログレート"
         }
@@ -186,7 +186,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum by (service) (rate({job=~\"systemd-journal|macos-unified\", host=~\"$host\", service=~\"$service\", level=~\"$level\"} |~ \"$keyword\" [5m]))",
+          "expr": "sum by (service_name) (rate({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\", service_name=~\"$service\", level=~\"$level\"} |~ \"$keyword\" [5m]))",
           "refId": "A"
         }
       ],
@@ -235,7 +235,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "{job=~\"systemd-journal|macos-unified\", host=~\"$host\", service=~\"$service\", level=~\"$level\"} |~ \"$keyword\"",
+          "expr": "{job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\", service_name=~\"$service\", level=~\"$level\"} |~ \"$keyword\"",
           "refId": "A"
         }
       ],
@@ -260,14 +260,14 @@
           "value": "$__all"
         },
         "datasource": "Loki",
-        "definition": "label_values({job=~\"systemd-journal|macos-unified\"}, host)",
+        "definition": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\"}, host)",
         "hide": 0,
         "includeAll": true,
         "label": "ホスト",
         "multi": false,
         "name": "host",
         "options": [],
-        "query": "label_values({job=~\"systemd-journal|macos-unified\"}, host)",
+        "query": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\"}, host)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -282,14 +282,14 @@
           "value": "$__all"
         },
         "datasource": "Loki",
-        "definition": "label_values({job=~\"systemd-journal|macos-unified\", host=~\"$host\"}, service)",
+        "definition": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\"}, service_name)",
         "hide": 0,
         "includeAll": true,
         "label": "サービス",
         "multi": true,
         "name": "service",
         "options": [],
-        "query": "label_values({job=~\"systemd-journal|macos-unified\", host=~\"$host\"}, service)",
+        "query": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\"}, service_name)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -304,14 +304,14 @@
           "value": "$__all"
         },
         "datasource": "Loki",
-        "definition": "label_values({job=~\"systemd-journal|macos-unified\", host=~\"$host\", service=~\"$service\"}, level)",
+        "definition": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\", service_name=~\"$service\"}, level)",
         "hide": 0,
         "includeAll": true,
         "label": "ログレベル",
         "multi": true,
         "name": "level",
         "options": [],
-        "query": "label_values({job=~\"systemd-journal|macos-unified\", host=~\"$host\", service=~\"$service\"}, level)",
+        "query": "label_values({job=~\"systemd-journal|macos-unified|k8s-pods\", host=~\"$host\", service_name=~\"$service\"}, level)",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
