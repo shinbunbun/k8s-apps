@@ -169,9 +169,13 @@ spec:
                 stage.regex {
                   expression = "^(?P<klog_severity>[IWEF])\\d{4} "
                 }
+                // template 内のアクションは Alloy 側で評価する Go template。
+                // この configMap.content は alloy chart の tpl を通るため、
+                // Helm に二重評価されないよう各アクションを Helm raw リテラル
+                // (バッククォート対) で囲んで素通しさせる。
                 stage.template {
                   source   = "level"
-                  template = "{{- if .level -}}{{ .level }}{{- else if eq .klog_severity \"I\" -}}info{{- else if eq .klog_severity \"W\" -}}warn{{- else if eq .klog_severity \"E\" -}}error{{- else if eq .klog_severity \"F\" -}}fatal{{- end -}}"
+                  template = "{{` {{- if .level -}}{{ .level }}{{- else if eq .klog_severity \"I\" -}}info{{- else if eq .klog_severity \"W\" -}}warn{{- else if eq .klog_severity \"E\" -}}error{{- else if eq .klog_severity \"F\" -}}fatal{{- end -}} `}}"
                 }
 
                 // (4) Rust tracing + ANSI: `\x1b[32m INFO\x1b[0m`
@@ -180,13 +184,16 @@ spec:
                 }
                 stage.template {
                   source   = "level"
-                  template = "{{- if .level -}}{{ .level }}{{- else if .ansi_level -}}{{ .ansi_level }}{{- end -}}"
+                  template = "{{` {{- if .level -}}{{ .level }}{{- else if .ansi_level -}}{{ .ansi_level }}{{- end -}} `}}"
                 }
 
                 // (5) 正規化: 小文字化 + `warning` → `warn` (systemd-journal 整合)
+                // 注: Alloy の `Replace` は Go 標準の strings.Replace (4 引数) で
+                // pipe 経由だと引数不足で execute エラー → 早期 return で no-op になる。
+                // sprig の `replace` (3 引数: old, new, src) を使う。
                 stage.template {
                   source   = "level"
-                  template = "{{ .Value | ToLower | Replace \"warning\" \"warn\" }}"
+                  template = "{{` {{- .Value | ToLower | replace \"warning\" \"warn\" -}} `}}"
                 }
 
                 // (6) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
