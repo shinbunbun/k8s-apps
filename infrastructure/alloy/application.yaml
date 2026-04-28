@@ -191,6 +191,17 @@ spec:
                     insecure = true
                   }
                 }
+                // Vector replicas: 2 の rolling update / OOM kill / readiness 失敗で
+                // 4318 が瞬断する想定。queue + retry で取りこぼしを抑止する
+                // (長期 archive 用途、数秒〜数十秒のバッファは許容)。
+                sending_queue {
+                  enabled       = true
+                  num_consumers = 2
+                  queue_size    = 1000
+                }
+                retry_on_failure {
+                  enabled = true
+                }
               }
 
         # serviceAccount + RBAC (chart デフォルトで pods/log, pods, namespaces

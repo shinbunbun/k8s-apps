@@ -136,7 +136,9 @@ spec:
             # Alloy 側で otelcol.receiver.loki が Loki entries を OTLP logs に
             # 変換し、otelcol.exporter.otlphttp で本ポートに push する。
             # opentelemetry source は HTTP / gRPC 両方の listener block 指定が
-            # 必須。gRPC は Service に出さないことで実質無効化。
+            # 必須。gRPC は Service に出さないことで Service レベルで無効化
+            # (Pod レベルでは 4317 を listen し続けるが、cluster 外/他 NS から
+            # の接続経路は無い)。
             alloy_otlp:
               type: opentelemetry
               grpc:
