@@ -8,7 +8,7 @@ metadata:
   name: authentik-db
 spec:
   description: "Authentik authentication database"
-  instances: 2
+  instances: 3
 
   bootstrap:
     initdb:

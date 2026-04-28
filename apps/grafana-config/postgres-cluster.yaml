@@ -1,23 +1,32 @@
 # Grafana 用 PostgreSQL Cluster (CNPG)
 #
 # CloudNativePG Operator (infrastructure/cnpg-operator/) が提供する Cluster CR で
-# Grafana のメタデータ DB を HA 化する。instances: 2 で Primary 1 + Standby 1 を
-# 別ノードに分散 (CNPG デフォルト affinity.enablePodAntiAffinity=true,
+# Grafana のメタデータ DB を HA 化する。instances: 3 で 3 ノードに 1 instance ずつ
+# 分散 (CNPG デフォルト affinity.enablePodAntiAffinity=true,
 # podAntiAffinityType=preferred, topologyKey=kubernetes.io/hostname)。
 #
-# instances: 3 ではなく 2 とする理由:
-# 3 ノード embedded etcd k3s では quorum が 2 のため、2 ノード同時障害で
-# etcd が崩壊し API Server / scheduler / controller が停止する。その状態では
-# Operator も k8s API を叩けないので Service endpoint 切替も Standby 昇格も
-# できず、Cluster instance を 3 にしても 2 ノード障害は救えない。
-# 1 ノード障害耐性を満たすには instances: 2 で十分、Operator との別ノード配置の
-# ための 1 ノード分の空き枠も確保できる (infrastructure/cnpg-operator/ 参照)。
+# instances: 3 とする理由 (1 ノード障害耐性):
+# instances: 2 で 1 ノードが落ちると、該当 instance Pod が kubelet 応答不能で
+# Terminating のままスタックし (StatefulSet が同 ordinal の Pod を新規作成できず、
+# PVC は local-path で停止ノードに pin されているため別ノードにも移動できない)、
+# CNPG Cluster Phase が "Waiting for the instances to become active" となる。
+# この状態では参照 Pod (authentik-server / grafana など) の startup probe が
+# 長時間 502 を返し、Service endpoints が空になり外部から接続できなくなる。
+# instances: 3 にすれば 1 ノード障害でも残り 2 instance で Cluster Ready=True を
+# 維持し、failover で rw endpoint が瞬時に切り替わるため上記の問題が起きない。
+#
+# 2 ノード同時障害は etcd quorum (2/3) が崩壊して Operator も動けないため
+# instances: 3 でも救えないが、これは 1 ノード障害耐性とは別問題。
+#
+# Operator (replicaCount: 2) は infrastructure/cnpg-operator/ 側で
+# Operator 同士 anti-affinity (preferred) で分散 — leader election で冗長化済み。
 #
 # storage は local-path (k3s 同梱 local-path-provisioner, default SC)。
 # CNPG が PG streaming replication で HA を担うため、Piraeus のような
 # ブロックレベル複製 SC は二重化になるので使わない。
-# ノード障害時は該当 instance の PVC が失われるが、残り 1 instance で継続し
-# 復旧後は空 PVC で CNPG が instance を再作成して streaming replication で再同期する。
+# 1 ノード障害時は該当 instance の PVC が停止ノードに pin されたまま使えなくなるが、
+# 残り 2 instance で継続し、復旧後は空 PVC で CNPG が instance を再作成して
+# streaming replication で再同期する。
 #
 # bootstrap.initdb は database/owner/secret を指定。secret は
 # apps/grafana-config/secrets/grafana-db-app.enc.yaml (KSOPS, basic-auth type)。
@@ -33,7 +42,7 @@ metadata:
   name: grafana-db
 spec:
   description: "Grafana metadata database"
-  instances: 2
+  instances: 3
 
   bootstrap:
     initdb:
