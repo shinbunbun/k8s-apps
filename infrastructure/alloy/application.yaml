@@ -196,7 +196,27 @@ spec:
                   template = "{{` {{- if .level -}}{{ .level }}{{- else if .ansi_level -}}{{ .ansi_level }}{{- end -}} `}}"
                 }
 
-                // (5) 正規化: 小文字化 + `warning` → `warn` (systemd-journal 整合)
+                // (5) Java logback: `2026-04-28 05:36:04.574 [thread-name] INFO  LINSTOR/...`
+                // 行頭の date+time 後に [thread] LEVEL という固有形を要求して false match を抑制
+                stage.regex {
+                  expression = "^\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}[\\.,]\\d+\\s+\\[[^\\]]+\\]\\s+(?P<jb_level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL)\\b"
+                }
+                stage.template {
+                  source   = "level"
+                  template = "{{` {{- if .level -}}{{ .level }}{{- else if .jb_level -}}{{ .jb_level }}{{- end -}} `}}"
+                }
+
+                // (6) Erlang/CouchDB: `[notice] 2026-04-28T...`
+                // 行頭が `[<lowercase word>]<space>` で始まる Erlang 系を捕捉
+                stage.regex {
+                  expression = "^\\[(?P<erl_level>[a-z]+)\\]\\s"
+                }
+                stage.template {
+                  source   = "level"
+                  template = "{{` {{- if .level -}}{{ .level }}{{- else if .erl_level -}}{{ .erl_level }}{{- end -}} `}}"
+                }
+
+                // (7) 正規化: 小文字化 + `warning` → `warn` (systemd-journal 整合)
                 // 注: Alloy の `Replace` は Go 標準の strings.Replace (4 引数) で
                 // pipe 経由だと引数不足で execute エラー → 早期 return で no-op になる。
                 // sprig の `replace` (3 引数: old, new, src) を使う。
@@ -205,7 +225,7 @@ spec:
                   template = "{{` {{- .Value | ToLower | replace \"warning\" \"warn\" -}} `}}"
                 }
 
-                // (6) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
+                // (8) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
                 stage.labels {
                   values = { level = "" }
                 }
