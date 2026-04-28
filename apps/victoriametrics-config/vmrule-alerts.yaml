@@ -505,8 +505,9 @@ spec:
           description: "Load Cycle count is {{ $value }} (>200% of 600k design limit). Mechanical wear; consider replacement."
 
       # ファイルシステムが read-only に切り替わった（ext4 errors=remount-ro 検知）
+      # apfs は macOS の SSV (Signed System Volume) で設計上 / が常時 read-only のため除外
       - alert: FilesystemReadOnly
-        expr: 'node_filesystem_readonly{fstype!~"tmpfs|fuse.lxcfs|squashfs|iso9660|ramfs"} == 1'
+        expr: 'node_filesystem_readonly{fstype!~"tmpfs|fuse.lxcfs|squashfs|iso9660|ramfs|apfs"} == 1'
         for: 1m
         labels:
           severity: critical
