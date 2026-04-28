@@ -23,7 +23,47 @@ spec:
             kind: LinstorCluster
             metadata:
               name: linstorcluster
-            spec: {}
+            spec:
+              # linstor-csi-controller の sidecar ノイズ抑制 patch
+              # - csi-snapshotter: snapshot.storage.k8s.io CRD 未導入のため pause image に差し替えて停止
+              # - csi-attacher: linstor-csi v1.10.6 が PublishedNodeIds を空配列で
+              #   返すバグ (NodesAndConditionFromResources が temporary-diskless-attach
+              #   property を持つ resource のみ列挙) により reconcile-sync 周期で
+              #   "attached=true found=false" の error log を全 VA に対して吐く
+              #   問題を回避するため、reconcile-sync を実質無効化 (default 1m → 87600h)。
+              #   informer による event-driven reconcile は維持されるため機能影響なし。
+              # 復旧手順: 各 patch ブロックを削除すれば元に戻る (可逆)。
+              patches:
+                - target:
+                    kind: Deployment
+                    name: linstor-csi-controller
+                  patch: |
+                    apiVersion: apps/v1
+                    kind: Deployment
+                    metadata:
+                      name: linstor-csi-controller
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                            - name: csi-snapshotter
+                              # csi-snapshotter image (registry.k8s.io/sig-storage/csi-snapshotter)
+                              # は distroless ベースで /bin/sh を持たないため、image ごと
+                              # pause に差し替えて何もしない sidecar 化する。
+                              image: registry.k8s.io/pause:3.10
+                              args: null
+                              livenessProbe: null
+                              readinessProbe: null
+                            - name: csi-attacher
+                              args:
+                                - --v=$(VERBOSE)
+                                - --csi-address=$(ADDRESS)
+                                - --timeout=$(TIMEOUT)
+                                - --leader-election=$(LEADER_ELECTION)
+                                - --leader-election-namespace=$(NAMESPACE)
+                                - --worker-threads=$(WORKER_THREADS)
+                                - --http-endpoint=$(HTTP_ENDPOINT)
+                                - --reconcile-sync=87600h
           # NixOS 向け Satellite 設定
           # piraeus チャートは linstorSatelliteConfiguration values を処理しないため、
           # extraManifests で LinstorSatelliteConfiguration CR を直接作成する
