@@ -161,8 +161,17 @@ spec:
                 }
 
                 // (2) logfmt: `time=... level=info msg=...`
-                stage.logfmt {
-                  mapping = { level = "" }
+                // stage.logfmt は go-logfmt 厳密パースで非 logfmt 行 (klog の
+                // `... node_register.go:115] "..."` 等) で大量のデコードエラーを
+                // Alloy ログに吐く。ここは "level=word" を取り出すだけで十分なので
+                // 軽量な regex で代替し、既存 level が無い時だけ採用するフォールバック
+                // template を続ける。
+                stage.regex {
+                  expression = "(?:^|\\s)level=(?P<lf_level>[a-zA-Z]+)"
+                }
+                stage.template {
+                  source   = "level"
+                  template = "{{` {{- if .level -}}{{ .level }}{{- else if .lf_level -}}{{ .lf_level }}{{- end -}} `}}"
                 }
 
                 // (3) klog: `I0428 03:51:24.974781  100 file.go:115] ...`
