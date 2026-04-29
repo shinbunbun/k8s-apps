@@ -22,3 +22,19 @@ Grafana Helm chart の sidecar が `grafana_dashboard=1` ラベル付き ConfigM
 | `cilium.json` | [cilium/cilium](https://github.com/cilium/cilium) | Cilium Authors |
 | `hubble.json` | 同上 | Cilium Authors |
 | `hubble-network-overview-namespace.json` | 同上 | Cilium Authors |
+
+## サードパーティ由来（MIT License）
+
+以下は MIT License の下で配布されている。
+ライセンス本文は [LICENSE-MIT](./LICENSE-MIT) を参照。
+
+| ファイル | 出典 | 著作権者 |
+|----------|------|----------|
+| `smartctl-exporter.json` | [reefland/grafana-dashboards](https://github.com/reefland/grafana-dashboards) (Grafana.com ID 22604) | reefland |
+
+## ローカル改変
+
+サードパーティ由来 dashboard は sidecar ロード時に datasource を解決するため、
+`${DS_PROMETHEUS}` 等のテンプレート変数を Prometheus datasource UID
+(`PBFA97CFB590B2093`, `datasources-configmap.yaml` 参照) にハードコード書き換え済み。
+
