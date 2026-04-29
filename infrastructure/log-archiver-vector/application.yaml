@@ -17,9 +17,9 @@
 # 各 pod が Fluent Forward 入力を独立で処理し、Garage には UUID ベースの
 # ファイル名で別々に書き出す (衝突なし、compaction CronJob が統合)。
 #
-# 【affinity】podAntiAffinity preferredDuringSchedulingIgnoredDuringExecution
-# で node 分散。g3pro (Intel N150、CPU 弱) は避けたいが、Vector は軽量なので
-# preferred のまま (必須にしない)。
+# 【分散】topologySpreadConstraints (maxSkew=1, ScheduleAnyway) で node 分散。
+# preferred anti-affinity は schedule 時のみ評価で再分散しなかったため置換。
+# 詳細は spec.helm.valuesObject.topologySpreadConstraints 付近のコメント参照。
 #
 # 【ストレージ】S3 (Garage、endpoint 内部 Service port 3900)。
 # credentials は vector-garage-credentials Secret (Garage Operator が
@@ -72,18 +72,22 @@ spec:
         role: Aggregator
         replicas: 2
 
-        # node 分散 (homemachine / nixos-desktop / g3pro のいずれかに配置、
-        # なるべく別ノードに分かれるよう preferred anti-affinity)
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  labelSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: vector
-                      app.kubernetes.io/instance: log-archiver-vector
-                  topologyKey: kubernetes.io/hostname
+        # node 分散 (nixos / nixos-desktop / g3pro のいずれかに配置)。
+        # podAntiAffinity preferred は scheduling 時に同一 node を避けるが、
+        # 段階的な nixos-rebuild で 1 ノードに集約された後、ノードが復帰しても
+        # 再分散しない (preferredDuringSchedulingIgnoredDuringExecution) ため、
+        # topologySpreadConstraints に置換する。kube-scheduler の score 計算で
+        # maxSkew を満たすノードが強く優先されるので、新規 schedule・再 schedule
+        # の双方で分散する。whenUnsatisfiable: ScheduleAnyway で drain 中の
+        # 唯一ノードに退避するケースも担保。
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vector
+                app.kubernetes.io/instance: log-archiver-vector
 
         # drain 時に 2 replica が同時に失われるのを防止
         podDisruptionBudget:
