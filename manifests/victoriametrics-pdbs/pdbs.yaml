@@ -1,0 +1,45 @@
+# VMCluster (vmstorage / vmselect / vminsert) PDBs
+#
+# VictoriaMetrics Operator の VMCluster CR は PDB 設定フィールドを持たないため、
+# sidecar マニフェストとして個別の PDB を定義する。
+#
+# 各コンポーネントは 2 replicas で稼働しており、minAvailable: 1 で
+# drain 1 pod を許容しつつ 2 pod 同時の disruption を防ぐ。
+# vmstorage は replicationFactor=2 で書き込み冗長化されているが、
+# 最低 1 pod 稼働していれば書き込み継続可能。
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vmstorage-vmcluster
+  namespace: victoriametrics
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vmstorage
+      app.kubernetes.io/instance: vmcluster
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vmselect-vmcluster
+  namespace: victoriametrics
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vmselect
+      app.kubernetes.io/instance: vmcluster
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vminsert-vmcluster
+  namespace: victoriametrics
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vminsert
+      app.kubernetes.io/instance: vmcluster

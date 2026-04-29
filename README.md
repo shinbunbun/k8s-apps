@@ -111,3 +111,28 @@ git add -A
 git commit -m "my-appを削除"
 git push
 ```
+
+## ノードメンテナンス手順
+
+ノード停止 (再起動 / シャットダウン / nixos-rebuild) を行う場合は **必ず drain してから** 行うこと。CoreDNS や Authentik など特定ノードに張り付いた状態で停止すると、クラスタ全体の DNS 解決が壊れて Authentik 経由の認証 (Grafana 等) が 502 になる事象が確認されている。
+
+### 手順
+
+```bash
+# 1. drain (新規スケジュール拒否 + Pod 退避)
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
+
+# 2. drain 完了を待機 (PDB 違反があれば自動で待つ)
+#    Pod が他ノードへ全て移動するまでブロック
+
+# 3. メンテ作業 (物理 / nixos-rebuild / shutdown)
+
+# 4. ノード復帰後、再びスケジュール可能にする
+kubectl uncordon <node>
+```
+
+### 注意事項
+
+- PDB が drain をブロックする場合は `kubectl get pdb -A` で該当 PDB の `ALLOWED DISRUPTIONS` を確認
+- 3ノードクラスタなので **同時に複数ノードを drain しない** こと (etcd quorum 2/3)
+- 計画外停止 (障害) 時は `node.kubernetes.io/unreachable:NoExecute` toleration の 5分経過後に Pod が他ノードへ自動再スケジュールされる

@@ -1,0 +1,28 @@
+# VictoriaMetrics VMCluster PodDisruptionBudgets (sidecar)
+#
+# VMCluster CR (apps/victoriametrics-config/vmcluster.yaml) は PDB フィールドを
+# 持たないため、別 Application で vminsert/vmselect/vmstorage の PDB を管理する。
+#
+# sync-wave: "15" — victoriametrics-config (sync-wave: "10" 想定) の後にデプロイ。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: victoriametrics-pdbs
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:shinbunbun/k8s-apps.git
+    targetRevision: main
+    path: manifests/victoriametrics-pdbs
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: victoriametrics
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
