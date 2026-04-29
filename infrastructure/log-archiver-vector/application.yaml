@@ -17,9 +17,9 @@
 # 各 pod が Fluent Forward 入力を独立で処理し、Garage には UUID ベースの
 # ファイル名で別々に書き出す (衝突なし、compaction CronJob が統合)。
 #
-# 【affinity】podAntiAffinity preferredDuringSchedulingIgnoredDuringExecution
-# で node 分散。g3pro (Intel N150、CPU 弱) は避けたいが、Vector は軽量なので
-# preferred のまま (必須にしない)。
+# 【分散】topologySpreadConstraints (maxSkew=1, ScheduleAnyway) で node 分散。
+# preferred anti-affinity は schedule 時のみ評価で再分散しなかったため置換。
+# 詳細は spec.helm.valuesObject.topologySpreadConstraints 付近のコメント参照。
 #
 # 【ストレージ】S3 (Garage、endpoint 内部 Service port 3900)。
 # credentials は vector-garage-credentials Secret (Garage Operator が
