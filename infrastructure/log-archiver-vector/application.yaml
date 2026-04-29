@@ -72,18 +72,22 @@ spec:
         role: Aggregator
         replicas: 2
 
-        # node 分散 (homemachine / nixos-desktop / g3pro のいずれかに配置、
-        # なるべく別ノードに分かれるよう preferred anti-affinity)
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  labelSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: vector
-                      app.kubernetes.io/instance: log-archiver-vector
-                  topologyKey: kubernetes.io/hostname
+        # node 分散 (nixos / nixos-desktop / g3pro のいずれかに配置)。
+        # podAntiAffinity preferred は scheduling 時に同一 node を避けるが、
+        # 段階的な nixos-rebuild で 1 ノードに集約された後、ノードが復帰しても
+        # 再分散しない (preferredDuringSchedulingIgnoredDuringExecution) ため、
+        # topologySpreadConstraints に置換する。kube-scheduler の score 計算で
+        # maxSkew を満たすノードが強く優先されるので、新規 schedule・再 schedule
+        # の双方で分散する。whenUnsatisfiable: ScheduleAnyway で drain 中の
+        # 唯一ノードに退避するケースも担保。
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vector
+                app.kubernetes.io/instance: log-archiver-vector
 
         resources:
           requests:
