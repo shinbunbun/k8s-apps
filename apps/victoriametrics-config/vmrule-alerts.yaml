@@ -164,15 +164,17 @@ spec:
           summary: "High network traffic (outbound) on {{ $labels.instance }}"
           description: "Network interface {{ $labels.device }} is transmitting more than 100MB/s (current: {{ $value | humanize }}B/s)"
 
-      # パケットロス率（受信エラー）
-      - alert: HighPacketLossReceive
-        expr: "rate(node_network_receive_errs_total[5m]) > 0.01"
-        for: 5m
+      # 受信パケットドロップ率（実際のパケットロス検出）
+      # node_network_receive_errs_total は ixgbe 等で RLEC (length field mismatch) を
+      # cosmetic にカウントし実害ゼロでも発火するため使わず、drop ベースに変更。
+      - alert: HighPacketDropsReceive
+        expr: 'rate(node_network_receive_drop_total{device!~"lo|docker.*|veth.*|br.*|tap.*|tun.*|wlp[0-9]s0|wg.*|flannel.*|enp4s0|enp6s0f1|utun.*|awdl.*|llw.*|bridge.*|gif.*|stf.*|ap.*|cilium_.*|lxc.*"}[5m]) > 1'
+        for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High packet receive errors on {{ $labels.instance }}"
-          description: "Network interface {{ $labels.device }} is experiencing receive errors ({{ $value }} errors/sec)"
+          summary: "High packet drops on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Network interface {{ $labels.device }} is dropping more than 1 packet/sec (current: {{ $value | humanize }} pkts/sec)"
 
       # systemdサービス停止
       - alert: SystemdServiceFailed
