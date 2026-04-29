@@ -85,6 +85,11 @@ spec:
                       app.kubernetes.io/instance: log-archiver-vector
                   topologyKey: kubernetes.io/hostname
 
+        # drain 時に 2 replica が同時に失われるのを防止
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+
         resources:
           requests:
             cpu: 100m

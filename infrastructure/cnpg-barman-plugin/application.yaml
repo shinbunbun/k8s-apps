@@ -8,6 +8,12 @@
 # https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml
 # アップグレード時は上記 URL から新バージョンの manifest.yaml を取得して上書きする。
 #
+# Local patches vs upstream (アップグレード時に再適用が必要):
+#   - Deployment.spec.replicas: 1 -> 2 (HA 化、SPOF 解消)
+#   - Deployment.spec.strategy.type: Recreate -> RollingUpdate (maxUnavailable: 1, maxSurge: 1)
+#   - Deployment.spec.template.spec.affinity: + podAntiAffinity preferred (hostname)
+#   - Added: PodDisruptionBudget barman-cloud (minAvailable: 1) at end of file
+#
 # 依存: cert-manager (infrastructure/cert-manager/, sync-wave -15) が
 # Plugin manifest 内の selfSigned Issuer + Certificate を処理する。
 #

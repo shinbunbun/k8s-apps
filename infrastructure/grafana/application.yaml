@@ -104,6 +104,10 @@ spec:
                     matchLabels:
                       app.kubernetes.io/name: grafana
                   topologyKey: kubernetes.io/hostname
+
+        # drain 時に 2 replica が同時に失われるのを防止
+        podDisruptionBudget:
+          minAvailable: 1
   destination:
     server: https://kubernetes.default.svc
     namespace: grafana

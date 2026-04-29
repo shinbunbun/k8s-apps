@@ -1,0 +1,31 @@
+# CoreDNS PodDisruptionBudget
+#
+# CoreDNS は k3s 組み込みの kube-system Deployment で、
+# replicas は dotfiles 側 (systemd k3s-coredns-scale on clusterInit ノード) で 2 に維持される。
+# このアプリは drain 時に CoreDNS が同時に複数失われるのを防ぐ PDB のみを管理する。
+#
+# k3s 公式マニフェストは既に topologySpreadConstraints (hostname maxSkew=1 DoNotSchedule) と
+# CriticalAddonsOnly + control-plane:NoSchedule の tolerations を持っているため、
+# spread / scheduling 系の追加設定は不要。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: coredns-pdb
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:shinbunbun/k8s-apps.git
+    targetRevision: main
+    path: manifests/coredns-pdb
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
