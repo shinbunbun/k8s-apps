@@ -8,11 +8,11 @@
 # https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml
 # アップグレード時は上記 URL から新バージョンの manifest.yaml を取得して上書きする。
 #
-# Local patches vs upstream (アップグレード時に再適用が必要):
-#   - Deployment.spec.replicas: 1 -> 2 (HA 化、SPOF 解消)
-#   - Deployment.spec.strategy.type: Recreate -> RollingUpdate (maxUnavailable: 1, maxSurge: 1)
-#   - Deployment.spec.template.spec.affinity: + podAntiAffinity preferred (hostname)
-#   - Added: PodDisruptionBudget barman-cloud (minAvailable: 1) at end of file
+# 注: Plugin v0.12.0 は HA 設計でない。leader election 採用の active-standby だが
+# follower pod の readiness probe (tcp-socket :9090) は leader-only listen 構造の
+# ため永遠に通らず、replicas>1 + RollingUpdate でデッドロックする。
+# replicas=1 + Recreate のまま運用し、ノード障害時は kubelet eviction toleration
+# (5分) で自動再スケジュールに任せる。Plugin 公式デプロイ例も replicas=1 が前提。
 #
 # 依存: cert-manager (infrastructure/cert-manager/, sync-wave -15) が
 # Plugin manifest 内の selfSigned Issuer + Certificate を処理する。
