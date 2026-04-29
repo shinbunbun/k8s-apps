@@ -1,15 +1,22 @@
 # Vector LAN 内アクセス用 LoadBalancer Service
 #
 # Fluent Bit (NixOS/macOS 各ホスト含む) から Vector に Fluent Forward で
-# ログを送るためのエンドポイント。既存の grafana-lan (.11) / vmselect-lan (.12) /
-# vmalertmanager-lan (.13) / loki-lan (.14) / hubble-ui-lan (.15) /
-# scanopy-lan (.16) に続き、.17 を割当。
+# ログを送るためのエンドポイント。Cilium LB IPAM で固定 VIP を割当、
+# Cilium BGP で 192.168.128.0/24 を RouterOS に広告しているため LAN 内から到達可能。
 #
-# Cilium LB IPAM で固定 VIP。Cilium BGP で 192.168.128.0/24 を RouterOS に
-# 広告しているため LAN 内から到達可能。
+# 【構成】Pod 単位の LB Service を 2 つ用意し (vector-lan-0 / vector-lan-1)、
+# Fluent Bit 側で Upstream round-robin 構成にして両 pod に均等に分散させる。
+# 単一 LB (vector-lan) では Cilium maglev hash が同一 src IP の複数接続を
+# 同じ pod に collision させて偏在 (実測で 99% が片肺) してしまうため。
+# Vector は Helm chart が StatefulSet を生成しており、各 pod は
+# `statefulset.kubernetes.io/pod-name` ラベルで一意に selector できる。
 #
-# Vector Helm chart が生成する Service (ClusterIP) をさらにこの LoadBalancer で
-# 公開する構成。selector で Helm chart の Deployment pod を対象にする。
+# 【VIP 割当】既存 grafana-lan (.11) / vmselect-lan (.12) / vmalertmanager-lan (.13)
+# / loki-lan (.14) / hubble-ui-lan (.15) / scanopy-lan (.16) / vector-lan (.17) に続き、
+# vector-lan-0=.18 / vector-lan-1=.19。
+#
+# 【vector-lan (.17)】移行期間中の互換性のため残置。Fluent Bit 側全ホストが
+# Upstream 設定に切り替わった後の別 PR で削除予定。
 apiVersion: v1
 kind: Service
 metadata:
@@ -22,6 +29,46 @@ spec:
   selector:
     app.kubernetes.io/instance: log-archiver-vector
     app.kubernetes.io/name: vector
+  ports:
+    - name: fluent
+      port: 24224
+      protocol: TCP
+      targetPort: 24224
+---
+# Pod 単位 LB - log-archiver-vector-0
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-lan-0
+  namespace: log-archiver-vector
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.18
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: log-archiver-vector
+    app.kubernetes.io/name: vector
+    statefulset.kubernetes.io/pod-name: log-archiver-vector-0
+  ports:
+    - name: fluent
+      port: 24224
+      protocol: TCP
+      targetPort: 24224
+---
+# Pod 単位 LB - log-archiver-vector-1
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-lan-1
+  namespace: log-archiver-vector
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.19
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: log-archiver-vector
+    app.kubernetes.io/name: vector
+    statefulset.kubernetes.io/pod-name: log-archiver-vector-1
   ports:
     - name: fluent
       port: 24224
