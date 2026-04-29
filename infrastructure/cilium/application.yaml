@@ -23,6 +23,23 @@ spec:
         k8sServiceHost: 127.0.0.1
         k8sServicePort: 6444
 
+        # LoadBalancer Service の eBPF datapath 振り分けアルゴリズム。
+        # default の random は新規接続のたびにランダム選択するため、少数の
+        # 新規接続 (例: ブラウザの瞬間的バーストなど) で偏ることがある。
+        # maglev (consistent hashing) は 5-tuple ベースで決定論的に分散し、
+        # 新規接続の分散品質が random より統計的に均等。
+        #
+        # 注: maglev は N-S (external LoadBalancer) traffic のみに適用、
+        # E-W (in-cluster ClusterIP via socket-LB) は socket 直接割当のため
+        # 影響なし。永続接続では 5-tuple が固定するので algorithm に
+        # 関係なく同じ pod に行き続けるため、Fluent Bit forward などの
+        # 永続接続クライアントには効果なし (それらは別途クライアント側
+        # round-robin で対処する)。
+        # メモリオーバーヘッドあり (デフォルト maglevTableSize=16381、
+        # Service 数に応じて増加) だが、ホームラボ規模では無視できる。
+        loadBalancer:
+          algorithm: maglev
+
         routingMode: native
         ipv4NativeRoutingCIDR: "10.42.0.0/16"
         autoDirectNodeRoutes: true
