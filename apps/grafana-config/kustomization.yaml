@@ -212,3 +212,10 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-smartctl-exporter
+    files:
+      - dashboards/smartctl-exporter.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
