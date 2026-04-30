@@ -5028,6 +5028,93 @@
           "title": "DNS NXDOMAIN レート (from logs)",
           "type": "timeseries",
           "description": "rate over [5m]、短期トレンド向け。RouterOS DNS resolver の NXDOMAIN 応答レート。トラブル時の切り分け補助 (応答ある = upstream 健全)。"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 265
+          },
+          "id": 220,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "expr": "{job=\"routeros\", ident=\"firewall\"} |~ \"FW-(WGCI|WAN)\"",
+              "refId": "A"
+            }
+          ],
+          "title": "Firewall drop イベント",
+          "description": "0 pps の 5 ルールに log=yes 付与済 (FW-WGCI-INPUT/VPN/LAN/WAN, FW-WAN-FORWARD)。ヒット = 要調査シグナル (ノイズ系 drop invalid / not coming from LAN は対象外)",
+          "type": "logs"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 265
+          },
+          "id": 221,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "expr": "{job=\"routeros\", ident=~\"interface\"} |~ \"(?i)link.*(up|down)\"",
+              "refId": "A"
+            }
+          ],
+          "title": "Interface link 状態変化",
+          "description": "link flap 検知。多発時は物理層異常 (ケーブル / NIC / 対向機器)",
+          "type": "logs"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 273
+          },
+          "id": 222,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "expr": "{job=\"routeros\", ident=~\"system|critical\"} |~ \"(?i)reboot|booting|upgrade|kernel\"",
+              "refId": "A"
+            }
+          ],
+          "title": "System 重要イベント",
+          "description": "reboot / booting / upgrade / kernel critical を一覧 (mktxp_system_uptime と相関させて root cause 分析)",
+          "type": "logs"
         }
       ]
     },
