@@ -45,7 +45,14 @@
 | コレクター | 無効理由 |
 |---|---|
 | `wireguard_peers` | 上流バグ: `last_handshake=None` の peer で `parse_mkt_uptime()` が `TypeError`。1.2.18+ で修正されたら有効化 + ダッシュボード パネル 58 を table 型に復元。関連 issue は [akpw/mktxp](https://github.com/akpw/mktxp) を watch |
-| `health` | x86 RouterOS は HW センサー非対応 |
-| `wireless` / `capsman` / `poe` | x86 に該当機能なし |
+| `health` | x86_64 RouterOS は HW センサー非対応 (温度/電圧/ファン) |
+| `wireless` / `wireless_clients` / `capsman` / `capsman_clients` / `w60g` | x86_64 に無線機能なし |
+| `poe` | x86_64 に PoE 給電なし |
+| `eoip` / `gre` | RouterOS 側で対応 interface 未設定 |
+| `ipsec` / `lte` | 機能未使用 / LTE モデム非搭載 |
+| `switch_port` | x86_64 に HW スイッチチップなし |
+| `bridge_vlan` | `/interface bridge vlan` が空 (VLAN 機能未使用) |
+| `kid_control_assigned` / `kid_control_dynamic` | Kid Control 機能未使用 |
+| `container` | RouterOS container 機能未使用 (コンテナワークロードは k3s 側で運用) |
 | `netwatch` | RouterOS 側 `/tool netwatch` 未定義 |
-| `bfd` | RouterOS 側 `/routing bfd` 未定義 |
+| `bfd` | RouterOS 側 `/routing bfd` 未定義 (BGP は keepalive のみ) |

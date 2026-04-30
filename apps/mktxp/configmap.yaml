@@ -14,6 +14,7 @@ data:
         ssl_certificate_verify = False
         plaintext_login = True
 
+        # x86_64 RouterOS は HW センサー非対応 (温度/電圧/ファン)
         health = False
         installed_packages = True
         dhcp = True
@@ -28,7 +29,9 @@ data:
         #       HEAD (2026-04-01) 時点で wireguard_ds.py line 53 が
         #       "expected string or bytes-like object, got 'NoneType'"
         #       を catch して全 peer メトリクスを抑止する。
+        #       追跡: shinbunbun/dotfiles の別 issue (mktxp 1.2.18+ 待ち)
         wireguard_peers = False
+        # /interface bridge vlan が空のため無効 (VLAN 機能未使用)
         bridge_vlan = False
 
         route = True
@@ -43,33 +46,40 @@ data:
         ipv6_firewall = True
         ipv6_neighbor = True
 
+        # x86_64 RouterOS は PoE 給電非対応
         poe = False
         monitor = True
+        # /tool netwatch 未設定。RouterOS 側に手動設定後、別 issue で True 化検討
         netwatch = False
         public_ip = True
+        # 以下は x86_64 RouterOS に物理機能なし (永続的に False)
         wireless = False
         wireless_clients = False
         capsman = False
         capsman_clients = False
         w60g = False
 
-        eoip = False
-        gre = False
-        ipip = True
-        lte = False
-        ipsec = False
-        switch_port = False
+        # トンネル/VPN: 環境で未使用なものを False に
+        eoip = False             # /interface eoip 未設定
+        gre = False              # /interface gre 未設定
+        ipip = True              # ipipv6-tunnel1 (v6plus) で使用中
+        lte = False              # LTE モデム非搭載
+        ipsec = False            # IPsec 未使用
+        switch_port = False      # x86_64 = HW スイッチチップなし
 
+        # Kid Control 機能未使用
         kid_control_assigned = False
         kid_control_dynamic = False
 
         user = True
         queue = True
 
+        # /routing bfd 未設定 (BGP は keepalive のみ)
         bfd = False
         bgp = True
         routing_stats = True
         certificate = True
+        # RouterOS container 機能未使用 (コンテナワークロードは k3s 側で運用)
         container = False
 
         interface_name_format = name
