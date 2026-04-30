@@ -54,5 +54,4 @@
 | `bridge_vlan` | `/interface bridge vlan` が空 (VLAN 機能未使用) |
 | `kid_control_assigned` / `kid_control_dynamic` | Kid Control 機能未使用 |
 | `container` | RouterOS container 機能未使用 (コンテナワークロードは k3s 側で運用) |
-| `netwatch` | RouterOS 側 `/tool netwatch` 未定義 |
 | `bfd` | RouterOS 側 `/routing bfd` 未定義 (BGP は keepalive のみ) |
