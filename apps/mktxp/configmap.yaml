@@ -49,8 +49,8 @@ data:
         # x86_64 RouterOS は PoE 給電非対応
         poe = False
         monitor = True
-        # /tool netwatch 未設定。RouterOS 側に手動設定後、別 issue で True 化検討
-        netwatch = False
+        # /tool netwatch で 1.1.1.1 / 8.8.8.8 / 2606:4700:4700::1111 を ICMP 監視
+        netwatch = True
         public_ip = True
         # 以下は x86_64 RouterOS に物理機能なし (永続的に False)
         wireless = False

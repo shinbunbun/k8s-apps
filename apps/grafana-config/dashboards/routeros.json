@@ -2976,7 +2976,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 16
       },
       "panels": [
         {
@@ -3293,7 +3293,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 17
       },
       "panels": [
         {
@@ -3705,7 +3705,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 18
       },
       "panels": [
         {
@@ -3931,7 +3931,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 19
       },
       "panels": [
         {
@@ -3996,7 +3996,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 20
       },
       "panels": [
         {
@@ -4205,7 +4205,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 21
       },
       "panels": [
         {
@@ -4374,7 +4374,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 22
       },
       "id": 39,
       "title": "ログ",
@@ -5028,6 +5028,217 @@
           "title": "DNS NXDOMAIN レート (from logs)",
           "type": "timeseries",
           "description": "rate over [5m]、短期トレンド向け。RouterOS DNS resolver の NXDOMAIN 応答レート。トラブル時の切り分け補助 (応答ある = upstream 健全)。"
+        }
+      ]
+    },
+    {
+      "id": 190,
+      "type": "row",
+      "title": "上流到達性 (Netwatch)",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "panels": [
+        {
+          "id": 191,
+          "type": "stat",
+          "title": "Netwatch ステータス (上流ターゲット)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "1": {
+                      "text": "UP",
+                      "color": "green"
+                    },
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red"
+                    }
+                  }
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "text": {},
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "expr": "mktxp_netwatch_status{instance=\"192.168.1.1\",job=\"routeros\"}",
+              "refId": "A",
+              "legendFormat": "{{name}}"
+            }
+          ]
+        },
+        {
+          "id": 192,
+          "type": "timeseries",
+          "title": "ICMP RTT 平均 (ms)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 20
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "mktxp_netwatch_icmp_rtt_avg_ms{instance=\"192.168.1.1\",job=\"routeros\"}",
+              "refId": "A",
+              "legendFormat": "{{name}}"
+            }
+          ]
+        },
+        {
+          "id": 193,
+          "type": "timeseries",
+          "title": "ICMP パケットロス (%)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 20
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "mktxp_netwatch_icmp_loss_percent{instance=\"192.168.1.1\",job=\"routeros\"}",
+              "refId": "A",
+              "legendFormat": "{{name}}"
+            }
+          ]
+        },
+        {
+          "id": 194,
+          "type": "timeseries",
+          "title": "RTT ジッター (ms)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 28
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          },
+          "targets": [
+            {
+              "expr": "mktxp_netwatch_icmp_rtt_jitter_ms{instance=\"192.168.1.1\",job=\"routeros\"}",
+              "refId": "A",
+              "legendFormat": "{{name}}"
+            }
+          ]
         }
       ]
     }

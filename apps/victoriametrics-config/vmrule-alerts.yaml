@@ -356,6 +356,26 @@ spec:
           summary: "No inbound traffic on RouterOS WAN (ether3)"
           description: "No inbound traffic detected on physical WAN interface for 10 minutes."
 
+      # 上流到達性 (mktxp_netwatch). status==0 = DOWN, 1 = UP
+      - alert: RouterOSNetwatchDown
+        expr: 'mktxp_netwatch_status{job="routeros"} == 0'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS netwatch target {{ $labels.name }} is DOWN"
+          description: "ICMP probe to {{ $labels.name }} from RouterOS has failed for 2 minutes. Upstream / path issue suspected."
+
+      # netwatch 高パケットロス (10% 以上が 5 分継続)
+      - alert: RouterOSNetwatchHighLoss
+        expr: 'mktxp_netwatch_icmp_loss_percent{job="routeros"} > 10'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RouterOS netwatch high loss to {{ $labels.name }} ({{ $value }}%)"
+          description: "ICMP packet loss to {{ $labels.name }} > 10% for 5 minutes (current {{ $value }}%). Upstream degradation."
+
       # パケットドロップ率 (mktxp では drop が IF-MIB ifInDiscards 相当)
       - alert: RouterOSPacketDiscardsHigh
         expr: 'rate(mktxp_interface_rx_drop_total{job="routeros"}[5m]) > 100 or rate(mktxp_interface_tx_drop_total{job="routeros"}[5m]) > 100'
