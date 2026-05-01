@@ -1,28 +1,29 @@
-# Daily typed compaction CronJob (dbt-duckdb)
+# Daily silver compaction CronJob (dbt-duckdb)
 #
 # 毎日 02:00 JST に実行、daily/date=*/source=*/logs.parquet (1 列 json) から
 # typed/source=*/date=*/logs.parquet (typed columns) を派生させる。
-# compact.py (raw → daily) は 01:00 JST 起動なので、こちらは 1 時間後に
-# compact 完了済みの daily/ を読む形。
+# bronze CronJob (00:30 JST、cronjob-bronze.yaml) が compact.py の代替として
+# raw → daily を生成し、その上で本 silver CronJob が daily → typed を派生する。
 #
-# 実装は dbt-duckdb の external materialization (incremental は external 未対応の
-# ため使わない)。target_date 単位で 1 ファイル全置換 = idempotent backfill。
+# 実装は dbt-duckdb の external materialization。target_date 単位で 1 ファイル
+# 全置換 = idempotent backfill。Phase 2 で bronze と統合した dbt project の
+# silver tag だけを `--select tag:silver --target prod_silver` で実行。
 #
-# Image は python:3.13-slim を使い、起動時に dbt-duckdb / duckdb を pip install。
-# 毎日 1 回なら専用 image を焼くより保守性で優れる (logs-compact-cronjob と同じ判断)。
-# Python 3.14 + dbt-duckdb 1.9.* は mashumaro の UnserializableField で import 時に
-# 落ちるため (実機検証済)、3.13 + dbt-duckdb 1.10.* に揃える。duckdb 1.5.2 は
-# cp313/cp314 wheel どちらも提供されるので 3.13 でも問題なし。
+# Image / 移行履歴:
+# - python:3.13-slim を使い、起動時に dbt-duckdb / duckdb を pip install。
+#   Python 3.14 + dbt-duckdb 1.9.* は mashumaro の UnserializableField で
+#   import 時に落ちるため (実機検証済)、3.13 + dbt-duckdb 1.10.* に揃える。
 #
 # Secret `logs-typed-dbt-credentials` (Garage Operator が GarageKey "logs-typed-dbt"
 # の secretTemplate で logs-typed-dbt NS に自動生成) を envFrom で注入。
 # dbt project は ConfigMap `logs-typed-dbt-project` から /dbt にマウント。
-# ConfigMap の data key 制約で `/` が使えないため、`models__*` キーを items[]
-# で `models/*` パスにリマップしてマウントする。
+# items[] で bronze / silver SQL を `models/{bronze,silver}/...` に再配置する。
+# bronze SQL も mount するのは dbt project compile 時に全 model を parse する
+# 必要があるため (`--select tag:silver` で実行は silver のみ)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: logs-typed-dbt
+  name: logs-typed-dbt-silver
 spec:
   schedule: "0 2 * * *"
   timeZone: Asia/Tokyo
@@ -38,6 +39,7 @@ spec:
         metadata:
           labels:
             app: logs-typed-dbt
+            tier: silver
         spec:
           restartPolicy: OnFailure
           containers:
@@ -49,12 +51,12 @@ spec:
                   set -euo pipefail
                   pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2'
                   TARGET_DATE="${TARGET_DATE:-$(TZ=Asia/Tokyo date -d 'yesterday' +%F)}"
-                  echo "[logs-typed-dbt] target_date (JST): ${TARGET_DATE}"
-                  # ConfigMap mount は read-only。dbt は target/ や logs/ を
-                  # 書くため /tmp/dbt にコピーしてから実行する。
+                  echo "[silver] target_date (JST): ${TARGET_DATE}"
                   cp -rL /dbt /tmp/dbt
                   cd /tmp/dbt
-                  exec dbt run --profiles-dir . --vars "{target_date: ${TARGET_DATE}}"
+                  exec dbt run --profiles-dir . --target prod_silver \
+                    --select tag:silver \
+                    --vars "{target_date: ${TARGET_DATE}}"
               envFrom:
                 - secretRef:
                     name: logs-typed-dbt-credentials
@@ -83,12 +85,20 @@ spec:
                     path: dbt_project.yml
                   - key: profiles.yml
                     path: profiles.yml
-                  - key: models__typed_k8s_pods.sql
-                    path: models/typed_k8s_pods.sql
-                  - key: models__typed_routeros.sql
-                    path: models/typed_routeros.sql
                   - key: models__schema.yml
                     path: models/schema.yml
+                  - key: models__bronze__daily_systemd.sql
+                    path: models/bronze/daily_systemd.sql
+                  - key: models__bronze__daily_k8s_pods.sql
+                    path: models/bronze/daily_k8s_pods.sql
+                  - key: models__bronze__daily_routeros.sql
+                    path: models/bronze/daily_routeros.sql
+                  - key: models__bronze__daily_macos_unified.sql
+                    path: models/bronze/daily_macos_unified.sql
+                  - key: models__silver__typed_k8s_pods.sql
+                    path: models/silver/typed_k8s_pods.sql
+                  - key: models__silver__typed_routeros.sql
+                    path: models/silver/typed_routeros.sql
             - name: duckdb-spill
               emptyDir:
                 sizeLimit: 10Gi

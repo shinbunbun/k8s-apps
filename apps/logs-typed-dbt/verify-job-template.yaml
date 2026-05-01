@@ -1,0 +1,91 @@
+# Verify Job テンプレート: bronze (daily-bronze/) と compact.py (daily/) の出力比較
+# (手動 one-shot 用、kustomization.yaml 外)
+#
+# 並走期 (PR 1 merge ~ PR 2 cutover まで) に毎日 or 必要時手動で実行し、
+# bronze 出力が compact.py と完全互換であること (行数一致) を verify。
+#
+# 使い方:
+#   1. env VERIFY_START_DATE / VERIFY_DAYS を編集
+#   2. `kubectl create -f apps/logs-typed-dbt/verify-job-template.yaml`
+#   3. `kubectl logs -n logs-typed-dbt job/logs-typed-dbt-verify`
+#   4. 全行 diff=0 なら cutover (PR 2) GO
+#
+# Phase 1 で smoke test に使った typed-verify Job と同じパターン。
+# bronze 4 source × N 日 を total 比較する。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logs-typed-dbt-verify
+  namespace: logs-typed-dbt
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app: logs-typed-dbt
+        role: verify
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: python:3.13-slim
+          env:
+            - name: VERIFY_START_DATE
+              value: "2026-04-25"
+            - name: VERIFY_DAYS
+              value: "7"
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet duckdb==1.5.2
+              python <<'PY'
+              import os, duckdb
+              from datetime import date, timedelta
+
+              start = date.fromisoformat(os.environ['VERIFY_START_DATE'])
+              days = int(os.environ['VERIFY_DAYS'])
+              sources = ['systemd', 'k8s-pods', 'routeros', 'macos-unified']
+
+              c = duckdb.connect()
+              c.execute("INSTALL httpfs; LOAD httpfs;")
+              c.execute(f"""CREATE SECRET (TYPE S3,
+                KEY_ID '{os.environ['AWS_ACCESS_KEY_ID']}',
+                SECRET '{os.environ['AWS_SECRET_ACCESS_KEY']}',
+                REGION '{os.environ['AWS_REGION']}',
+                ENDPOINT 'garage.garage.svc.cluster.local:3900',
+                URL_STYLE 'path', USE_SSL false);""")
+
+              all_match = True
+              for i in range(days):
+                  target = (start + timedelta(days=i)).isoformat()
+                  for src in sources:
+                      bronze_path = f"s3://logs-archive/daily-bronze/date={target}/source={src}/logs.parquet"
+                      compact_path = f"s3://logs-archive/daily/date={target}/source={src}/logs.parquet"
+                      try:
+                          b = c.execute(f"SELECT count(*) FROM read_parquet('{bronze_path}')").fetchone()[0]
+                      except Exception:
+                          b = "MISSING"
+                      try:
+                          d = c.execute(f"SELECT count(*) FROM read_parquet('{compact_path}')").fetchone()[0]
+                      except Exception:
+                          d = "MISSING"
+                      if b == d and isinstance(b, int):
+                          tag = "MATCH"
+                      else:
+                          tag = f"MISMATCH (diff={b - d if isinstance(b, int) and isinstance(d, int) else 'N/A'})"
+                          all_match = False
+                      print(f"{target} {src:14s}: bronze={str(b):>10}  compact={str(d):>10}  {tag}")
+              print()
+              print("ALL_MATCH" if all_match else "SOME_MISMATCH")
+              PY
+          envFrom:
+            - secretRef:
+                name: logs-typed-dbt-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 4Gi

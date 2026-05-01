@@ -1,14 +1,21 @@
-# logs-typed-dbt: dbt-duckdb で daily/ → typed/ を派生させる CronJob
+# logs-typed-dbt: dbt-duckdb で raw → daily (bronze) と daily → typed (silver) を
+# 派生させる CronJob 群。
+#
+# CronJob 2 つ (bronze 00:30 JST / silver 02:00 JST) を 1 つの dbt project から
+# tag 経由で実行。Phase 2 (compact.py 廃止) で bronze を新設、silver は Phase 1
+# から継続。
 #
 # ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が
 # このディレクトリを自動検出して ArgoCD Application を生成する。namespace は
 # basename と一致する `logs-typed-dbt` に CreateNamespace=true で作られる。
 #
-# backfill-job-template.yaml は手動 `kubectl create -f ...` 専用なので resources
+# backfill-job-template.yaml / backfill-bronze-job-template.yaml /
+# verify-job-template.yaml は手動 `kubectl create -f ...` 専用なので resources
 # には含めない (commit のみ)。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: logs-typed-dbt
 resources:
   - cronjob.yaml
+  - cronjob-bronze.yaml
   - dbt-project-configmap.yaml

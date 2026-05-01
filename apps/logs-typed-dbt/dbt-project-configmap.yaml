@@ -1,28 +1,29 @@
 # dbt project (dbt-duckdb) を ConfigMap に embed
 #
-# CronJob から /dbt にマウントされ、起動時に /tmp/dbt にコピーされて (target/ や
-# logs/ の書き込みが要るため) `dbt run --vars '{target_date: ...}'` が実行される。
+# bronze (raw → daily) と silver (daily → typed) を 1 dbt project に統合し
+# tag (`bronze` / `silver`) で分離。CronJob 2 個 (bronze 00:30 JST / silver
+# 02:00 JST) がそれぞれ `--target prod_bronze` / `--target prod_silver` +
+# `--select tag:bronze` / `--select tag:silver` で対象 model を絞って実行。
 #
-# ファイル構成:
-#   dbt_project.yml      - プロジェクト定義 (profile, model paths, materialization 既定)
-#   profiles.yml         - DuckDB target、Garage S3 secret、メモリ/spill 設定
-#   models/typed_k8s_pods.sql  - daily/ → typed/ k8s-pods 派生
-#   models/typed_routeros.sql  - daily/ → typed/ routeros 派生
-#   models/schema.yml          - 列定義、`not_null` test (ts)
+# ファイル構成 (ConfigMap items[] で `models/{bronze,silver}/...` にマウント):
+#   dbt_project.yml                         - tag, materialization, vars
+#   profiles.yml                            - DuckDB target 2 つ (prod_bronze / prod_silver)
+#   models/bronze/daily_<source>.sql × 4    - raw/ → daily/ 派生 (compact.py 代替)
+#   models/silver/typed_<source>.sql × 2    - daily/ → typed/ 派生 (Phase 1 既存)
+#   models/schema.yml                       - 全 model の description
 #
 # 設計判断:
 # - external materialization で Parquet を直接 S3 (Garage) に書く。
-#   incremental strategy は external 未対応のため、target_date 単位で
-#   1 ファイル全置換 (= idempotent backfill)。microbatch は使わない。
-# - profiles.yml の secrets: 形式 (dbt-duckdb 1.9+) で SECRET を発行。
-#   DuckDB v1.4+ は SET s3_* を受け付けず Secret Manager 必須。
-# - read_parquet(daily/...) → 抽出 → COPY TO Parquet zstd。
-#   ORDER BY は in-memory sort で routeros 1 日分 (3M 行) でも 3.7 GiB
-#   消費して OOM するので外す。Parquet writer が row group ごとに
-#   min/max statistics を記録するため、ts 範囲フィルタは sort なしでも
-#   ある程度 row group prune が効く (page skipping より粗いが許容範囲)。
-# - hive_partitioning=false: 入力 daily/ ファイルは内部 1 列 `json` のみ、
-#   path 推論を切ってシンプルに read。
+#   incremental は external 未対応のため、target_date 単位で 1 ファイル全置換。
+# - bronze は daily_path_prefix 変数で出力 path を切替: PR 1 では "daily-bronze"
+#   に shadow write、PR 2 cutover で "daily" に切替えて compact.py 代替。
+# - bronze の merge ロジック (compact.py の merge mode) は廃止。orphan 後追いは
+#   raw/ → daily/ の全置換 backfill Job で対応 (rare event)。
+# - silver: `daily/` (compact.py または Phase 2 cutover 後の bronze) を読み、
+#   typed columns に展開。1MB 超の巨大 record は WHERE skip。
+# - profile に prod_bronze (12GB / threads 4) と prod_silver (6GB / threads 2)
+#   を分けるのは memory profile が違うため。bronze は 4 source の ndjson parse、
+#   silver は 1 source × 1 day の column 投影のみ。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -43,14 +44,21 @@ data:
         +format: parquet
         +options:
           compression: zstd
+        bronze:
+          +tags: ["bronze"]
+        silver:
+          +tags: ["silver"]
     vars:
       target_date: ""
+      # bronze 出力先プレフィックス。PR 1 では shadow write 用 "daily-bronze"、
+      # cutover (PR 2) で "daily" に切替。
+      daily_path_prefix: "daily-bronze"
 
   profiles.yml: |
     logs_typed:
-      target: prod
+      target: prod_silver
       outputs:
-        prod:
+        prod_silver:
           type: duckdb
           path: ":memory:"
           threads: 2
@@ -74,8 +82,112 @@ data:
               endpoint: 'garage.garage.svc.cluster.local:3900'
               url_style: 'path'
               use_ssl: false
+        prod_bronze:
+          # raw/ → daily/ 派生用、4 source の ndjson parse でメモリ要求が大きい
+          # (compact.py 実績 12GB / threads 4 と同等)。
+          type: duckdb
+          path: ":memory:"
+          threads: 4
+          extensions:
+            - httpfs
+            - json
+          settings:
+            memory_limit: '12GB'
+            preserve_insertion_order: false
+            home_directory: '/tmp/duckdb-home'
+            extension_directory: '/tmp/duckdb-extensions'
+          secrets:
+            - type: s3
+              name: garage_s3
+              key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+              secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+              region: "{{ env_var('AWS_REGION') }}"
+              endpoint: 'garage.garage.svc.cluster.local:3900'
+              url_style: 'path'
+              use_ssl: false
 
-  models__typed_k8s_pods.sql: |
+  # ===== bronze models (raw/ → daily/) =====
+  # compact.py の compact_source ロジックを SQL 翻訳。
+  # output: s3://logs-archive/<daily_path_prefix>/date=YYYY-MM-DD/source=<src>/logs.parquet
+  # merge は廃止 (orphan 後追いは backfill Job で全置換)。
+  # location string で `date=` を先、`source=` を後に固定 (typed/ とは逆順、
+  # 既存 daily/ の hive partition path を維持するため)。
+
+  models__bronze__daily_systemd.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=systemd/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT to_json(t)::JSON AS json
+    FROM read_json(
+      's3://logs-archive/raw/source=systemd/date={{ var("target_date") }}/**/*.log.zst',
+      format='newline_delimited',
+      compression='zstd',
+      union_by_name=true,
+      ignore_errors=true,
+      maximum_object_size=268435456
+    ) AS t
+
+  models__bronze__daily_k8s_pods.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=k8s-pods/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT to_json(t)::JSON AS json
+    FROM read_json(
+      's3://logs-archive/raw/source=k8s-pods/date={{ var("target_date") }}/**/*.log.zst',
+      format='newline_delimited',
+      compression='zstd',
+      union_by_name=true,
+      ignore_errors=true,
+      maximum_object_size=268435456
+    ) AS t
+
+  models__bronze__daily_routeros.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=routeros/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT to_json(t)::JSON AS json
+    FROM read_json(
+      's3://logs-archive/raw/source=routeros/date={{ var("target_date") }}/**/*.log.zst',
+      format='newline_delimited',
+      compression='zstd',
+      union_by_name=true,
+      ignore_errors=true,
+      maximum_object_size=268435456
+    ) AS t
+
+  models__bronze__daily_macos_unified.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=macos-unified/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT to_json(t)::JSON AS json
+    FROM read_json(
+      's3://logs-archive/raw/source=macos-unified/date={{ var("target_date") }}/**/*.log.zst',
+      format='newline_delimited',
+      compression='zstd',
+      union_by_name=true,
+      ignore_errors=true,
+      maximum_object_size=268435456
+    ) AS t
+
+  # ===== silver models (daily/ → typed/) =====
+
+  models__silver__typed_k8s_pods.sql: |
     {{ config(
         materialized='external',
         location="s3://logs-archive/typed/source=k8s-pods/date=" ~ var('target_date') ~ "/logs.parquet",
@@ -100,7 +212,7 @@ data:
     -- memory が膨らみ memory_limit に達するため。
     WHERE length(json::VARCHAR) <= 1048576
 
-  models__typed_routeros.sql: |
+  models__silver__typed_routeros.sql: |
     {{ config(
         materialized='external',
         location="s3://logs-archive/typed/source=routeros/date=" ~ var('target_date') ~ "/logs.parquet",
@@ -126,6 +238,19 @@ data:
   models__schema.yml: |
     version: 2
     models:
+      # ===== bronze =====
+      - name: daily_systemd
+        description: |
+          systemd source の日次 raw → daily 変換。compact.py の SOURCES=systemd
+          相当を SQL 翻訳。出力は s3://logs-archive/<daily_path_prefix>/date=*/source=systemd/logs.parquet。
+          1 列 `json` (JSON 型)、compact.py 出力と完全互換 schema。
+      - name: daily_k8s_pods
+        description: k8s-pods source の日次 raw → daily 変換 (compact.py 代替)。
+      - name: daily_routeros
+        description: routeros source の日次 raw → daily 変換 (compact.py 代替)。
+      - name: daily_macos_unified
+        description: macos-unified source の日次 raw → daily 変換 (compact.py 代替)。
+      # ===== silver =====
       - name: typed_k8s_pods
         description: |
           k8s-pods source の日次 typed Parquet。
