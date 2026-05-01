@@ -64,7 +64,7 @@ spec:
                   memory: 256Mi
                 limits:
                   # 1 source/日のスキャン (compact.py の 4 source 全併合より軽量)。
-                  # DuckDB memory_limit=4GB + extension load + python overhead を
+                  # DuckDB memory_limit=6GB + extension load + python overhead を
                   # 吸収する余裕として 8Gi。実測後に調整。
                   memory: 8Gi
               volumeMounts:
