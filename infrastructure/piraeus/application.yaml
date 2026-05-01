@@ -104,7 +104,7 @@ spec:
                       path: /spec/initContainers/0
                       value:
                         name: drbd-module-loader
-                        image: quay.io/piraeusdatastore/drbd9-noble:v9.3.1
+                        image: quay.io/piraeusdatastore/drbd9-noble:v9.3.2
                         env:
                           - name: LB_HOW
                             value: deps_only
