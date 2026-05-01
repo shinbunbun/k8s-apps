@@ -31,7 +31,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: dbt-backfill
-          image: python:3.14-slim
+          image: python:3.13-slim
           env:
             - name: BACKFILL_START_DATE
               value: "2026-04-23"
@@ -41,7 +41,7 @@ spec:
           args:
             - |
               set -euo pipefail
-              pip install --no-cache-dir --quiet 'dbt-duckdb==1.9.*' 'duckdb==1.5.2'
+              pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2'
               cp -rL /dbt /tmp/dbt
               cd /tmp/dbt
               for i in $(seq 0 $((BACKFILL_DAYS - 1))); do

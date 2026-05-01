@@ -8,8 +8,11 @@
 # 実装は dbt-duckdb の external materialization (incremental は external 未対応の
 # ため使わない)。target_date 単位で 1 ファイル全置換 = idempotent backfill。
 #
-# Image は python:3.14-slim を使い、起動時に dbt-duckdb / duckdb を pip install。
+# Image は python:3.13-slim を使い、起動時に dbt-duckdb / duckdb を pip install。
 # 毎日 1 回なら専用 image を焼くより保守性で優れる (logs-compact-cronjob と同じ判断)。
+# Python 3.14 + dbt-duckdb 1.9.* は mashumaro の UnserializableField で import 時に
+# 落ちるため (実機検証済)、3.13 + dbt-duckdb 1.10.* に揃える。duckdb 1.5.2 は
+# cp313/cp314 wheel どちらも提供されるので 3.13 でも問題なし。
 #
 # Secret `logs-typed-dbt-credentials` (Garage Operator が GarageKey "logs-typed-dbt"
 # の secretTemplate で logs-typed-dbt NS に自動生成) を envFrom で注入。
@@ -39,12 +42,12 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: dbt
-              image: python:3.14-slim
+              image: python:3.13-slim
               command: ["/bin/bash", "-c"]
               args:
                 - |
                   set -euo pipefail
-                  pip install --no-cache-dir --quiet 'dbt-duckdb==1.9.*' 'duckdb==1.5.2'
+                  pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2'
                   TARGET_DATE="${TARGET_DATE:-$(TZ=Asia/Tokyo date -d 'yesterday' +%F)}"
                   echo "[logs-typed-dbt] target_date (JST): ${TARGET_DATE}"
                   # ConfigMap mount は read-only。dbt は target/ や logs/ を
