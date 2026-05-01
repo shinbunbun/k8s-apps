@@ -16,6 +16,8 @@
 #   cnpg-authentik → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
 #   vector         → logs-archive を owner (retention lifecycle 設定用)
 #   compact        → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
+#   grafana-duckdb → logs-archive を read のみ (Grafana DuckDB datasource 専用、
+#                    Explore から書込/削除事故を防止するため最小権限)
 #
 # 【出力 Secret 構造】
 #   各 GarageKey は secretTemplate で AWS SDK 標準形式の Secret を生成:
@@ -177,6 +179,41 @@ spec:
   secretTemplate:
     name: compact-garage-credentials
     namespace: logs-compact-cronjob
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+# Grafana DuckDB datasource プラグイン専用 read-only キー。
+# initSql で SET s3_access_key_id / s3_secret_access_key に流し、
+# read_parquet('s3://logs-archive/daily/...') で長期ログを集計する。
+# write/owner なしにすることで、Explore タブから誤って COPY TO や
+# DELETE 等を実行しても AccessDenied で弾かれる (Grafana の権限分離は
+# UI/team レベルでは効くが、DuckDB datasource は SQL 任意実行を許す
+# ため、Garage 側の最小権限でガードする)。
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: grafana-duckdb
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage
+  name: grafana-duckdb
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIdKey: GRAFANA_DUCKDB_KEY_ID
+    secretAccessKeyKey: GRAFANA_DUCKDB_SECRET
+  bucketPermissions:
+    - bucketRef: logs-archive
+      read: true
+  secretTemplate:
+    name: grafana-duckdb-credentials
+    namespace: grafana
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION

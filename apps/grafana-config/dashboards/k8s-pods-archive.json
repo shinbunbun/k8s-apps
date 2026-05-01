@@ -1,0 +1,275 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Garage logs-archive (compact.py 出力 Parquet) を DuckDB datasource 経由で集計する k8s Pod ログ長期ダッシュボード。Alloy → Vector OTLP 経由で記録された OTLP shape (body / attributes 配下に k8s メタ) を json->>'attributes...' で展開する。",
+  "editable": true,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "期間内ログ件数",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "pointSize": 4,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', (json->>'timestamp')::TIMESTAMP) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "title": "1 時間 bucket 件数推移",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  coalesce(\n    json->'attributes'->>'k8s.namespace.name',\n    json->'resource'->>'k8s.namespace.name',\n    '(unknown)'\n  ) AS namespace,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "namespace 別件数 Top 10",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  coalesce(\n    json->'attributes'->>'k8s.pod.name',\n    json->'resource'->>'k8s.pod.name',\n    '(unknown)'\n  ) AS pod,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "pod 別件数 Top 10",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right"
+        },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  coalesce(json->>'severity_text', json->>'level', '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "severity / level 別件数",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "Pduckdblogs0001"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 6,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  (json->>'timestamp')::TIMESTAMP AS ts,\n  coalesce(\n    json->'attributes'->>'k8s.namespace.name',\n    json->'resource'->>'k8s.namespace.name'\n  ) AS namespace,\n  coalesce(\n    json->'attributes'->>'k8s.pod.name',\n    json->'resource'->>'k8s.pod.name'\n  ) AS pod,\n  coalesce(json->>'severity_text', json->>'level') AS level,\n  coalesce(json->>'body', json->>'message')        AS body\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nORDER BY ts DESC\nLIMIT 200",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "直近 200 件サンプル",
+      "type": "table"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["logs-archive", "k8s-pods", "duckdb"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "k8s Pods Long-term Logs (DuckDB)",
+  "uid": "logs-archive-k8s-pods",
+  "version": 1,
+  "weekStart": ""
+}
