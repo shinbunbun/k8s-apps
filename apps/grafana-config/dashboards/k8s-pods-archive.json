@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Garage logs-archive (compact.py 出力 Parquet) を DuckDB datasource 経由で集計する k8s Pod ログ長期ダッシュボード。Alloy → Vector OTLP 経由で記録された record で、Alloy が Loki entry を OTLP に変換する際に Loki labels を attributes に詰めるため key 名は OTLP semantic conventions の k8s.* ではなく namespace / pod / container / level など短い名前。message は top-level、timestamp も top-level (json->>'timestamp')。",
+  "description": "Garage logs-archive の typed/ (silver layer、dbt-duckdb で daily/ から派生) を DuckDB datasource 経由で集計する k8s Pod ログ長期ダッシュボード。Alloy → Vector OTLP 経由で記録された record の typed columns (ts, namespace, pod, container, level, message) を直読み。Loki retention を超える 30 日以上の範囲が対象。",
   "editable": true,
   "graphTooltip": 0,
   "id": null,
@@ -56,7 +56,7 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)",
+          "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)",
           "format": 1,
           "refId": "A"
         }
@@ -103,7 +103,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', (json->>'timestamp')::TIMESTAMP) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', ts) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
           "format": 0,
           "refId": "A"
         }
@@ -140,7 +140,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  coalesce(json->'attributes'->>'namespace', '(unknown)') AS namespace,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  coalesce(namespace, '(unknown)') AS namespace,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -177,7 +177,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  coalesce(json->'attributes'->>'pod', '(unknown)') AS pod,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  coalesce(pod, '(unknown)') AS pod,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -214,7 +214,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  coalesce(json->'attributes'->>'level', '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC",
+          "rawSql": "SELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC",
           "format": 1,
           "refId": "A"
         }
@@ -247,7 +247,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  (json->>'timestamp')::TIMESTAMP AS ts,\n  json->'attributes'->>'namespace' AS namespace,\n  json->'attributes'->>'pod'       AS pod,\n  json->'attributes'->>'container' AS container,\n  json->'attributes'->>'level'     AS level,\n  json->>'message'                 AS message\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "SELECT\n  ts,\n  namespace,\n  pod,\n  container,\n  level,\n  message\nFROM read_parquet(\n  's3://logs-archive/typed/source=k8s-pods/date=*/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
