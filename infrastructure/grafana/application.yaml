@@ -2,10 +2,17 @@
 #
 # values は chart デフォルトを活かし、運用上の差分だけを明示:
 # - replicas: 2 (chart デフォルト 1)
+# - image.tag: 12.4.2-ubuntu (motherduck DuckDB datasource プラグインが glibc 必須、
+#   Alpine ベースだとロード不可。Apache-2.0 ライセンスのプラグインを GF_INSTALL_PLUGINS
+#   から固定バージョン取得 + allow_loading_unsigned_plugins で許可)
 # - admin: existingSecret (OIDC 優先なのでフォールバック用途)
 # - envFromSecret: grafana-secrets (DB / OAuth / secret_key を注入)
-# - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化
+# - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化、
+#   plugins.allow_loading_unsigned_plugins で DuckDB datasource (unsigned) を許可
 # - extraConfigmapMounts: datasources provisioning ConfigMap をマウント
+# - extraSecretMounts: grafana-duckdb-credentials (Garage read-only key) を
+#   /var/run/secrets/grafana-duckdb にマウント。datasource provisioning の
+#   $__file{...} 補間で initSql に S3 認証情報を流す
 # - sidecar.dashboards: label grafana_dashboard=1 を grafana namespace 内で探索
 # - affinity: podAntiAffinity preferred でノード分散
 # - persistence: chart デフォルト無効のまま (/var/lib/grafana と /var/lib/grafana-search
@@ -32,8 +39,19 @@ spec:
         replicas: 2
 
         image:
-          # chart 側 appVersion より新しい Grafana を使うための tag 上書き
-          tag: "12.4.2"
+          # chart 側 appVersion より新しい Grafana を使うための tag 上書き。
+          # ubuntu バリアントを選ぶ理由: motherduck DuckDB datasource プラグインの
+          # backend バイナリが glibc 2.35+ にリンクされており、Alpine (musl libc) では
+          # plugin がロードできないため。chart 側 image.repository は grafana/grafana
+          # デフォルトのまま、tag だけ ubuntu サフィックス付きに切り替える。
+          tag: "12.4.2-ubuntu"
+
+        # motherduck DuckDB datasource プラグインを固定バージョンで install。
+        # zip URL;plugin-id 形式で chart の plugins[] が GF_INSTALL_PLUGINS
+        # 環境変数に展開される。Apache-2.0 ライセンス、unsigned のため下記
+        # grafana.ini.plugins.allow_loading_unsigned_plugins と組で機能する。
+        plugins:
+          - https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v0.4.1/motherduck-duckdb-datasource-0.4.1.zip;motherduck-duckdb-datasource
 
         admin:
           existingSecret: grafana-secrets
@@ -73,11 +91,28 @@ spec:
             execute_alerts: false
           alerting:
             enabled: false
+          plugins:
+            # motherduck DuckDB datasource (id: motherduck-duckdb-datasource) は
+            # Grafana Plugin Catalog で署名されていないため、明示的に許可リストへ
+            # 追加しないとロードを拒否される。複数許可する場合はカンマ区切り。
+            allow_loading_unsigned_plugins: motherduck-duckdb-datasource
 
         extraConfigmapMounts:
           - name: datasources
             mountPath: /etc/grafana/provisioning/datasources
             configMap: grafana-datasources
+            readOnly: true
+
+        # GarageKey "grafana-duckdb" (apps/garage/keys.yaml) の secretTemplate が
+        # grafana namespace に grafana-duckdb-credentials Secret を生成する。
+        # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION の 3 ファイル。
+        # datasources-configmap.yaml の DuckDB datasource initSql から
+        # $__file{/var/run/secrets/grafana-duckdb/AWS_ACCESS_KEY_ID} で参照する。
+        # secretName が "name" フィールドにも secret 名にも使われる chart 仕様。
+        extraSecretMounts:
+          - name: grafana-duckdb-credentials
+            secretName: grafana-duckdb-credentials
+            mountPath: /var/run/secrets/grafana-duckdb
             readOnly: true
 
         sidecar:

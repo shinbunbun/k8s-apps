@@ -219,3 +219,25 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  # DuckDB datasource (motherduck plugin) で Garage 上の長期 Parquet を集計する
+  # 「Logs Archive」フォルダのダッシュボード群。短期 Loki ダッシュボード
+  # (logs-errors / logs-overview / logs-explore) との重複を避けるため別フォルダに
+  # 分離している。issue #654 参照。
+  - name: grafana-dashboard-routeros-archive
+    files:
+      - dashboards/routeros-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-pods-archive
+    files:
+      - dashboards/k8s-pods-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
