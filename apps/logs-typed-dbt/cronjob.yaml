@@ -1,0 +1,91 @@
+# Daily typed compaction CronJob (dbt-duckdb)
+#
+# 毎日 02:00 JST に実行、daily/date=*/source=*/logs.parquet (1 列 json) から
+# typed/source=*/date=*/logs.parquet (typed columns) を派生させる。
+# compact.py (raw → daily) は 01:00 JST 起動なので、こちらは 1 時間後に
+# compact 完了済みの daily/ を読む形。
+#
+# 実装は dbt-duckdb の external materialization (incremental は external 未対応の
+# ため使わない)。target_date 単位で 1 ファイル全置換 = idempotent backfill。
+#
+# Image は python:3.14-slim を使い、起動時に dbt-duckdb / duckdb を pip install。
+# 毎日 1 回なら専用 image を焼くより保守性で優れる (logs-compact-cronjob と同じ判断)。
+#
+# Secret `logs-typed-dbt-credentials` (Garage Operator が GarageKey "logs-typed-dbt"
+# の secretTemplate で logs-typed-dbt NS に自動生成) を envFrom で注入。
+# dbt project は ConfigMap `logs-typed-dbt-project` から /dbt にマウント。
+# ConfigMap の data key 制約で `/` が使えないため、`models__*` キーを items[]
+# で `models/*` パスにリマップしてマウントする。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-typed-dbt
+spec:
+  schedule: "0 2 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-typed-dbt
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dbt
+              image: python:3.14-slim
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  pip install --no-cache-dir --quiet 'dbt-duckdb==1.9.*' 'duckdb==1.5.2'
+                  TARGET_DATE="${TARGET_DATE:-$(TZ=Asia/Tokyo date -d 'yesterday' +%F)}"
+                  echo "[logs-typed-dbt] target_date (JST): ${TARGET_DATE}"
+                  # ConfigMap mount は read-only。dbt は target/ や logs/ を
+                  # 書くため /tmp/dbt にコピーしてから実行する。
+                  cp -rL /dbt /tmp/dbt
+                  cd /tmp/dbt
+                  exec dbt run --profiles-dir . --vars "{target_date: ${TARGET_DATE}}"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # 1 source/日のスキャン (compact.py の 4 source 全併合より軽量)。
+                  # DuckDB memory_limit=4GB + extension load + python overhead を
+                  # 吸収する余裕として 8Gi。実測後に調整。
+                  memory: 8Gi
+              volumeMounts:
+                - name: dbt
+                  mountPath: /dbt
+                  readOnly: true
+                # DuckDB の memory_limit 超過時 spill 先。
+                - name: duckdb-spill
+                  mountPath: /tmp/duckdb-spill
+          volumes:
+            - name: dbt
+              configMap:
+                name: logs-typed-dbt-project
+                items:
+                  - key: dbt_project.yml
+                    path: dbt_project.yml
+                  - key: profiles.yml
+                    path: profiles.yml
+                  - key: models__typed_k8s_pods.sql
+                    path: models/typed_k8s_pods.sql
+                  - key: models__typed_routeros.sql
+                    path: models/typed_routeros.sql
+                  - key: models__schema.yml
+                    path: models/schema.yml
+            - name: duckdb-spill
+              emptyDir:
+                sizeLimit: 10Gi

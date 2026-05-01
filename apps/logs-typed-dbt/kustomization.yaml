@@ -1,0 +1,14 @@
+# logs-typed-dbt: dbt-duckdb で daily/ → typed/ を派生させる CronJob
+#
+# ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が
+# このディレクトリを自動検出して ArgoCD Application を生成する。namespace は
+# basename と一致する `logs-typed-dbt` に CreateNamespace=true で作られる。
+#
+# backfill-job-template.yaml は手動 `kubectl create -f ...` 専用なので resources
+# には含めない (commit のみ)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: logs-typed-dbt
+resources:
+  - cronjob.yaml
+  - dbt-project-configmap.yaml

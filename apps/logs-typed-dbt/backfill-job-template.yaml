@@ -1,0 +1,86 @@
+# Backfill Job テンプレート (手動 one-shot 用、kustomization.yaml には含めない)
+#
+# 使い方:
+#   1. 下の env BACKFILL_START_DATE / BACKFILL_DAYS を編集
+#   2. `kubectl create -f apps/logs-typed-dbt/backfill-job-template.yaml`
+#   3. `kubectl logs -n logs-typed-dbt job/logs-typed-dbt-backfill -f` で観察
+#   4. 完了後 `kubectl delete -n logs-typed-dbt job/logs-typed-dbt-backfill`
+#
+# 同 metadata.name で複数 backfill を投げる場合は generateName 化するか
+# 名前を date suffix にする。
+#
+# idempotency: 同 target_date を再実行すると既存 typed/ Parquet を上書き、
+# 行数・schema 一致するなら問題なし。failed の途中再実行も `|| break` で
+# 当該日付以降を skip するので安全。
+#
+# 既存 daily/ には触れない (read-only)。失敗時の影響範囲は typed/ のみ。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logs-typed-dbt-backfill
+  namespace: logs-typed-dbt
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 21600  # 6h、長期 backfill 想定
+  template:
+    metadata:
+      labels:
+        app: logs-typed-dbt
+        role: backfill
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dbt-backfill
+          image: python:3.14-slim
+          env:
+            - name: BACKFILL_START_DATE
+              value: "2026-04-23"
+            - name: BACKFILL_DAYS
+              value: "8"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet 'dbt-duckdb==1.9.*' 'duckdb==1.5.2'
+              cp -rL /dbt /tmp/dbt
+              cd /tmp/dbt
+              for i in $(seq 0 $((BACKFILL_DAYS - 1))); do
+                TARGET_DATE=$(TZ=Asia/Tokyo date -d "${BACKFILL_START_DATE} +${i} days" +%F)
+                echo "[backfill] === ${TARGET_DATE} ==="
+                # daily/ 不在の日は dbt が read_parquet で失敗する。
+                # || break で当該日以降を skip (= 範囲のうち daily/ がある分まで処理)。
+                dbt run --profiles-dir . --vars "{target_date: ${TARGET_DATE}}" || break
+              done
+          envFrom:
+            - secretRef:
+                name: logs-typed-dbt-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 8Gi
+          volumeMounts:
+            - name: dbt
+              mountPath: /dbt
+              readOnly: true
+            - name: duckdb-spill
+              mountPath: /tmp/duckdb-spill
+      volumes:
+        - name: dbt
+          configMap:
+            name: logs-typed-dbt-project
+            items:
+              - key: dbt_project.yml
+                path: dbt_project.yml
+              - key: profiles.yml
+                path: profiles.yml
+              - key: models__typed_k8s_pods.sql
+                path: models/typed_k8s_pods.sql
+              - key: models__typed_routeros.sql
+                path: models/typed_routeros.sql
+              - key: models__schema.yml
+                path: models/schema.yml
+        - name: duckdb-spill
+          emptyDir:
+            sizeLimit: 10Gi

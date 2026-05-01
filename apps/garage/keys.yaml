@@ -11,13 +11,15 @@
 #   変更しても反映されない可能性があるため、初回運用時は GarageKey CR を delete → recreate が確実。
 #
 # 【権限マッピング】
-#   loki           → loki-chunks / loki-ruler / loki-admin を owner
-#   cnpg           → cnpg-backups を owner (grafana-db の Barman が使用)
-#   cnpg-authentik → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
-#   vector         → logs-archive を owner (retention lifecycle 設定用)
-#   compact        → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
-#   grafana-duckdb → logs-archive を read のみ (Grafana DuckDB datasource 専用、
-#                    Explore から書込/削除事故を防止するため最小権限)
+#   loki            → loki-chunks / loki-ruler / loki-admin を owner
+#   cnpg            → cnpg-backups を owner (grafana-db の Barman が使用)
+#   cnpg-authentik  → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
+#   vector          → logs-archive を owner (retention lifecycle 設定用)
+#   compact         → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
+#   logs-typed-dbt  → logs-archive を read + write (dbt-duckdb で daily/ → typed/ 派生、
+#                     lifecycle 設定不要、compact と権限分離)
+#   grafana-duckdb  → logs-archive を read のみ (Grafana DuckDB datasource 専用、
+#                     Explore から書込/削除事故を防止するため最小権限)
 #
 # 【出力 Secret 構造】
 #   各 GarageKey は secretTemplate で AWS SDK 標準形式の Secret を生成:
@@ -179,6 +181,40 @@ spec:
   secretTemplate:
     name: compact-garage-credentials
     namespace: logs-compact-cronjob
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+# dbt-duckdb (logs-typed-dbt CronJob) 専用 read+write キー。
+# daily/date=*/source=*/logs.parquet を読み出して typed/source=*/date=*/logs.parquet
+# を書き出す silver layer 派生に使う。compact と権限を分離するのは、compact が
+# raw/ 削除も行う owner 級の操作なのに対し、こちらは typed/ 配下しか触らない
+# (= raw/ や daily/ への副作用がないことを Garage 側で保証する) ため。
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: logs-typed-dbt
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage
+  name: logs-typed-dbt
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIdKey: LOGS_TYPED_DBT_KEY_ID
+    secretAccessKeyKey: LOGS_TYPED_DBT_SECRET
+  bucketPermissions:
+    - bucketRef: logs-archive
+      read: true
+      write: true
+  secretTemplate:
+    name: logs-typed-dbt-credentials
+    namespace: logs-typed-dbt
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION
