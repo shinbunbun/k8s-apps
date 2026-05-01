@@ -87,14 +87,14 @@ spec:
                     path: profiles.yml
                   - key: models__schema.yml
                     path: models/schema.yml
-                  - key: models__bronze__daily_systemd.sql
-                    path: models/bronze/daily_systemd.sql
-                  - key: models__bronze__daily_k8s_pods.sql
-                    path: models/bronze/daily_k8s_pods.sql
-                  - key: models__bronze__daily_routeros.sql
-                    path: models/bronze/daily_routeros.sql
-                  - key: models__bronze__daily_macos_unified.sql
-                    path: models/bronze/daily_macos_unified.sql
+                  - key: models__bronze__daily_systemd.py
+                    path: models/bronze/daily_systemd.py
+                  - key: models__bronze__daily_k8s_pods.py
+                    path: models/bronze/daily_k8s_pods.py
+                  - key: models__bronze__daily_routeros.py
+                    path: models/bronze/daily_routeros.py
+                  - key: models__bronze__daily_macos_unified.py
+                    path: models/bronze/daily_macos_unified.py
                   - key: models__silver__typed_k8s_pods.sql
                     path: models/silver/typed_k8s_pods.sql
                   - key: models__silver__typed_routeros.sql

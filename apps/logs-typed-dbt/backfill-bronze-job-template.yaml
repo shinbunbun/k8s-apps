@@ -7,9 +7,9 @@
 #   3. `kubectl logs -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill -f`
 #   4. 完了後 `kubectl delete -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill`
 #
-# 前日 raw/ がまだ存在 (compact.py 削除前 or Garage lifecycle expire 前) なら
-# 過去日の再生成も可能。raw/ が消えていれば read_json で IOException になり
-# `|| break` で当該日以降を skip。
+# Python model 化版 (Phase 2 PR の試行錯誤を経て、SQL → Python に変更):
+#   bronze 各 model は新規 DuckDB connection を内部で作成し adapter を bypass。
+#   詳細は cronjob-bronze.yaml のコメント参照。
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -40,17 +40,18 @@ spec:
           args:
             - |
               set -euo pipefail
-              pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2' 'awscli==1.40.*'
+              pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2' 'awscli==1.40.*' 'pyarrow'
               cp -rL /dbt /tmp/dbt
               cd /tmp/dbt
               export AWS_DEFAULT_REGION="${AWS_REGION}"
+              export DAILY_PATH_PREFIX
               ENDPOINT="http://garage.garage.svc.cluster.local:3900"
 
               for i in $(seq 0 $((BACKFILL_DAYS - 1))); do
                 TARGET_DATE=$(TZ=Asia/Tokyo date -d "${BACKFILL_START_DATE} +${i} days" +%F)
+                export TARGET_DATE
                 echo "[bronze-backfill] === ${TARGET_DATE} ==="
 
-                # 各 source の raw/ 存在確認、空なら skip
                 SOURCES=(systemd k8s-pods routeros macos-unified)
                 SELECTED=()
                 for src in "${SOURCES[@]}"; do
@@ -66,9 +67,8 @@ spec:
                   continue
                 fi
 
-                dbt run --profiles-dir . --target prod_bronze \
-                  --select ${SELECTED[*]} \
-                  --vars "{target_date: ${TARGET_DATE}, daily_path_prefix: ${DAILY_PATH_PREFIX}}" || break
+                dbt run --profiles-dir . --target prod_bronze --threads 1 \
+                  --select ${SELECTED[*]} || break
               done
           envFrom:
             - secretRef:
@@ -96,14 +96,14 @@ spec:
                 path: profiles.yml
               - key: models__schema.yml
                 path: models/schema.yml
-              - key: models__bronze__daily_systemd.sql
-                path: models/bronze/daily_systemd.sql
-              - key: models__bronze__daily_k8s_pods.sql
-                path: models/bronze/daily_k8s_pods.sql
-              - key: models__bronze__daily_routeros.sql
-                path: models/bronze/daily_routeros.sql
-              - key: models__bronze__daily_macos_unified.sql
-                path: models/bronze/daily_macos_unified.sql
+              - key: models__bronze__daily_systemd.py
+                path: models/bronze/daily_systemd.py
+              - key: models__bronze__daily_k8s_pods.py
+                path: models/bronze/daily_k8s_pods.py
+              - key: models__bronze__daily_routeros.py
+                path: models/bronze/daily_routeros.py
+              - key: models__bronze__daily_macos_unified.py
+                path: models/bronze/daily_macos_unified.py
               - key: models__silver__typed_k8s_pods.sql
                 path: models/silver/typed_k8s_pods.sql
               - key: models__silver__typed_routeros.sql
