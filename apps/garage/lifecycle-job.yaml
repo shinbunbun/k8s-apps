@@ -1,0 +1,91 @@
+# 手動 one-shot Job: Garage logs-archive bucket の raw/ prefix に S3 lifecycle
+# (Expiration 7d) を設定する。
+#
+# 目的:
+#   - 通常運用では compact.py (logs-compact-cronjob) が成功時に raw/ を削除する
+#     ため raw/ は 24h 以内に空。本 lifecycle はその安全網。compact 失敗時に
+#     raw/ が累積して容量を圧迫しないよう、7 日経過した raw/ オブジェクトを
+#     Garage 側で自動 expire させる。
+#   - Phase 2 で compact.py を dbt 化する際、Python 側の delete_prefix を
+#     廃止しても raw/ がリークしない布石でもある。
+#
+# 適用:
+#   kubectl create -f apps/garage/lifecycle-job.yaml
+#
+# 結果検証 (Job 完了後):
+#   kubectl logs -n log-archiver-vector -l job-name=garage-lifecycle-set
+#
+# kustomization.yaml の resources には含めない (手動運用、ArgoCD 管理外)。
+# ファイルはリポジトリで管理して再現性を保つ。同じ rule で再 apply しても
+# put_bucket_lifecycle_configuration は冪等 (set 操作)。
+#
+# 参考:
+#   Garage は S3 PutBucketLifecycleConfiguration の Expiration アクション
+#   (ExpiredObjectDeleteMarker 除く) と AbortIncompleteMultipartUpload のみ
+#   サポート。Filter 経由の Prefix 指定が必須 (deprecated 直書き Prefix は不可)。
+#
+# Namespace 選定:
+#   logs-archive bucket の owner 権限を持つ vector key が log-archiver-vector
+#   ns に injected されているのでここで実行。compact / logs-typed-dbt キーは
+#   read+write のみで lifecycle 設定不可。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: garage-lifecycle-set
+  namespace: log-archiver-vector
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: lifecycle
+          image: python:3.13-slim
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet boto3==1.35.99
+              python <<'PY'
+              import os, json, boto3
+              from botocore.config import Config
+
+              s3 = boto3.client(
+                  "s3",
+                  endpoint_url="http://garage.garage.svc.cluster.local:3900",
+                  aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                  aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                  region_name=os.environ.get("AWS_REGION", "garage"),
+                  config=Config(s3={"addressing_style": "path"}),
+              )
+
+              rules = {
+                  "Rules": [
+                      {
+                          "ID": "expire-raw-7d",
+                          "Status": "Enabled",
+                          "Filter": {"Prefix": "raw/"},
+                          "Expiration": {"Days": 7},
+                      }
+                  ]
+              }
+              s3.put_bucket_lifecycle_configuration(
+                  Bucket="logs-archive",
+                  LifecycleConfiguration=rules,
+              )
+              print("[lifecycle] put_bucket_lifecycle_configuration OK")
+
+              cur = s3.get_bucket_lifecycle_configuration(Bucket="logs-archive")
+              print("[lifecycle] current rules:")
+              print(json.dumps(cur.get("Rules", []), indent=2, default=str))
+              PY
+          envFrom:
+            - secretRef:
+                name: vector-garage-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
