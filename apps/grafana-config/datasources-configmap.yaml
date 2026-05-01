@@ -72,6 +72,11 @@ data:
       # 直接読む)。
       #
       # initSql の中身:
+      #   - SET home_directory / extension_directory: Grafana pod は $HOME 未設定で、
+      #     DuckDB が INSTALL 時に extension cache の home (~/.duckdb) を作れず
+      #     "IO Error: Can't find the home directory at ''" で失敗する。
+      #     /tmp は emptyDir 配下で書込可能、pod 寿命と同じなので extension の
+      #     再ダウンロードは pod 起動毎 (毎回 ~数百ms 程度の追加コスト)。
       #   - httpfs/json extension load
       #   - memory_limit=2GB / threads=2 で Grafana pod (chart デフォルト 1Gi 想定)
       #     の OOM を防ぐ。compact.py は 12GB/4 threads を使うが、こちらは対話
@@ -93,6 +98,8 @@ data:
         jsonData:
           path: ""
           initSql: |
+            SET home_directory='/tmp/duckdb-home';
+            SET extension_directory='/tmp/duckdb-extensions';
             INSTALL httpfs; LOAD httpfs;
             INSTALL json;   LOAD json;
             SET memory_limit='2GB';
