@@ -59,7 +59,10 @@ data:
             - json
           settings:
             memory_limit: '6GB'
-            preserve_insertion_order: 'false'
+            # boolean 渡し必須。'false' (string) で渡すと SET 文が
+            # `preserve_insertion_order='false'` になり DuckDB が effective に解釈せず、
+            # 全 row が memory 保持される (= 大量 row + 巨大 record で OOM)。
+            preserve_insertion_order: false
             home_directory: '/tmp/duckdb-home'
             extension_directory: '/tmp/duckdb-extensions'
           secrets:
@@ -92,6 +95,10 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=k8s-pods/logs.parquet',
       hive_partitioning = false
     )
+    -- 1MB 超の巨大 JSON record は skip (ダッシュボード非対象、daily/ には残る)。
+    -- 巨大 record (5MB 超の log batch dump 等) が含まれると Parquet writer の
+    -- memory が膨らみ memory_limit に達するため。
+    WHERE length(json::VARCHAR) <= 1048576
 
   models__typed_routeros.sql: |
     {{ config(
@@ -111,6 +118,10 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=routeros/logs.parquet',
       hive_partitioning = false
     )
+    -- 1MB 超の巨大 JSON record は skip (typed_k8s_pods と同方針)。
+    -- 実機: 2026-04-24 routeros には 135 件の巨大 record (max 5MB) があり、
+    -- これらを含めると memory_limit=6GB で OOM。
+    WHERE length(json::VARCHAR) <= 1048576
 
   models__schema.yml: |
     version: 2
@@ -123,6 +134,10 @@ data:
           として抽出して typed/source=k8s-pods/date=YYYY-MM-DD/logs.parquet
           に書き出す。raw 列は元の JSON record をそのまま保持 (Explore からの
           ad-hoc クエリ用フォールバック)。
+          1MB 超の巨大 JSON record は skip するため、typed/ ↔ daily/ の
+          row count は 1 日数百件程度ずれることがある (実機例: 2026-04-24
+          routeros で 135 行 skip)。完全な原本は daily/ に残るので、
+          詳細調査が必要なら daily/ または Loki から問い合わせる。
         columns:
           - name: ts
             description: イベント発生時刻 (TIMESTAMP, UTC naive、Vector が UTC で記録)
