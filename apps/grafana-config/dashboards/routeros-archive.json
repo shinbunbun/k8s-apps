@@ -60,7 +60,7 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)",
+          "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom()::TIMESTAMP, '%Y-%m-%d')\n  AND date <= strftime($__timeTo()::TIMESTAMP,   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)",
           "format": 1,
           "refId": "A"
         }
@@ -112,7 +112,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', (json->>'timestamp')::TIMESTAMP) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', (json->>'timestamp')::TIMESTAMP) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom()::TIMESTAMP, '%Y-%m-%d')\n  AND date <= strftime($__timeTo()::TIMESTAMP,   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY 1",
           "format": 0,
           "refId": "A"
         }
@@ -149,7 +149,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  coalesce(json->>'host', '(unknown)') AS host,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  coalesce(json->>'host', '(unknown)') AS host,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom()::TIMESTAMP, '%Y-%m-%d')\n  AND date <= strftime($__timeTo()::TIMESTAMP,   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -186,7 +186,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  coalesce(json->>'level', json->>'severity', '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC",
+          "rawSql": "SELECT\n  coalesce(json->>'level', json->>'severity', '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom()::TIMESTAMP, '%Y-%m-%d')\n  AND date <= strftime($__timeTo()::TIMESTAMP,   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC",
           "format": 1,
           "refId": "A"
         }
@@ -219,7 +219,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  (json->>'timestamp')::TIMESTAMP AS ts,\n  json->>'host'                  AS host,\n  json->>'level'                 AS level,\n  json->>'message'               AS message\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "SELECT\n  (json->>'timestamp')::TIMESTAMP AS ts,\n  json->>'host'                  AS host,\n  json->>'level'                 AS level,\n  json->>'message'               AS message\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=routeros/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom()::TIMESTAMP, '%Y-%m-%d')\n  AND date <= strftime($__timeTo()::TIMESTAMP,   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
