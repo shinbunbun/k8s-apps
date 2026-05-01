@@ -83,13 +83,15 @@ data:
       #     クエリ用なので絞る。重い集計は compact.py が daily/ にすでに圧縮済。
       #   - preserve_insertion_order=false: 集計順序非依存、メモリ節約
       #   - temp_directory=/tmp/duckdb-spill: spill 先 (Grafana pod の emptyDir / で OK)
-      #   - SET s3_*: compact.py L120-130 と同値の Garage 接続情報。endpoint は
-      #     k8s 内部 Service。アクセスキーは extraSecretMounts で grafana-duckdb-
-      #     credentials Secret (Garage Operator が GarageKey "grafana-duckdb" の
-      #     secretTemplate で生成) を /var/run/secrets/grafana-duckdb にマウントし、
-      #     Grafana 標準の $__file{...} 補間で SQL に埋め込む。
-      #     read-only キーなので、Explore から COPY/DELETE 等を実行しても
-      #     AccessDenied で弾かれる。
+      #   - CREATE OR REPLACE SECRET garage_s3: DuckDB v1.4 の httpfs は legacy
+      #     `SET s3_*` 設定を読まなくなり、Secret Manager (CREATE SECRET) 経由でのみ
+      #     S3 認証情報を取得する。SET だけだと "region '' (HTTP 403 Forbidden) -
+      #     Authentication Failure" で失敗する。
+      #     アクセスキーは extraSecretMounts で grafana-duckdb-credentials Secret
+      #     (Garage Operator が GarageKey "grafana-duckdb" の secretTemplate で
+      #     生成) を /var/run/secrets/grafana-duckdb にマウントし、Grafana 標準の
+      #     $__file{...} 補間で SQL に埋め込む。read-only キーなので、Explore から
+      #     COPY/DELETE 等を実行しても AccessDenied で弾かれる。
       - name: DuckDB
         type: motherduck-duckdb-datasource
         uid: Pduckdblogs0001
@@ -106,9 +108,12 @@ data:
             SET threads=2;
             SET preserve_insertion_order=false;
             SET temp_directory='/tmp/duckdb-spill';
-            SET s3_endpoint='garage.garage.svc.cluster.local:3900';
-            SET s3_use_ssl=false;
-            SET s3_url_style='path';
-            SET s3_region='garage';
-            SET s3_access_key_id='$__file{/var/run/secrets/grafana-duckdb/AWS_ACCESS_KEY_ID}';
-            SET s3_secret_access_key='$__file{/var/run/secrets/grafana-duckdb/AWS_SECRET_ACCESS_KEY}';
+            CREATE OR REPLACE SECRET garage_s3 (
+              TYPE S3,
+              KEY_ID '$__file{/var/run/secrets/grafana-duckdb/AWS_ACCESS_KEY_ID}',
+              SECRET '$__file{/var/run/secrets/grafana-duckdb/AWS_SECRET_ACCESS_KEY}',
+              ENDPOINT 'garage.garage.svc.cluster.local:3900',
+              REGION 'garage',
+              URL_STYLE 'path',
+              USE_SSL false
+            );
