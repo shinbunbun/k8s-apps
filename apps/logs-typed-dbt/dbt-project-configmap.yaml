@@ -1,0 +1,149 @@
+# dbt project (dbt-duckdb) を ConfigMap に embed
+#
+# CronJob から /dbt にマウントされ、起動時に /tmp/dbt にコピーされて (target/ や
+# logs/ の書き込みが要るため) `dbt run --vars '{target_date: ...}'` が実行される。
+#
+# ファイル構成:
+#   dbt_project.yml      - プロジェクト定義 (profile, model paths, materialization 既定)
+#   profiles.yml         - DuckDB target、Garage S3 secret、メモリ/spill 設定
+#   models/typed_k8s_pods.sql  - daily/ → typed/ k8s-pods 派生
+#   models/typed_routeros.sql  - daily/ → typed/ routeros 派生
+#   models/schema.yml          - 列定義、`not_null` test (ts)
+#
+# 設計判断:
+# - external materialization で Parquet を直接 S3 (Garage) に書く。
+#   incremental strategy は external 未対応のため、target_date 単位で
+#   1 ファイル全置換 (= idempotent backfill)。microbatch は使わない。
+# - profiles.yml の secrets: 形式 (dbt-duckdb 1.9+) で SECRET を発行。
+#   DuckDB v1.4+ は SET s3_* を受け付けず Secret Manager 必須。
+# - read_parquet(daily/...) → 抽出 → ORDER BY ts → COPY TO Parquet zstd。
+#   ORDER BY ts で Parquet page skipping を効かせる。
+# - hive_partitioning=false: 入力 daily/ ファイルは内部 1 列 `json` のみ、
+#   path 推論を切ってシンプルに read。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-typed-dbt-project
+data:
+  dbt_project.yml: |
+    name: logs_typed
+    version: '1.0.0'
+    config-version: 2
+    profile: logs_typed
+    model-paths: ["models"]
+    target-path: "/tmp/dbt-target"
+    log-path: "/tmp/dbt-logs"
+    clean-targets: ["/tmp/dbt-target", "/tmp/dbt-logs"]
+    models:
+      logs_typed:
+        +materialized: external
+        +format: parquet
+        +options:
+          compression: zstd
+    vars:
+      target_date: ""
+
+  profiles.yml: |
+    logs_typed:
+      target: prod
+      outputs:
+        prod:
+          type: duckdb
+          path: ":memory:"
+          threads: 2
+          extensions:
+            - httpfs
+            - json
+          settings:
+            memory_limit: '4GB'
+            preserve_insertion_order: 'false'
+            temp_directory: '/tmp/duckdb-spill'
+            home_directory: '/tmp/duckdb-home'
+            extension_directory: '/tmp/duckdb-extensions'
+          secrets:
+            - type: s3
+              name: garage_s3
+              key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+              secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+              region: "{{ env_var('AWS_REGION') }}"
+              endpoint: 'garage.garage.svc.cluster.local:3900'
+              url_style: 'path'
+              use_ssl: false
+
+  models__typed_k8s_pods.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/typed/source=k8s-pods/date=" ~ var('target_date') ~ "/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT
+      (json->>'timestamp')::TIMESTAMP             AS ts,
+      json->'attributes'->>'namespace'            AS namespace,
+      json->'attributes'->>'pod'                  AS pod,
+      json->'attributes'->>'container'            AS container,
+      json->'attributes'->>'level'                AS level,
+      json->>'message'                            AS message,
+      json                                        AS raw
+    FROM read_parquet(
+      's3://logs-archive/daily/date={{ var("target_date") }}/source=k8s-pods/logs.parquet',
+      hive_partitioning = false
+    )
+    ORDER BY ts
+
+  models__typed_routeros.sql: |
+    {{ config(
+        materialized='external',
+        location="s3://logs-archive/typed/source=routeros/date=" ~ var('target_date') ~ "/logs.parquet",
+        format='parquet',
+        options={'compression': 'zstd'}
+    ) }}
+
+    SELECT
+      (json->>'timestamp')::TIMESTAMP             AS ts,
+      json->>'host'                               AS host,
+      coalesce(json->>'level', json->>'severity') AS level,
+      json->>'message'                            AS message,
+      json                                        AS raw
+    FROM read_parquet(
+      's3://logs-archive/daily/date={{ var("target_date") }}/source=routeros/logs.parquet',
+      hive_partitioning = false
+    )
+    ORDER BY ts
+
+  models__schema.yml: |
+    version: 2
+    models:
+      - name: typed_k8s_pods
+        description: |
+          k8s-pods source の日次 typed Parquet。
+          daily/date=YYYY-MM-DD/source=k8s-pods/logs.parquet (1 列 json) を
+          読み出し、典型的なダッシュボードクエリで使う列を typed columns
+          として抽出して typed/source=k8s-pods/date=YYYY-MM-DD/logs.parquet
+          に書き出す。raw 列は元の JSON record をそのまま保持 (Explore からの
+          ad-hoc クエリ用フォールバック)。
+        columns:
+          - name: ts
+            description: イベント発生時刻 (TIMESTAMP, UTC naive、Vector が UTC で記録)
+            tests:
+              - not_null
+          - name: namespace
+          - name: pod
+          - name: container
+          - name: level
+          - name: message
+          - name: raw
+            description: 元の json record (フォールバック)
+      - name: typed_routeros
+        description: |
+          routeros source の日次 typed Parquet。daily/ → typed/ 同パターン。
+          level は json->>'level' / json->>'severity' のどちらかから coalesce。
+        columns:
+          - name: ts
+            tests:
+              - not_null
+          - name: host
+          - name: level
+          - name: message
+          - name: raw
