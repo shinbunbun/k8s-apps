@@ -1,0 +1,139 @@
+# Daily bronze compaction CronJob (dbt-duckdb)
+#
+# 毎日 00:30 JST に実行、raw/source=*/date=*/hour=*/*.log.zst (Vector が書く
+# ndjson.zst) を集約して daily/date=*/source=*/logs.parquet (1 列 json) に
+# 派生させる。compact.py (apps/logs-compact-cronjob/) の代替で、Phase 2 の
+# 段階移行で並走運用する。
+#
+# 並走戦略:
+#   - PR 1 (本ファイル追加時): bronze は s3://logs-archive/daily-bronze/ に
+#     shadow write、compact.py は従来通り daily/ に書く。1-2 週間 verify Job
+#     (verify-job-template.yaml) で行数一致を確認。
+#   - PR 2 (cutover): dbt_project.yml の daily_path_prefix を "daily" に切替、
+#     compact.py CronJob を `spec.suspend: true` で停止。
+#   - PR 3 (cleanup): apps/logs-compact-cronjob/ 削除、`compact` GarageKey 削除。
+#
+# Schedule:
+#   00:30 JST、compact.py の 01:00 JST より 30 分先行。compact.py の delete_prefix
+#   が走る前に bronze が raw/ を read 完了する想定 (4 source 直列でも数分以内)。
+#
+# 実装:
+#   bash で aws s3api list-objects-v2 で各 source の raw/ 存在を 1 RTT 確認、
+#   存在 source だけ `--select daily_<src>` を動的構築。read_json は glob 0
+#   マッチで IOException を投げるため、空の source を選ばない仕組みが必要。
+#
+# Memory:
+#   profiles.yml の prod_bronze target で memory_limit=12GB / threads=4
+#   (compact.py 実績 と同等)。Pod limits.memory=16Gi で Python overhead 含む
+#   余裕を確保。macos-unified の 100 万行/日 ndjson parse でも実測 2.32 GiB
+#   ピーク (compact.py の manual-backfill 20260427 観測値)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-typed-dbt-bronze
+spec:
+  schedule: "30 0 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-typed-dbt
+            tier: bronze
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dbt
+              image: python:3.13-slim
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2' 'awscli==1.40.*'
+
+                  TARGET_DATE="${TARGET_DATE:-$(TZ=Asia/Tokyo date -d 'yesterday' +%F)}"
+                  echo "[bronze] target_date (JST): ${TARGET_DATE}"
+
+                  export AWS_DEFAULT_REGION="${AWS_REGION}"
+                  ENDPOINT="http://garage.garage.svc.cluster.local:3900"
+
+                  SOURCES=(systemd k8s-pods routeros macos-unified)
+                  SELECTED=()
+                  for src in "${SOURCES[@]}"; do
+                    COUNT=$(aws --endpoint-url="${ENDPOINT}" s3api list-objects-v2 \
+                      --bucket logs-archive \
+                      --prefix "raw/source=${src}/date=${TARGET_DATE}/" \
+                      --max-keys 1 \
+                      --query 'KeyCount' \
+                      --output text 2>/dev/null || echo 0)
+                    if [ "${COUNT}" -gt 0 ]; then
+                      # source 名の "-" を "_" に変換 (k8s-pods → k8s_pods)
+                      SELECTED+=("daily_${src//-/_}")
+                      echo "[bronze] ${src}: raw/ has objects, selected"
+                    else
+                      echo "[bronze] ${src}: raw/ empty, skip"
+                    fi
+                  done
+
+                  if [ "${#SELECTED[@]}" -eq 0 ]; then
+                    echo "[bronze] no sources for ${TARGET_DATE}, exiting 0"
+                    exit 0
+                  fi
+
+                  cp -rL /dbt /tmp/dbt
+                  cd /tmp/dbt
+                  echo "[bronze] running: dbt run --select ${SELECTED[*]}"
+                  exec dbt run --profiles-dir . --target prod_bronze \
+                    --select ${SELECTED[*]} \
+                    --vars "{target_date: ${TARGET_DATE}}"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # 4 source の ndjson.zst を read_json + COPY TO Parquet。
+                  # compact.py の memory_limit=12GB + Python overhead + extension
+                  # load + glibc allocator slack を吸収する余裕として 16Gi。
+                  memory: 16Gi
+              volumeMounts:
+                - name: dbt
+                  mountPath: /dbt
+                  readOnly: true
+                - name: duckdb-spill
+                  mountPath: /tmp/duckdb-spill
+          volumes:
+            - name: dbt
+              configMap:
+                name: logs-typed-dbt-project
+                items:
+                  - key: dbt_project.yml
+                    path: dbt_project.yml
+                  - key: profiles.yml
+                    path: profiles.yml
+                  - key: models__schema.yml
+                    path: models/schema.yml
+                  - key: models__bronze__daily_systemd.sql
+                    path: models/bronze/daily_systemd.sql
+                  - key: models__bronze__daily_k8s_pods.sql
+                    path: models/bronze/daily_k8s_pods.sql
+                  - key: models__bronze__daily_routeros.sql
+                    path: models/bronze/daily_routeros.sql
+                  - key: models__bronze__daily_macos_unified.sql
+                    path: models/bronze/daily_macos_unified.sql
+                  - key: models__silver__typed_k8s_pods.sql
+                    path: models/silver/typed_k8s_pods.sql
+                  - key: models__silver__typed_routeros.sql
+                    path: models/silver/typed_routeros.sql
+            - name: duckdb-spill
+              emptyDir:
+                sizeLimit: 10Gi

@@ -1,0 +1,113 @@
+# Bronze backfill Job テンプレート (手動 one-shot 用、kustomization.yaml 外)
+#
+# 使い方:
+#   1. env BACKFILL_START_DATE / BACKFILL_DAYS / DAILY_PATH_PREFIX を編集
+#      (DAILY_PATH_PREFIX は通常 "daily-bronze" (PR 1 並走期) または "daily" (cutover 後))
+#   2. `kubectl create -f apps/logs-typed-dbt/backfill-bronze-job-template.yaml`
+#   3. `kubectl logs -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill -f`
+#   4. 完了後 `kubectl delete -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill`
+#
+# 前日 raw/ がまだ存在 (compact.py 削除前 or Garage lifecycle expire 前) なら
+# 過去日の再生成も可能。raw/ が消えていれば read_json で IOException になり
+# `|| break` で当該日以降を skip。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: logs-typed-dbt-bronze-backfill
+  namespace: logs-typed-dbt
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 21600
+  template:
+    metadata:
+      labels:
+        app: logs-typed-dbt
+        tier: bronze
+        role: backfill
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dbt-backfill
+          image: python:3.13-slim
+          env:
+            - name: BACKFILL_START_DATE
+              value: "2026-04-25"
+            - name: BACKFILL_DAYS
+              value: "7"
+            - name: DAILY_PATH_PREFIX
+              value: "daily-bronze"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --no-cache-dir --quiet 'dbt-duckdb==1.10.*' 'duckdb==1.5.2' 'awscli==1.40.*'
+              cp -rL /dbt /tmp/dbt
+              cd /tmp/dbt
+              export AWS_DEFAULT_REGION="${AWS_REGION}"
+              ENDPOINT="http://garage.garage.svc.cluster.local:3900"
+
+              for i in $(seq 0 $((BACKFILL_DAYS - 1))); do
+                TARGET_DATE=$(TZ=Asia/Tokyo date -d "${BACKFILL_START_DATE} +${i} days" +%F)
+                echo "[bronze-backfill] === ${TARGET_DATE} ==="
+
+                # 各 source の raw/ 存在確認、空なら skip
+                SOURCES=(systemd k8s-pods routeros macos-unified)
+                SELECTED=()
+                for src in "${SOURCES[@]}"; do
+                  COUNT=$(aws --endpoint-url="${ENDPOINT}" s3api list-objects-v2 \
+                    --bucket logs-archive \
+                    --prefix "raw/source=${src}/date=${TARGET_DATE}/" \
+                    --max-keys 1 --query 'KeyCount' --output text 2>/dev/null || echo 0)
+                  [ "${COUNT}" -gt 0 ] && SELECTED+=("daily_${src//-/_}")
+                done
+
+                if [ "${#SELECTED[@]}" -eq 0 ]; then
+                  echo "[bronze-backfill] no raw/ for ${TARGET_DATE}, skip"
+                  continue
+                fi
+
+                dbt run --profiles-dir . --target prod_bronze \
+                  --select ${SELECTED[*]} \
+                  --vars "{target_date: ${TARGET_DATE}, daily_path_prefix: ${DAILY_PATH_PREFIX}}" || break
+              done
+          envFrom:
+            - secretRef:
+                name: logs-typed-dbt-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 16Gi
+          volumeMounts:
+            - name: dbt
+              mountPath: /dbt
+              readOnly: true
+            - name: duckdb-spill
+              mountPath: /tmp/duckdb-spill
+      volumes:
+        - name: dbt
+          configMap:
+            name: logs-typed-dbt-project
+            items:
+              - key: dbt_project.yml
+                path: dbt_project.yml
+              - key: profiles.yml
+                path: profiles.yml
+              - key: models__schema.yml
+                path: models/schema.yml
+              - key: models__bronze__daily_systemd.sql
+                path: models/bronze/daily_systemd.sql
+              - key: models__bronze__daily_k8s_pods.sql
+                path: models/bronze/daily_k8s_pods.sql
+              - key: models__bronze__daily_routeros.sql
+                path: models/bronze/daily_routeros.sql
+              - key: models__bronze__daily_macos_unified.sql
+                path: models/bronze/daily_macos_unified.sql
+              - key: models__silver__typed_k8s_pods.sql
+                path: models/silver/typed_k8s_pods.sql
+              - key: models__silver__typed_routeros.sql
+                path: models/silver/typed_routeros.sql
+        - name: duckdb-spill
+          emptyDir:
+            sizeLimit: 10Gi
