@@ -97,7 +97,7 @@ spec:
             timeoutSeconds: 5
         # DB初期化 sidecar（冪等、起動時にDB作成・セキュリティ設定を実行後 sleep）
         - name: init-db
-          image: curlimages/curl:8.19.0
+          image: curlimages/curl:8.20.0
           command:
             - sh
             - /scripts/init-db.sh
