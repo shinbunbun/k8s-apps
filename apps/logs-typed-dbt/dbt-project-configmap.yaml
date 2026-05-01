@@ -1,29 +1,27 @@
 # dbt project (dbt-duckdb) を ConfigMap に embed
 #
-# bronze (raw → daily) と silver (daily → typed) を 1 dbt project に統合し
-# tag (`bronze` / `silver`) で分離。CronJob 2 個 (bronze 00:30 JST / silver
-# 02:00 JST) がそれぞれ `--target prod_bronze` / `--target prod_silver` +
-# `--select tag:bronze` / `--select tag:silver` で対象 model を絞って実行。
+# bronze (raw → daily) と silver (daily → typed) を 1 dbt project に統合。
+# CronJob 2 個 (bronze 00:30 JST / silver 02:00 JST) が `--target prod_bronze` /
+# `--target prod_silver` + `--select daily_<src>` / `--select tag:silver` で
+# 対象 model を絞って実行。
+#
+# 重要な設計判断 (Phase 2 PR の試行錯誤を経て):
+#   bronze は SQL ではなく **Python model + 新規 DuckDB connection** で書く。
+#   理由: dbt-duckdb 1.10 の external materialization が CTAS 経由で全 row を
+#   memory にロードしてから COPY TO を発行するため、raw ndjson 4M 行 × 巨大
+#   JSON record で OOM (実機 11 GiB / memory_limit 12GB)。
+#   Python model 内で `import duckdb; con = duckdb.connect()` で adapter を
+#   bypass して `con.execute("COPY (...) TO file")` を直接発行することで、
+#   direct DuckDB と同等の streaming 性能 (実機 0.36 GiB / 0.92s) を達成。
+#   silver (daily → typed) は SQL model のままで problem なし。
+#   詳細: https://github.com/duckdb/dbt-duckdb/issues/57
 #
 # ファイル構成 (ConfigMap items[] で `models/{bronze,silver}/...` にマウント):
 #   dbt_project.yml                         - tag, materialization, vars
-#   profiles.yml                            - DuckDB target 2 つ (prod_bronze / prod_silver)
-#   models/bronze/daily_<source>.sql × 4    - raw/ → daily/ 派生 (compact.py 代替)
+#   profiles.yml                            - DuckDB target 2 つ
+#   models/bronze/daily_<source>.py × 4     - raw/ → daily/ 派生 (Python model)
 #   models/silver/typed_<source>.sql × 2    - daily/ → typed/ 派生 (Phase 1 既存)
-#   models/schema.yml                       - 全 model の description
-#
-# 設計判断:
-# - external materialization で Parquet を直接 S3 (Garage) に書く。
-#   incremental は external 未対応のため、target_date 単位で 1 ファイル全置換。
-# - bronze は daily_path_prefix 変数で出力 path を切替: PR 1 では "daily-bronze"
-#   に shadow write、PR 2 cutover で "daily" に切替えて compact.py 代替。
-# - bronze の merge ロジック (compact.py の merge mode) は廃止。orphan 後追いは
-#   raw/ → daily/ の全置換 backfill Job で対応 (rare event)。
-# - silver: `daily/` (compact.py または Phase 2 cutover 後の bronze) を読み、
-#   typed columns に展開。1MB 超の巨大 record は WHERE skip。
-# - profile に prod_bronze (12GB / threads 4) と prod_silver (6GB / threads 2)
-#   を分けるのは memory profile が違うため。bronze は 4 source の ndjson parse、
-#   silver は 1 source × 1 day の column 投影のみ。
+#   models/schema.yml                       - silver model の description
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -40,25 +38,25 @@ data:
     clean-targets: ["/tmp/dbt-target", "/tmp/dbt-logs"]
     models:
       logs_typed:
-        +materialized: external
-        +format: parquet
-        +options:
-          compression: zstd
         bronze:
+          # Python model 内で完結 (ConfigMap mount 経由で `materialized=table` 名目)。
+          # 実 output は Python が直接 S3 に書き、dbt は空 Arrow Table を受け取って
+          # in-memory に table 作成 (:memory: なので Job 終了で消える)。
           +tags: ["bronze"]
         silver:
+          +materialized: external
+          +format: parquet
+          +options:
+            compression: zstd
           +tags: ["silver"]
-    vars:
-      target_date: ""
-      # bronze 出力先プレフィックス。PR 1 では shadow write 用 "daily-bronze"、
-      # cutover (PR 2) で "daily" に切替。
-      daily_path_prefix: "daily-bronze"
 
   profiles.yml: |
     logs_typed:
       target: prod_silver
       outputs:
         prod_silver:
+          # silver: SQL model + dbt-duckdb の external materialization を使う。
+          # 1 source × 1 day の column projection のみで memory 軽い。
           type: duckdb
           path: ":memory:"
           threads: 2
@@ -67,9 +65,6 @@ data:
             - json
           settings:
             memory_limit: '6GB'
-            # boolean 渡し必須。'false' (string) で渡すと SET 文が
-            # `preserve_insertion_order='false'` になり DuckDB が effective に解釈せず、
-            # 全 row が memory 保持される (= 大量 row + 巨大 record で OOM)。
             preserve_insertion_order: false
             home_directory: '/tmp/duckdb-home'
             extension_directory: '/tmp/duckdb-extensions'
@@ -83,109 +78,205 @@ data:
               url_style: 'path'
               use_ssl: false
         prod_bronze:
-          # raw/ → daily/ 派生用、4 source の ndjson parse でメモリ要求が大きい
-          # (compact.py 実績 12GB / threads 4 と同等)。
+          # bronze: Python model 内で新規 DuckDB connection を使うので、
+          # adapter 側 settings は最小限 (Python model が自分で SET する)。
           type: duckdb
           path: ":memory:"
-          threads: 4
-          extensions:
-            - httpfs
-            - json
-          settings:
-            memory_limit: '12GB'
-            preserve_insertion_order: false
-            home_directory: '/tmp/duckdb-home'
-            extension_directory: '/tmp/duckdb-extensions'
-          secrets:
-            - type: s3
-              name: garage_s3
-              key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
-              secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
-              region: "{{ env_var('AWS_REGION') }}"
-              endpoint: 'garage.garage.svc.cluster.local:3900'
-              url_style: 'path'
-              use_ssl: false
+          threads: 1
 
-  # ===== bronze models (raw/ → daily/) =====
-  # compact.py の compact_source ロジックを SQL 翻訳。
-  # output: s3://logs-archive/<daily_path_prefix>/date=YYYY-MM-DD/source=<src>/logs.parquet
-  # merge は廃止 (orphan 後追いは backfill Job で全置換)。
-  # location string で `date=` を先、`source=` を後に固定 (typed/ とは逆順、
-  # 既存 daily/ の hive partition path を維持するため)。
+  # ===== bronze models (Python、raw/ → daily/) =====
+  # 各 model は同型 (source 名のみ違う)。dbt の Python model 仕様で
+  # `def model(dbt, session)` を提供、引数の session は dbt-duckdb adapter の
+  # cursor だが内部で `con = duckdb.connect()` で別 connection を作って bypass。
+  # extension load / SET / CREATE SECRET は Python 側で発行 (compact.py 同パターン)。
+  # env_var で TARGET_DATE / DAILY_PATH_PREFIX を受け取る (Pod env で渡す)。
 
-  models__bronze__daily_systemd.sql: |
-    {{ config(
-        materialized='external',
-        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=systemd/logs.parquet",
-        format='parquet',
-        options={'compression': 'zstd'}
-    ) }}
+  models__bronze__daily_systemd.py: |
+    import os
+    import duckdb
+    import pyarrow as pa
 
-    SELECT to_json(t)::JSON AS json
-    FROM read_json(
-      's3://logs-archive/raw/source=systemd/date={{ var("target_date") }}/**/*.log.zst',
-      format='newline_delimited',
-      compression='zstd',
-      union_by_name=true,
-      ignore_errors=true,
-      maximum_object_size=268435456
-    ) AS t
+    SOURCE = "systemd"
 
-  models__bronze__daily_k8s_pods.sql: |
-    {{ config(
-        materialized='external',
-        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=k8s-pods/logs.parquet",
-        format='parquet',
-        options={'compression': 'zstd'}
-    ) }}
+    def model(dbt, session):
+        dbt.config(materialized="table")
+        target_date = os.environ["TARGET_DATE"]
+        prefix = os.environ.get("DAILY_PATH_PREFIX", "daily-bronze")
+        src = f"s3://logs-archive/raw/source={SOURCE}/date={target_date}/**/*.log.zst"
+        dst = f"s3://logs-archive/{prefix}/date={target_date}/source={SOURCE}/logs.parquet"
 
-    SELECT to_json(t)::JSON AS json
-    FROM read_json(
-      's3://logs-archive/raw/source=k8s-pods/date={{ var("target_date") }}/**/*.log.zst',
-      format='newline_delimited',
-      compression='zstd',
-      union_by_name=true,
-      ignore_errors=true,
-      maximum_object_size=268435456
-    ) AS t
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
+        con.execute("SET memory_limit='12GB'")
+        con.execute("SET threads=4")
+        con.execute("SET preserve_insertion_order=false")
+        con.execute("SET temp_directory='/tmp/duckdb-spill'")
+        con.execute(f"""CREATE SECRET (TYPE S3,
+          KEY_ID '{os.environ['AWS_ACCESS_KEY_ID']}',
+          SECRET '{os.environ['AWS_SECRET_ACCESS_KEY']}',
+          REGION '{os.environ['AWS_REGION']}',
+          ENDPOINT 'garage.garage.svc.cluster.local:3900',
+          URL_STYLE 'path', USE_SSL false);""")
 
-  models__bronze__daily_routeros.sql: |
-    {{ config(
-        materialized='external',
-        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=routeros/logs.parquet",
-        format='parquet',
-        options={'compression': 'zstd'}
-    ) }}
+        con.execute(f"""
+          COPY (
+            SELECT to_json(t)::JSON AS json
+            FROM read_json(
+              '{src}',
+              format='newline_delimited',
+              compression='zstd',
+              union_by_name=true,
+              ignore_errors=true,
+              maximum_object_size=268435456
+            ) AS t
+          ) TO '{dst}' (FORMAT PARQUET, COMPRESSION 'zstd')
+        """)
+        rows = con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0]
+        print(f"[bronze] {SOURCE} {target_date}: {rows} rows -> {dst}")
+        con.close()
 
-    SELECT to_json(t)::JSON AS json
-    FROM read_json(
-      's3://logs-archive/raw/source=routeros/date={{ var("target_date") }}/**/*.log.zst',
-      format='newline_delimited',
-      compression='zstd',
-      union_by_name=true,
-      ignore_errors=true,
-      maximum_object_size=268435456
-    ) AS t
+        return pa.table({"dummy": pa.array([], type=pa.int32())})
 
-  models__bronze__daily_macos_unified.sql: |
-    {{ config(
-        materialized='external',
-        location="s3://logs-archive/" ~ var('daily_path_prefix') ~ "/date=" ~ var('target_date') ~ "/source=macos-unified/logs.parquet",
-        format='parquet',
-        options={'compression': 'zstd'}
-    ) }}
+  models__bronze__daily_k8s_pods.py: |
+    import os
+    import duckdb
+    import pyarrow as pa
 
-    SELECT to_json(t)::JSON AS json
-    FROM read_json(
-      's3://logs-archive/raw/source=macos-unified/date={{ var("target_date") }}/**/*.log.zst',
-      format='newline_delimited',
-      compression='zstd',
-      union_by_name=true,
-      ignore_errors=true,
-      maximum_object_size=268435456
-    ) AS t
+    SOURCE = "k8s-pods"
 
-  # ===== silver models (daily/ → typed/) =====
+    def model(dbt, session):
+        dbt.config(materialized="table")
+        target_date = os.environ["TARGET_DATE"]
+        prefix = os.environ.get("DAILY_PATH_PREFIX", "daily-bronze")
+        src = f"s3://logs-archive/raw/source={SOURCE}/date={target_date}/**/*.log.zst"
+        dst = f"s3://logs-archive/{prefix}/date={target_date}/source={SOURCE}/logs.parquet"
+
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
+        con.execute("SET memory_limit='12GB'")
+        con.execute("SET threads=4")
+        con.execute("SET preserve_insertion_order=false")
+        con.execute("SET temp_directory='/tmp/duckdb-spill'")
+        con.execute(f"""CREATE SECRET (TYPE S3,
+          KEY_ID '{os.environ['AWS_ACCESS_KEY_ID']}',
+          SECRET '{os.environ['AWS_SECRET_ACCESS_KEY']}',
+          REGION '{os.environ['AWS_REGION']}',
+          ENDPOINT 'garage.garage.svc.cluster.local:3900',
+          URL_STYLE 'path', USE_SSL false);""")
+
+        con.execute(f"""
+          COPY (
+            SELECT to_json(t)::JSON AS json
+            FROM read_json(
+              '{src}',
+              format='newline_delimited',
+              compression='zstd',
+              union_by_name=true,
+              ignore_errors=true,
+              maximum_object_size=268435456
+            ) AS t
+          ) TO '{dst}' (FORMAT PARQUET, COMPRESSION 'zstd')
+        """)
+        rows = con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0]
+        print(f"[bronze] {SOURCE} {target_date}: {rows} rows -> {dst}")
+        con.close()
+
+        return pa.table({"dummy": pa.array([], type=pa.int32())})
+
+  models__bronze__daily_routeros.py: |
+    import os
+    import duckdb
+    import pyarrow as pa
+
+    SOURCE = "routeros"
+
+    def model(dbt, session):
+        dbt.config(materialized="table")
+        target_date = os.environ["TARGET_DATE"]
+        prefix = os.environ.get("DAILY_PATH_PREFIX", "daily-bronze")
+        src = f"s3://logs-archive/raw/source={SOURCE}/date={target_date}/**/*.log.zst"
+        dst = f"s3://logs-archive/{prefix}/date={target_date}/source={SOURCE}/logs.parquet"
+
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
+        con.execute("SET memory_limit='12GB'")
+        con.execute("SET threads=4")
+        con.execute("SET preserve_insertion_order=false")
+        con.execute("SET temp_directory='/tmp/duckdb-spill'")
+        con.execute(f"""CREATE SECRET (TYPE S3,
+          KEY_ID '{os.environ['AWS_ACCESS_KEY_ID']}',
+          SECRET '{os.environ['AWS_SECRET_ACCESS_KEY']}',
+          REGION '{os.environ['AWS_REGION']}',
+          ENDPOINT 'garage.garage.svc.cluster.local:3900',
+          URL_STYLE 'path', USE_SSL false);""")
+
+        con.execute(f"""
+          COPY (
+            SELECT to_json(t)::JSON AS json
+            FROM read_json(
+              '{src}',
+              format='newline_delimited',
+              compression='zstd',
+              union_by_name=true,
+              ignore_errors=true,
+              maximum_object_size=268435456
+            ) AS t
+          ) TO '{dst}' (FORMAT PARQUET, COMPRESSION 'zstd')
+        """)
+        rows = con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0]
+        print(f"[bronze] {SOURCE} {target_date}: {rows} rows -> {dst}")
+        con.close()
+
+        return pa.table({"dummy": pa.array([], type=pa.int32())})
+
+  models__bronze__daily_macos_unified.py: |
+    import os
+    import duckdb
+    import pyarrow as pa
+
+    SOURCE = "macos-unified"
+
+    def model(dbt, session):
+        dbt.config(materialized="table")
+        target_date = os.environ["TARGET_DATE"]
+        prefix = os.environ.get("DAILY_PATH_PREFIX", "daily-bronze")
+        src = f"s3://logs-archive/raw/source={SOURCE}/date={target_date}/**/*.log.zst"
+        dst = f"s3://logs-archive/{prefix}/date={target_date}/source={SOURCE}/logs.parquet"
+
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL json; LOAD json;")
+        con.execute("SET memory_limit='12GB'")
+        con.execute("SET threads=4")
+        con.execute("SET preserve_insertion_order=false")
+        con.execute("SET temp_directory='/tmp/duckdb-spill'")
+        con.execute(f"""CREATE SECRET (TYPE S3,
+          KEY_ID '{os.environ['AWS_ACCESS_KEY_ID']}',
+          SECRET '{os.environ['AWS_SECRET_ACCESS_KEY']}',
+          REGION '{os.environ['AWS_REGION']}',
+          ENDPOINT 'garage.garage.svc.cluster.local:3900',
+          URL_STYLE 'path', USE_SSL false);""")
+
+        con.execute(f"""
+          COPY (
+            SELECT to_json(t)::JSON AS json
+            FROM read_json(
+              '{src}',
+              format='newline_delimited',
+              compression='zstd',
+              union_by_name=true,
+              ignore_errors=true,
+              maximum_object_size=268435456
+            ) AS t
+          ) TO '{dst}' (FORMAT PARQUET, COMPRESSION 'zstd')
+        """)
+        rows = con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0]
+        print(f"[bronze] {SOURCE} {target_date}: {rows} rows -> {dst}")
+        con.close()
+
+        return pa.table({"dummy": pa.array([], type=pa.int32())})
+
+  # ===== silver models (SQL、daily/ → typed/) =====
+  # Phase 1 既存、変更なし。
 
   models__silver__typed_k8s_pods.sql: |
     {{ config(
@@ -207,9 +298,6 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=k8s-pods/logs.parquet',
       hive_partitioning = false
     )
-    -- 1MB 超の巨大 JSON record は skip (ダッシュボード非対象、daily/ には残る)。
-    -- 巨大 record (5MB 超の log batch dump 等) が含まれると Parquet writer の
-    -- memory が膨らみ memory_limit に達するため。
     WHERE length(json::VARCHAR) <= 1048576
 
   models__silver__typed_routeros.sql: |
@@ -230,27 +318,11 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=routeros/logs.parquet',
       hive_partitioning = false
     )
-    -- 1MB 超の巨大 JSON record は skip (typed_k8s_pods と同方針)。
-    -- 実機: 2026-04-24 routeros には 135 件の巨大 record (max 5MB) があり、
-    -- これらを含めると memory_limit=6GB で OOM。
     WHERE length(json::VARCHAR) <= 1048576
 
   models__schema.yml: |
     version: 2
     models:
-      # ===== bronze =====
-      - name: daily_systemd
-        description: |
-          systemd source の日次 raw → daily 変換。compact.py の SOURCES=systemd
-          相当を SQL 翻訳。出力は s3://logs-archive/<daily_path_prefix>/date=*/source=systemd/logs.parquet。
-          1 列 `json` (JSON 型)、compact.py 出力と完全互換 schema。
-      - name: daily_k8s_pods
-        description: k8s-pods source の日次 raw → daily 変換 (compact.py 代替)。
-      - name: daily_routeros
-        description: routeros source の日次 raw → daily 変換 (compact.py 代替)。
-      - name: daily_macos_unified
-        description: macos-unified source の日次 raw → daily 変換 (compact.py 代替)。
-      # ===== silver =====
       - name: typed_k8s_pods
         description: |
           k8s-pods source の日次 typed Parquet。
@@ -260,9 +332,8 @@ data:
           に書き出す。raw 列は元の JSON record をそのまま保持 (Explore からの
           ad-hoc クエリ用フォールバック)。
           1MB 超の巨大 JSON record は skip するため、typed/ ↔ daily/ の
-          row count は 1 日数百件程度ずれることがある (実機例: 2026-04-24
-          routeros で 135 行 skip)。完全な原本は daily/ に残るので、
-          詳細調査が必要なら daily/ または Loki から問い合わせる。
+          row count は 1 日数百件程度ずれることがある。完全な原本は daily/
+          に残るので、詳細調査が必要なら daily/ または Loki から問い合わせる。
         columns:
           - name: ts
             description: イベント発生時刻 (TIMESTAMP, UTC naive、Vector が UTC で記録)
