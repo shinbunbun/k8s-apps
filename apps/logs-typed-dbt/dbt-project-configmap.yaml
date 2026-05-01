@@ -16,8 +16,11 @@
 #   1 ファイル全置換 (= idempotent backfill)。microbatch は使わない。
 # - profiles.yml の secrets: 形式 (dbt-duckdb 1.9+) で SECRET を発行。
 #   DuckDB v1.4+ は SET s3_* を受け付けず Secret Manager 必須。
-# - read_parquet(daily/...) → 抽出 → ORDER BY ts → COPY TO Parquet zstd。
-#   ORDER BY ts で Parquet page skipping を効かせる。
+# - read_parquet(daily/...) → 抽出 → COPY TO Parquet zstd。
+#   ORDER BY は in-memory sort で routeros 1 日分 (3M 行) でも 3.7 GiB
+#   消費して OOM するので外す。Parquet writer が row group ごとに
+#   min/max statistics を記録するため、ts 範囲フィルタは sort なしでも
+#   ある程度 row group prune が効く (page skipping より粗いが許容範囲)。
 # - hive_partitioning=false: 入力 daily/ ファイルは内部 1 列 `json` のみ、
 #   path 推論を切ってシンプルに read。
 apiVersion: v1
@@ -55,7 +58,7 @@ data:
             - httpfs
             - json
           settings:
-            memory_limit: '4GB'
+            memory_limit: '6GB'
             preserve_insertion_order: 'false'
             home_directory: '/tmp/duckdb-home'
             extension_directory: '/tmp/duckdb-extensions'
@@ -89,7 +92,6 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=k8s-pods/logs.parquet',
       hive_partitioning = false
     )
-    ORDER BY ts
 
   models__typed_routeros.sql: |
     {{ config(
@@ -109,7 +111,6 @@ data:
       's3://logs-archive/daily/date={{ var("target_date") }}/source=routeros/logs.parquet',
       hive_partitioning = false
     )
-    ORDER BY ts
 
   models__schema.yml: |
     version: 2
