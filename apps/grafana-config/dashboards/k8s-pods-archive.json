@@ -57,7 +57,7 @@
       "targets": [
         {
           "rawSql": "SELECT count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)",
-          "format": "table",
+          "format": 1,
           "refId": "A"
         }
       ],
@@ -104,7 +104,7 @@
       "targets": [
         {
           "rawSql": "SELECT\n  time_bucket(INTERVAL '1 hour', (json->>'timestamp')::TIMESTAMP) AS time,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY 1",
-          "format": "time_series",
+          "format": 0,
           "refId": "A"
         }
       ],
@@ -141,7 +141,7 @@
       "targets": [
         {
           "rawSql": "SELECT\n  coalesce(\n    json->'attributes'->>'k8s.namespace.name',\n    json->'resource'->>'k8s.namespace.name',\n    '(unknown)'\n  ) AS namespace,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
-          "format": "table",
+          "format": 1,
           "refId": "A"
         }
       ],
@@ -178,7 +178,7 @@
       "targets": [
         {
           "rawSql": "SELECT\n  coalesce(\n    json->'attributes'->>'k8s.pod.name',\n    json->'resource'->>'k8s.pod.name',\n    '(unknown)'\n  ) AS pod,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
-          "format": "table",
+          "format": 1,
           "refId": "A"
         }
       ],
@@ -215,7 +215,7 @@
       "targets": [
         {
           "rawSql": "SELECT\n  coalesce(json->>'severity_text', json->>'level', '(none)') AS level,\n  count(*) AS cnt\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nGROUP BY 1\nORDER BY cnt DESC",
-          "format": "table",
+          "format": 1,
           "refId": "A"
         }
       ],
@@ -248,7 +248,7 @@
       "targets": [
         {
           "rawSql": "SELECT\n  (json->>'timestamp')::TIMESTAMP AS ts,\n  coalesce(\n    json->'attributes'->>'k8s.namespace.name',\n    json->'resource'->>'k8s.namespace.name'\n  ) AS namespace,\n  coalesce(\n    json->'attributes'->>'k8s.pod.name',\n    json->'resource'->>'k8s.pod.name'\n  ) AS pod,\n  coalesce(json->>'severity_text', json->>'level') AS level,\n  coalesce(json->>'body', json->>'message')        AS body\nFROM read_parquet(\n  's3://logs-archive/daily/date=*/source=k8s-pods/logs.parquet',\n  hive_partitioning = true\n)\nWHERE date >= strftime($__timeFrom(), '%Y-%m-%d')\n  AND date <= strftime($__timeTo(),   '%Y-%m-%d')\n  AND $__timeFilter((json->>'timestamp')::TIMESTAMP)\nORDER BY ts DESC\nLIMIT 200",
-          "format": "table",
+          "format": 1,
           "refId": "A"
         }
       ],
