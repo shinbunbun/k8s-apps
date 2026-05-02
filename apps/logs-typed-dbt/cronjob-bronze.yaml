@@ -37,6 +37,16 @@ kind: CronJob
 metadata:
   name: logs-typed-dbt-bronze
 spec:
+  # 一時的な suspend (2026-05-03 00:30 JST 自動 run の skip 用)。
+  #
+  # 理由: 2026-05-02 の verify テスト過程で raw/2026-05-02 を手動 compact が
+  # 削除した後、bronze smoke を実行して daily/2026-05-02 を partial 9 分分に
+  # 縮小してしまった。daily-bronze/ から S3 copy で復旧したが、5/3 00:30 JST の
+  # bronze 自動 run (target=5/2) は raw/2026-05-02 (= manual compact 後の 7 時間
+  # 分しかない) を pickup → daily/2026-05-02 を再度 partial で上書きする。
+  # これを防ぐため一時 suspend、5/4 00:30 JST (target=5/3、raw/5-3 は手付かず) で
+  # 通常運用復帰したいので revert PR を 5/3 中に出して suspend を解除する。
+  suspend: true
   schedule: "30 0 * * *"
   timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid
