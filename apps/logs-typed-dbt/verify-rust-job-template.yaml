@@ -1,0 +1,61 @@
+# Rust + Polars 版 PoC: verify (旧 daily/ vs 新 daily-struct/) for systemd source
+#
+# kustomize 外。手動 `kubectl create -f apps/logs-typed-dbt/verify-rust-job-template.yaml`
+# で実行する。Job 名と `TARGET_DATE` を都度書き換えること (両方を編集してから create)。
+#
+# verify subcommand は logs-pipeline binary に実装済み:
+#   logs-pipeline verify --source systemd --date YYYY-MM-DD \
+#     --old-prefix daily --new-prefix daily-struct
+# 旧 dbt-duckdb は `daily/date=*/source=*/` (date 先) で書き、新 Rust は
+# `daily-struct/source=*/date=*/` (source 先) で書く。binary 側で path 順序差を吸収。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: logs-rust-pipeline-verify-systemd-
+  namespace: logs-typed-dbt
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: ghcr.io/shinbunbun/logs-pipeline:latest
+          args:
+            - verify
+            - --source
+            - systemd
+            - --date
+            - "2026-05-02"  # ← edit before kubectl create
+            - --old-prefix
+            - daily
+            - --new-prefix
+            - daily-struct
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: "http://garage.garage.svc.cluster.local:3900"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - secretRef:
+                name: logs-typed-dbt-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
