@@ -225,6 +225,24 @@ spec:
                   template = "{{` {{- .Value | ToLower | replace \"warning\" \"warn\" -}} `}}"
                 }
 
+                // (7.5) authentik asyncio CancelledError downgrade
+                // Cloudflare Tunnel → Traefik → authentik Go router → Python ASGI の
+                // 経路でクライアント切断が起きると、authentik upstream の
+                // `asyncio.shield()` でラップされた future が CancelledError を
+                // error level で記録する (直前に Go router が `failed to proxy to
+                // backend (context canceled)` を warn で吐くペア)。実害ゼロの
+                // disconnect 伝搬例外で、K3sPodErrorLogDetected を誤発火させるため
+                // ここで level=warn にダウングレードする。本物の error 急増は
+                // K3sPodHighErrorRate5m/30m で検知可能。
+                stage.match {
+                  selector = "{namespace=\"authentik\"} |~ \"CancelledError exception in shielded future\""
+
+                  stage.template {
+                    source   = "level"
+                    template = "warn"
+                  }
+                }
+
                 // (8) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
                 stage.labels {
                   values = { level = "" }
