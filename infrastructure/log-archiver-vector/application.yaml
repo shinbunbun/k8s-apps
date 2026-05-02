@@ -162,38 +162,42 @@ spec:
             vector_metrics:
               type: internal_metrics
           transforms:
-            # timestamp から date / hour フィールドを派生させ、S3 partitioning に使う。
-            # JST 基準で計算する: aws_s3 sink の key_prefix で strftime (%Y-%m-%d 等)
-            # を使うと UTC で評価されてしまい、JST 基準で「昨日」を集計する
-            # compact.py と 9 時間ずれる (date=YYYY-MM-DD partition に翌日 JST 早朝
-            # 9 時間のレコードが混入し、当日 JST 早朝 9 時間のレコードは前日 partition
-            # に置き去りになる)。VRL で timezone を明示してフィールド化し、key_prefix
-            # からこれを参照することで sink 側の UTC 評価を回避する。
+            # archived_at (Vector 受信時刻) から date / hour フィールドを派生させ、
+            # S3 partitioning に使う。JST 基準で計算する: aws_s3 sink の key_prefix で
+            # strftime (%Y-%m-%d 等) を使うと UTC で評価されてしまうため、VRL で
+            # timezone を明示してフィールド化し、key_prefix からこれを参照する。
+            #
+            # partition source に .timestamp (record 発生時刻) ではなく .archived_at
+            # (Vector 受信時刻) を使う理由 (issue shinbunbun/dotfiles#663):
+            # - Alloy → OTLP 経由の k8s-pods record で 16+ 時間の late delivery が
+            #   観測され、record 発生時刻ベース partition だと bronze 処理 (compact /
+            #   dbt) 完了後の partition に追加書き込みが発生して orphan 化していた。
+            # - .archived_at は単調増加 (now()) なので、bronze 処理がある日付の raw/ を
+            #   読み終えれば以降その partition には書き込まれず、partition が完結する。
+            # - record 発生時刻ベースの分析は silver / typed layer で .timestamp を
+            #   partition key に再構成する設計と整合 (bronze = archive 時刻 partition、
+            #   silver = event 時刻 partition のレイヤード)。
             enrich:
               type: remap
               inputs: [fluent_bit_forward]
               source: |
                 .archived_at = now()
-                # .timestamp は fluent source が event time (timestamp 型) を入れるが、
-                # Fluent Bit 側の record に `timestamp` が既にある (parser で JSON 抽出した
-                # ケース等) と string で上書きされる。format_timestamp の非 bang 版を
-                # 使い fallible にし、変換不能時は archive 時刻で fallback する。
-                .date = format_timestamp(.timestamp, format: "%Y-%m-%d", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%Y-%m-%d", timezone: "Asia/Tokyo")
-                .hour = format_timestamp(.timestamp, format: "%H", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%H", timezone: "Asia/Tokyo")
+                .date = format_timestamp!(.archived_at, format: "%Y-%m-%d", timezone: "Asia/Tokyo")
+                .hour = format_timestamp!(.archived_at, format: "%H", timezone: "Asia/Tokyo")
             # OTLP 経由 (Alloy → k8s pod logs) の record 用 enrich。
             # fluent path と record schema が異なる (.body / .attributes 配下に
             # ラベルが入る OTLP shape) ため、独立の transform にして両 path の
             # VRL を簡潔に保つ。.log_type を "k8s-pods" に強制し、aws_s3 sink の
             # key_prefix=raw/source={{ log_type }}/... で k8s-pods partition に
-            # 流れるようにする。compact.py の SOURCES に k8s-pods は既に含まれる。
+            # 流れるようにする。
             enrich_otlp:
               type: remap
               inputs: [alloy_otlp.logs]
               source: |
                 .log_type = "k8s-pods"
                 .archived_at = now()
-                .date = format_timestamp(.timestamp, format: "%Y-%m-%d", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%Y-%m-%d", timezone: "Asia/Tokyo")
-                .hour = format_timestamp(.timestamp, format: "%H", timezone: "Asia/Tokyo") ?? format_timestamp!(now(), format: "%H", timezone: "Asia/Tokyo")
+                .date = format_timestamp!(.archived_at, format: "%Y-%m-%d", timezone: "Asia/Tokyo")
+                .hour = format_timestamp!(.archived_at, format: "%H", timezone: "Asia/Tokyo")
           sinks:
             # Garage (S3 互換) へ ndjson + zstd で書き出し
             # raw/source=<log_type>/date=YYYY-MM-DD/hour=HH/ prefix で
