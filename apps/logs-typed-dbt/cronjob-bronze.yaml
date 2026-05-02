@@ -14,12 +14,10 @@
 #   実機検証で 0.36 GiB / 0.92s で完走 (direct DuckDB と同等性能)。
 #
 # 並走戦略:
-#   - PR (本ファイル追加時): bronze は s3://logs-archive/daily-bronze/ に
-#     shadow write、compact.py は従来通り daily/ に書く。1-2 週間 verify Job
-#     (verify-job-template.yaml) で行数一致を確認。
-#   - cutover PR: env DAILY_PATH_PREFIX を "daily" に切替、compact.py CronJob
-#     を `spec.suspend: true` で停止。
-#   - cleanup PR: apps/logs-compact-cronjob/ 削除、`compact` GarageKey 削除。
+#   - PR 1 (#250): bronze を s3://logs-archive/daily-bronze/ に shadow write
+#   - cutover PR (本 PR): bronze ↔ compact diff=0 を実機検証、env DAILY_PATH_PREFIX
+#     を "daily" に切替、compact.py CronJob を spec.suspend: true で停止
+#   - cleanup PR: apps/logs-compact-cronjob/ 削除、`compact` GarageKey 削除
 #
 # Schedule:
 #   00:30 JST、compact.py の 01:00 JST より 30 分先行。compact.py の delete_prefix
@@ -103,9 +101,10 @@ spec:
                     --select ${SELECTED[*]}
               env:
                 # Python model に渡す。Pod 起動時 (TARGET_DATE 未指定) は前日 JST、
-                # backfill 時は env で override 可。
+                # backfill 時は env で override 可。Phase 2 cutover で "daily-bronze"
+                # → "daily" に切替済 (compact.py 互換性は実機で diff=0 確認)。
                 - name: DAILY_PATH_PREFIX
-                  value: "daily-bronze"
+                  value: "daily"
               envFrom:
                 - secretRef:
                     name: logs-typed-dbt-credentials
