@@ -27,8 +27,9 @@
 # envFrom で注入。AWS SDK 互換の AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
 # AWS_REGION を読む。
 #
-# 【スキーマ】transforms.enrich で archived_at (now) と date (timestamp から派生)
-# を追加し、全フィールドを ndjson (改行区切り JSON) で書き出す。
+# 【スキーマ】transforms.enrich で archived_at (now) を付与し、date / hour を
+# archived_at (Vector 受信時刻、JST) から派生させて S3 partitioning に使う。
+# 全フィールドを ndjson (改行区切り JSON) で書き出す。
 # 注: Vector 0.54 時点で aws_s3 sink の encoding.codec に parquet は未対応
 # (avro/cef/csv/gelf/json/logfmt/native/native_json/otlp/protobuf/raw_message/
 #  text/syslog のみ)。
