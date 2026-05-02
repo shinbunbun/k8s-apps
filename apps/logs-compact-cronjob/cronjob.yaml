@@ -22,6 +22,11 @@ kind: CronJob
 metadata:
   name: logs-compact
 spec:
+  # Phase 2 cutover で suspend。bronze (logs-typed-dbt-bronze、Python model) に
+  # raw → daily 変換を移行し、compact.py との完全互換 (3 source diff=0) を
+  # 実機検証済。1 週間安定運用後に本 CronJob および apps/logs-compact-cronjob/
+  # ディレクトリを削除する (Phase 2 cleanup PR)。
+  suspend: true
   schedule: "0 1 * * *"
   timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid

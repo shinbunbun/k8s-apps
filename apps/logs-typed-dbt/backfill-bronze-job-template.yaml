@@ -1,8 +1,9 @@
 # Bronze backfill Job テンプレート (手動 one-shot 用、kustomization.yaml 外)
 #
 # 使い方:
-#   1. env BACKFILL_START_DATE / BACKFILL_DAYS / DAILY_PATH_PREFIX を編集
-#      (DAILY_PATH_PREFIX は通常 "daily-bronze" (PR 1 並走期) または "daily" (cutover 後))
+#   1. env BACKFILL_START_DATE / BACKFILL_DAYS を編集
+#      (DAILY_PATH_PREFIX は cutover 後 "daily"、必要なら shadow write 用に
+#       "daily-bronze" 等を設定)
 #   2. `kubectl create -f apps/logs-typed-dbt/backfill-bronze-job-template.yaml`
 #   3. `kubectl logs -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill -f`
 #   4. 完了後 `kubectl delete -n logs-typed-dbt job/logs-typed-dbt-bronze-backfill`
@@ -35,7 +36,7 @@ spec:
             - name: BACKFILL_DAYS
               value: "7"
             - name: DAILY_PATH_PREFIX
-              value: "daily-bronze"
+              value: "daily"
           command: ["/bin/bash", "-c"]
           args:
             - |
