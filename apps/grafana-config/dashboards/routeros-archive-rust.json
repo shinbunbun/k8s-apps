@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Garage logs-archive の daily-struct/ (Rust + Polars bronze、Phase 3 PoC) を DuckDB datasource 経由で集計する systemd-journal 長期ログダッシュボード。silver 層は廃止され、daily-struct の typed columns を直読み (timestamp は CTE で TIMESTAMP cast)。Loki retention を超える 30/90 日範囲が対象。",
+  "description": "Garage logs-archive の daily-struct/source=routeros (Rust + Polars bronze、Phase 3 PoC) を DuckDB datasource 経由で集計する MikroTik RouterOS 長期ログダッシュボード。silver 層は廃止、daily-struct を直読み (timestamp は CTE で TIMESTAMP cast、level は coalesce(level, severity) で fallback)。並走期は旧 dashboard routeros-archive (typed/) と分離して動作確認。",
   "editable": true,
   "graphTooltip": 0,
   "id": null,
@@ -60,7 +60,7 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)",
           "format": 1,
           "refId": "A"
         }
@@ -112,7 +112,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  time_bucket(INTERVAL '1 hour', ts) AS time,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  time_bucket(INTERVAL '1 hour', ts) AS time,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
           "format": 0,
           "refId": "A"
         }
@@ -149,12 +149,12 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, unit, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(unit, '(none)') AS unit,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(host, '(unknown)') AS host,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
       ],
-      "title": "unit 別件数 Top 10",
+      "title": "host 別件数 Top 10",
       "type": "barchart"
     },
     {
@@ -186,49 +186,12 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(host, '(unknown)') AS host,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, coalesce(level, severity) AS level, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
           "format": 1,
           "refId": "A"
         }
       ],
-      "title": "host 別件数 Top 10",
-      "type": "barchart"
-    },
-    {
-      "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "short"
-        }
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
-      "id": 5,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "right"
-        },
-        "orientation": "horizontal"
-      },
-      "targets": [
-        {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, level, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
-          "format": 1,
-          "refId": "A"
-        }
-      ],
-      "title": "level 別件数",
+      "title": "level 別件数 (coalesce(level, severity))",
       "type": "barchart"
     },
     {
@@ -248,15 +211,15 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 16
       },
-      "id": 6,
+      "id": 5,
       "options": {
         "showHeader": true
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, unit, service, level, message, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=systemd/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  ts, host, unit, service, level, message\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, coalesce(level, severity) AS level, message, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  ts, host, level, message\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
@@ -267,7 +230,7 @@
   ],
   "refresh": "",
   "schemaVersion": 39,
-  "tags": ["logs-archive", "systemd", "duckdb", "rust-pipeline"],
+  "tags": ["logs-archive", "routeros", "duckdb", "rust-pipeline"],
   "templating": {
     "list": []
   },
@@ -277,8 +240,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Systemd Long-term Logs (DuckDB)",
-  "uid": "logs-archive-systemd",
+  "title": "RouterOS Long-term Logs (DuckDB, Rust pipeline)",
+  "uid": "logs-archive-routeros-rust",
   "version": 1,
   "weekStart": ""
 }

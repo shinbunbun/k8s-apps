@@ -1,7 +1,8 @@
-# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for systemd source
+# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for routeros source
 #
-# shinbunbun/dotfiles#662 Phase 3 PoC。旧 dbt-duckdb (cronjob-bronze.yaml) との
-# 並走 verify が目的。新 prefix `daily-struct/` に書くので旧 `daily/` には触れない。
+# shinbunbun/dotfiles#662 Phase 3 PoC、systemd に続く 2 つ目の source。
+# 旧 dbt-duckdb (cronjob-bronze.yaml) との並走 verify が目的。
+# 新 prefix `daily-struct/source=routeros/` に書くので旧 `daily/` には触れない。
 # image source: shinbunbun/logs-pipeline
 #
 # co-tenancy 注記:
@@ -11,15 +12,19 @@
 #   切り出して独立 GarageKey + namespace 化する。
 #
 # Schedule:
-#   00:35 JST (旧 dbt-duckdb bronze 00:30 JST から 5 分ずらして競合回避)。
-#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、
-#   観測できるよう時間差を入れる。
+#   00:45 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 から 10 分ずらし)。
+#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
+#
+# Memory:
+#   routeros は systemd の ~130x volume (2.1M rows/day)、巨大 record (5MB config dump
+#   100-200/日) も含めて全保持 (1MB filter / truncate なし)。Polars columnar 処理で
+#   sub-linear memory 想定だが、初回計測用に 8Gi 余裕を持つ。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: logs-rust-pipeline-bronze-systemd
+  name: logs-rust-pipeline-bronze-routeros
 spec:
-  schedule: "35 0 * * *"
+  schedule: "45 0 * * *"
   timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -34,18 +39,16 @@ spec:
           labels:
             app: logs-rust-pipeline
             tier: bronze
-            source: systemd
+            source: routeros
         spec:
           restartPolicy: OnFailure
           containers:
             - name: pipeline
-              # PoC は immutable な commit SHA tag (latest 追従は将来 ArgoCD Image Updater で)。
-              # 初回 push 後の SHA に書き換えること (TODO: PR レビュー時に実 SHA を確定)。
               image: ghcr.io/shinbunbun/logs-pipeline:latest
               args:
                 - bronze
                 - --source
-                - systemd
+                - routeros
                 # date は省略 -> binary 内で yesterday-jst を解釈
               env:
                 - name: AWS_S3_ENDPOINT
@@ -60,10 +63,7 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  # Polars dynamic NDJSON inference + concat(diagonal=true) で全 hour
-                  # を in-memory に乗せるため、systemd 25K 行でも余裕を持って 4Gi。
-                  # 実測 (peak_mib log) 後に縮小可。
-                  memory: 4Gi
+                  memory: 8Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -71,11 +71,11 @@ spec:
                 capabilities:
                   drop: [ALL]
               volumeMounts:
-                # tempfile crate が /tmp に書き出すため emptyDir をマウント
-                # (readOnlyRootFilesystem=true なので /tmp も RO になる)。
+                # tempfile crate が /tmp に hour 別 NDJSON + 最終 Parquet を書くため
+                # emptyDir をマウント。zstd 解凍後 NDJSON が一時的に展開される。
                 - name: tmp
                   mountPath: /tmp
           volumes:
             - name: tmp
               emptyDir:
-                sizeLimit: 1Gi
+                sizeLimit: 4Gi
