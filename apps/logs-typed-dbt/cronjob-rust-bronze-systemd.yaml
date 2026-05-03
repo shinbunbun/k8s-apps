@@ -1,0 +1,79 @@
+# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for systemd source
+#
+# shinbunbun/dotfiles#662 Phase 3 PoC。旧 dbt-duckdb (cronjob-bronze.yaml) との
+# 並走 verify が目的。新 prefix `daily-struct/` に書くので旧 `daily/` には触れない。
+# image source: shinbunbun/logs-pipeline
+#
+# co-tenancy 注記:
+#   PoC スコープでは新 namespace を切らず、logs-typed-dbt namespace を間借りする。
+#   logs-typed-dbt-credentials Secret (Garage Operator が secretTemplate で生成) を
+#   そのまま envFrom で読む。Phase 4 で本採用するときは apps/logs-rust-pipeline/ に
+#   切り出して独立 GarageKey + namespace 化する。
+#
+# Schedule:
+#   00:35 JST (旧 dbt-duckdb bronze 00:30 JST から 5 分ずらして競合回避)。
+#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、
+#   観測できるよう時間差を入れる。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-bronze-systemd
+spec:
+  schedule: "35 0 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: bronze
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              # PoC は immutable な commit SHA tag (latest 追従は将来 ArgoCD Image Updater で)。
+              # 初回 push 後の SHA に書き換えること (TODO: PR レビュー時に実 SHA を確定)。
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - bronze
+                - --source
+                - systemd
+                # date は省略 -> binary 内で yesterday-jst を解釈
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  # systemd 25K 行は数 MB なので 2Gi で十分。実測後に調整。
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                # tempfile crate が /tmp に書き出すため emptyDir をマウント
+                # (readOnlyRootFilesystem=true なので /tmp も RO になる)。
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi

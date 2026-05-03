@@ -19,3 +19,6 @@ resources:
   - cronjob.yaml
   - cronjob-bronze.yaml
   - dbt-project-configmap.yaml
+  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662) — co-tenancy で並走中
+  - cronjob-rust-bronze-systemd.yaml
+  - cronjob-rust-silver-systemd.yaml

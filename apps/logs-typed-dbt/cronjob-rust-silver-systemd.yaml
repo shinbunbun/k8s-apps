@@ -1,0 +1,67 @@
+# Rust + Polars 版 PoC: silver (daily-struct -> typed-struct) for systemd source
+#
+# shinbunbun/dotfiles#662 Phase 3 PoC。旧 dbt-duckdb silver (cronjob.yaml) は
+# k8s-pods / routeros のみ対象で systemd は未実装だったので、新 silver は systemd
+# 用の新規 dashboard 専用の typed Parquet を生成する (並走 verify ではなく完全新規)。
+#
+# Schedule:
+#   02:05 JST (旧 dbt-duckdb silver 02:00 JST から 5 分ずらし)。
+#   bronze (00:35) → 1.5 時間後の silver、daily-struct/ が揃ってから読む。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-silver-systemd
+spec:
+  schedule: "5 2 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: silver
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - silver
+                - --source
+                - systemd
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  # silver は projection のみで bronze より軽い。1Gi で十分の想定。
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 512Mi
