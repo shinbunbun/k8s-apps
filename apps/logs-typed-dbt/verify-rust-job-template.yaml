@@ -1,7 +1,8 @@
-# Rust + Polars 版 PoC: verify (旧 daily/ vs 新 daily-struct/) for systemd source
+# Rust + Polars 版 PoC: verify (旧 daily/ vs 新 daily-struct/) Job template
 #
 # kustomize 外。手動 `kubectl create -f apps/logs-typed-dbt/verify-rust-job-template.yaml`
-# で実行する。Job 名と `TARGET_DATE` を都度書き換えること (両方を編集してから create)。
+# で実行する。`--source` (systemd / routeros) と `--date` (TARGET_DATE) を都度書き
+# 換えること (sed 推奨、両方を編集してから create)。
 #
 # verify subcommand は logs-pipeline binary に実装済み:
 #   logs-pipeline verify --source systemd --date YYYY-MM-DD \

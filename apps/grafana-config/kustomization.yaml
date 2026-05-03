@@ -241,11 +241,20 @@ configMapGenerator:
       annotations:
         grafana_folder: Logs Archive
       disableNameSuffixHash: false
-  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662) で systemd 用に新設。
-  # typed-struct/source=systemd/date=*/logs.parquet を読む。旧 typed/ とは別 prefix。
+  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662)。silver 廃止後の設計で、
+  # daily-struct/source=*/date=*/logs.parquet を直接 query する。
   - name: grafana-dashboard-systemd-archive
     files:
       - dashboards/systemd-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-routeros-archive-rust
+    files:
+      - dashboards/routeros-archive-rust.json
     options:
       labels:
         grafana_dashboard: "1"

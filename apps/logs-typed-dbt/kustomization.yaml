@@ -19,6 +19,7 @@ resources:
   - cronjob.yaml
   - cronjob-bronze.yaml
   - dbt-project-configmap.yaml
-  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662) — co-tenancy で並走中
+  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662) — co-tenancy で並走中。
+  # silver 層は廃止され、dashboard は daily-struct/ を直接 query する設計。
   - cronjob-rust-bronze-systemd.yaml
-  - cronjob-rust-silver-systemd.yaml
+  - cronjob-rust-bronze-routeros.yaml
