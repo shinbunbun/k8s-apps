@@ -50,7 +50,11 @@ spec:
               cpu: 50m
               memory: 64Mi
             limits:
-              memory: 1Gi
+              # routeros 旧 daily/ は 1 列 json:VARCHAR で 5MB config dump 数百件含む。
+              # logs-pipeline #7 で num_rows() metadata 読みに変更済だが、念のため
+              # 4Gi (download buffer + Polars metadata parse)。systemd では数百 MiB しか
+              # 使わないが、source 別に template 分けるより一律で吸収する方が運用簡素。
+              memory: 4Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
