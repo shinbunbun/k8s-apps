@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Garage logs-archive の daily-struct/source=k8s-pods (Rust + Polars bronze、Phase 3 PoC) を DuckDB datasource 経由で集計する k8s Pod ログ長期ダッシュボード。silver 層は廃止、daily-struct を直読み (timestamp は CTE で TIMESTAMP cast)。column 名 (namespace/pod/container/level/message) は OTLP attributes の Polars 推論次第で変わる可能性があり、初回 bronze 後の DuckDB DESCRIBE 結果に応じて補遺 PR で修正する。並走期は旧 dashboard k8s-pods-archive (typed/) と分離して動作確認。",
+  "description": "Garage logs-archive の daily-struct/source=k8s-pods (Rust + Polars bronze、Phase 3 PoC) を DuckDB datasource 経由で集計する k8s Pod ログ長期ダッシュボード。silver 層は廃止、daily-struct を直読み (timestamp は CTE で TIMESTAMP cast)。OTLP-shape の NDJSON で attributes が STRUCT(container/host/instance/job/level/namespace/pod/...) ネスト、message / timestamp / archived_at は top-level。並走期は旧 dashboard k8s-pods-archive (typed/) と分離して動作確認。",
   "editable": true,
   "graphTooltip": 0,
   "id": null,
@@ -149,7 +149,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, namespace, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(namespace, '(unknown)') AS namespace,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, attributes.namespace AS namespace, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(namespace, '(unknown)') AS namespace,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -186,7 +186,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, pod, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(pod, '(unknown)') AS pod,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, attributes.pod AS pod, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(pod, '(unknown)') AS pod,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -223,7 +223,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, level, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
+          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, attributes.level AS level, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
           "format": 1,
           "refId": "A"
         }
@@ -256,7 +256,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, namespace, pod, container, level, message, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  ts, namespace, pod, container, level, message\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "WITH t AS (\n  SELECT\n    CAST(timestamp AS TIMESTAMP) AS ts,\n    attributes.namespace AS namespace,\n    attributes.pod AS pod,\n    attributes.container AS container,\n    attributes.level AS level,\n    message,\n    date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=k8s-pods/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  ts, namespace, pod, container, level, message\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
