@@ -1,0 +1,83 @@
+# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for k8s-pods source
+#
+# shinbunbun/dotfiles#662 Phase 3 PoC、systemd / routeros に続く 3 つ目の source。
+# 旧 dbt-duckdb (cronjob-bronze.yaml) との並走 verify が目的。
+# 新 prefix `daily-struct/source=k8s-pods/` に書くので旧 `daily/` には触れない。
+# image source: shinbunbun/logs-pipeline
+#
+# co-tenancy 注記:
+#   PoC スコープでは新 namespace を切らず、logs-typed-dbt namespace を間借りする。
+#   logs-typed-dbt-credentials Secret (Garage Operator が secretTemplate で生成) を
+#   そのまま envFrom で読む。Phase 4 で本採用するときは apps/logs-rust-pipeline/ に
+#   切り出して独立 GarageKey + namespace 化する。
+#
+# Schedule:
+#   00:55 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 / 新 routeros
+#   bronze 00:45 から 10 分ずつずらした連番)。raw/ を読むだけで delete はしないので
+#   衝突は理論上ないが、観測しやすく時間差。
+#
+# Memory:
+#   k8s-pods は OTLP-shape の NDJSON で attributes が struct (namespace/pod/container/
+#   level 等) で埋まり typed columns 数が systemd/routeros より多い。row 数は routeros
+#   と同オーダー (4M+ 行/日 想定) のため routeros と同じ 8Gi 余裕を持つ。実測 peak_mib
+#   取得後に縮小可。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-bronze-k8s-pods
+spec:
+  schedule: "55 0 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: bronze
+            source: k8s-pods
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - bronze
+                - --source
+                - k8s-pods
+                # date は省略 -> binary 内で yesterday-jst を解釈
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 8Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                # tempfile crate が /tmp に hour 別 NDJSON + 最終 Parquet を書くため
+                # emptyDir をマウント。zstd 解凍後 NDJSON が一時的に展開される。
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

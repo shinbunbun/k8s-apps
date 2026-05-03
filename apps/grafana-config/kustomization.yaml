@@ -261,3 +261,12 @@ configMapGenerator:
       annotations:
         grafana_folder: Logs Archive
       disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-pods-archive-rust
+    files:
+      - dashboards/k8s-pods-archive-rust.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false

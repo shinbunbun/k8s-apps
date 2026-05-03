@@ -23,3 +23,4 @@ resources:
   # silver 層は廃止され、dashboard は daily-struct/ を直接 query する設計。
   - cronjob-rust-bronze-systemd.yaml
   - cronjob-rust-bronze-routeros.yaml
+  - cronjob-rust-bronze-k8s-pods.yaml
