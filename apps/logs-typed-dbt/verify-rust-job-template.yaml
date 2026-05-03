@@ -16,6 +16,10 @@ metadata:
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 600
+  # 失敗時 Pod が Failed のまま残ると alert (KubePodNotReady) を発火させるため、
+  # Complete/Failed どちらでも 10 分後に Job + Pod を自動 GC。ログは事前に
+  # `kubectl logs` で取り出すか、retain したいなら create 時に削っておく。
+  ttlSecondsAfterFinished: 600
   template:
     spec:
       restartPolicy: Never
