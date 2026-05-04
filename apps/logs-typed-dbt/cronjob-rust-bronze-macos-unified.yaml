@@ -1,0 +1,83 @@
+# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for macos-unified source
+#
+# shinbunbun/dotfiles#662 Phase 3 PoC、systemd / routeros / k8s-pods に続く 4 つ目の source。
+# 旧 dbt-duckdb (cronjob-bronze.yaml の SOURCES に macos-unified 含む) との並走 verify が目的。
+# 新 prefix `daily-struct/source=macos-unified/` に書くので旧 `daily/` には触れない。
+# image source: shinbunbun/logs-pipeline
+#
+# co-tenancy 注記:
+#   PoC スコープでは新 namespace を切らず、logs-typed-dbt namespace を間借りする。
+#   logs-typed-dbt-credentials Secret (Garage Operator が secretTemplate で生成) を
+#   そのまま envFrom で読む。Phase 4 で本採用するときは apps/logs-rust-pipeline/ に
+#   切り出して独立 GarageKey + namespace 化する。
+#
+# Schedule:
+#   01:05 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 / 新 routeros
+#   bronze 00:45 / 新 k8s-pods bronze 00:55 から 10 分ずつずらした連番)。raw/ を
+#   読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
+#
+# Memory:
+#   macos-unified は fluent-bit Lua filter で /nix/store/* と /kernel のみ通す
+#   ホワイトリスト方式のため volume 小 (systemd 同等以下を想定、16K-100K 行/日)。
+#   schema は flat (k8s-pods の OTLP attributes STRUCT のような落とし穴なし)。
+#   よって systemd と同じ 4Gi で start。実測 peak_mib 取得後に縮小可。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-bronze-macos-unified
+spec:
+  schedule: "5 1 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: bronze
+            source: macos-unified
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - bronze
+                - --source
+                - macos-unified
+                # date は省略 -> binary 内で yesterday-jst を解釈
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-typed-dbt-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                # tempfile crate が /tmp に hour 別 NDJSON + 最終 Parquet を書くため
+                # emptyDir をマウント。zstd 解凍後 NDJSON が一時的に展開される。
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi

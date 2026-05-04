@@ -24,3 +24,4 @@ resources:
   - cronjob-rust-bronze-systemd.yaml
   - cronjob-rust-bronze-routeros.yaml
   - cronjob-rust-bronze-k8s-pods.yaml
+  - cronjob-rust-bronze-macos-unified.yaml

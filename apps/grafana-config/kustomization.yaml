@@ -270,3 +270,12 @@ configMapGenerator:
       annotations:
         grafana_folder: Logs Archive
       disableNameSuffixHash: false
+  - name: grafana-dashboard-macos-unified-archive-rust
+    files:
+      - dashboards/macos-unified-archive-rust.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
