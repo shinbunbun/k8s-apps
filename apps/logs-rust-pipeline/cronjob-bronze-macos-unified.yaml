@@ -1,30 +1,28 @@
-# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for routeros source
+# Rust + Polars: bronze (raw -> daily-struct) for macos-unified source
 #
-# shinbunbun/dotfiles#662 Phase 3 PoC、systemd に続く 2 つ目の source。
-# 旧 dbt-duckdb (cronjob-bronze.yaml) との並走 verify が目的。
-# 新 prefix `daily-struct/source=routeros/` に書くので旧 `daily/` には触れない。
+# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
+# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml の SOURCES に macos-unified
+# 含む) との並走 verify を継続。新 prefix `daily-struct/source=macos-unified/` に書く
+# ので旧 `daily/` には触れない。
 # image source: shinbunbun/logs-pipeline
-#
-# co-tenancy 注記:
-#   PoC スコープでは新 namespace を切らず、logs-typed-dbt namespace を間借りする。
-#   logs-typed-dbt-credentials Secret (Garage Operator が secretTemplate で生成) を
-#   そのまま envFrom で読む。Phase 4 で本採用するときは apps/logs-rust-pipeline/ に
-#   切り出して独立 GarageKey + namespace 化する。
+# credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
 #
 # Schedule:
-#   00:45 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 から 10 分ずらし)。
-#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
+#   01:05 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 / 新 routeros
+#   bronze 00:45 / 新 k8s-pods bronze 00:55 から 10 分ずつずらした連番)。raw/ を
+#   読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
 #
 # Memory:
-#   routeros は systemd の ~130x volume (2.1M rows/day)、巨大 record (5MB config dump
-#   100-200/日) も含めて全保持 (1MB filter / truncate なし)。Polars columnar 処理で
-#   sub-linear memory 想定だが、初回計測用に 8Gi 余裕を持つ。
+#   macos-unified は fluent-bit Lua filter で /nix/store/* と /kernel のみ通す
+#   ホワイトリスト方式のため volume 小 (systemd 同等以下を想定、16K-100K 行/日)。
+#   schema は flat (k8s-pods の OTLP attributes STRUCT のような落とし穴なし)。
+#   よって systemd と同じ 4Gi で start。実測 peak_mib 取得後に縮小可。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: logs-rust-pipeline-bronze-routeros
+  name: logs-rust-pipeline-bronze-macos-unified
 spec:
-  schedule: "45 0 * * *"
+  schedule: "5 1 * * *"
   timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
@@ -39,7 +37,7 @@ spec:
           labels:
             app: logs-rust-pipeline
             tier: bronze
-            source: routeros
+            source: macos-unified
         spec:
           restartPolicy: OnFailure
           containers:
@@ -48,7 +46,7 @@ spec:
               args:
                 - bronze
                 - --source
-                - routeros
+                - macos-unified
                 # date は省略 -> binary 内で yesterday-jst を解釈
               env:
                 - name: AWS_S3_ENDPOINT
@@ -57,13 +55,13 @@ spec:
                   value: "info"
               envFrom:
                 - secretRef:
-                    name: logs-typed-dbt-credentials
+                    name: logs-rust-pipeline-credentials
               resources:
                 requests:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 8Gi
+                  memory: 4Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -78,4 +76,4 @@ spec:
           volumes:
             - name: tmp
               emptyDir:
-                sizeLimit: 4Gi
+                sizeLimit: 1Gi

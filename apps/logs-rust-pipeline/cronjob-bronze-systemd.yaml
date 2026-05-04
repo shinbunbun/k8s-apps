@@ -1,14 +1,10 @@
-# Rust + Polars 版 PoC: bronze (raw -> daily-struct) for systemd source
+# Rust + Polars: bronze (raw -> daily-struct) for systemd source
 #
-# shinbunbun/dotfiles#662 Phase 3 PoC。旧 dbt-duckdb (cronjob-bronze.yaml) との
-# 並走 verify が目的。新 prefix `daily-struct/` に書くので旧 `daily/` には触れない。
+# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
+# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml) との並走 verify を継続。
+# 新 prefix `daily-struct/` に書くので旧 `daily/` には触れない。
 # image source: shinbunbun/logs-pipeline
-#
-# co-tenancy 注記:
-#   PoC スコープでは新 namespace を切らず、logs-typed-dbt namespace を間借りする。
-#   logs-typed-dbt-credentials Secret (Garage Operator が secretTemplate で生成) を
-#   そのまま envFrom で読む。Phase 4 で本採用するときは apps/logs-rust-pipeline/ に
-#   切り出して独立 GarageKey + namespace 化する。
+# credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
 #
 # Schedule:
 #   00:35 JST (旧 dbt-duckdb bronze 00:30 JST から 5 分ずらして競合回避)。
@@ -39,8 +35,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: pipeline
-              # PoC は immutable な commit SHA tag (latest 追従は将来 ArgoCD Image Updater で)。
-              # 初回 push 後の SHA に書き換えること (TODO: PR レビュー時に実 SHA を確定)。
+              # 将来 ArgoCD Image Updater で SHA pin 化予定 (Phase 4 残タスク)。
               image: ghcr.io/shinbunbun/logs-pipeline:latest
               args:
                 - bronze
@@ -54,7 +49,7 @@ spec:
                   value: "info"
               envFrom:
                 - secretRef:
-                    name: logs-typed-dbt-credentials
+                    name: logs-rust-pipeline-credentials
               resources:
                 requests:
                   cpu: 100m

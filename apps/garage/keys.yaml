@@ -18,6 +18,8 @@
 #   compact         → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
 #   logs-typed-dbt  → logs-archive を read + write (dbt-duckdb で daily/ → typed/ 派生、
 #                     lifecycle 設定不要、compact と権限分離)
+#   logs-rust-pipeline → logs-archive を read + write (Rust + Polars pipeline で
+#                     raw/ → daily-struct/ 派生、logs-typed-dbt と権限分離、Phase 4 本採用)
 #   grafana-duckdb  → logs-archive を read のみ (Grafana DuckDB datasource 専用、
 #                     Explore から書込/削除事故を防止するため最小権限)
 #
@@ -215,6 +217,39 @@ spec:
   secretTemplate:
     name: logs-typed-dbt-credentials
     namespace: logs-typed-dbt
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+# Rust + Polars pipeline (apps/logs-rust-pipeline) 専用キー。
+# raw/ NDJSON.zst の read と daily-struct/ Parquet の write を担う。
+# logs-typed-dbt と同じ logs-archive bucket に対する read+write 権限だが、
+# 独立したアクセスキーで権限を分離 (Phase 4 で旧 dbt 廃止後も独立運用するため)。
+apiVersion: garage.rajsingh.info/v1alpha1
+kind: GarageKey
+metadata:
+  name: logs-rust-pipeline
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage
+  name: logs-rust-pipeline
+  importKey:
+    secretRef:
+      name: garage-s3-keys
+      namespace: garage
+    accessKeyIdKey: LOGS_RUST_PIPELINE_KEY_ID
+    secretAccessKeyKey: LOGS_RUST_PIPELINE_SECRET
+  bucketPermissions:
+    - bucketRef: logs-archive
+      read: true
+      write: true
+  secretTemplate:
+    name: logs-rust-pipeline-credentials
+    namespace: logs-rust-pipeline
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION
