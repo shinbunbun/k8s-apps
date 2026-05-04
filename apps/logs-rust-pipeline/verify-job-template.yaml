@@ -1,14 +1,23 @@
 # Rust + Polars: verify (旧 daily/ vs 新 daily-struct/) Job template
 #
+# 【用途】
+# 旧 dbt-duckdb stack は Phase 4 で廃止済 (Issue #191、apps/logs-typed-dbt/ 削除)。
+# 本テンプレートは backfill 期間 (旧 dbt 廃止以前の日付) に対する row count 整合
+# 検証専用。新規 fire 後の日付では `--old-prefix daily` 配下に新規 write がないため
+# 意味のある比較にならない。
+#
+# 【実行方法】
 # kustomize 外。手動 `kubectl create -f apps/logs-rust-pipeline/verify-job-template.yaml`
 # で実行する。`--source` (systemd / routeros / k8s-pods / macos-unified) と `--date`
-# (TARGET_DATE) を都度書き換えること (sed 推奨、両方を編集してから create)。
+# (TARGET_DATE = 旧 dbt 廃止以前の日付) を都度書き換えること (sed 推奨)。
 #
-# verify subcommand は logs-pipeline binary に実装済み:
+# 【binary subcommand】
+# verify は logs-pipeline binary に実装済み:
 #   logs-pipeline verify --source systemd --date YYYY-MM-DD \
 #     --old-prefix daily --new-prefix daily-struct
 # 旧 dbt-duckdb は `daily/date=*/source=*/` (date 先) で書き、新 Rust は
 # `daily-struct/source=*/date=*/` (source 先) で書く。binary 側で path 順序差を吸収。
+# 旧 daily/ 配下の at-rest データは Phase 4 lifecycle expire まで残存。
 apiVersion: batch/v1
 kind: Job
 metadata:
