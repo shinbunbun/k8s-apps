@@ -13,9 +13,9 @@
 #
 # Memory:
 #   k8s-pods は OTLP-shape の NDJSON で attributes が struct (namespace/pod/container/
-#   level 等) で埋まり typed columns 数が systemd/routeros より多い。row 数は routeros
-#   と同オーダー (4M+ 行/日 想定) のため routeros と同じ 8Gi 余裕を持つ。実測 peak_mib
-#   取得後に縮小可。
+#   level 等) で埋まり typed columns 数が systemd/routeros より多い。
+#   実測 (補遺 5、860K rows/日): peak_mib 1180 MiB (旧 8Gi limit の 14%)。
+#   推定の 4M+ 行から大幅下振れしており、4Gi (推定 peak の 3.4x 余裕) で十分。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -60,7 +60,7 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 8Gi
+                  memory: 4Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
