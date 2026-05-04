@@ -1,0 +1,9 @@
+# Open WebUI 設定 - KSOPS による Secret 復号のみ
+#
+# Helm chart 側 (infrastructure/openwebui/application.yaml) が読む Secret
+# (openwebui-secrets) を SOPS 暗号化された secret.enc.yaml から生成する。
+# キー: OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET / WEBUI_SECRET_KEY
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+generators:
+  - secret-generator.yaml
