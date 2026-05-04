@@ -9,6 +9,24 @@
 # write コンポーネント直接で良い (gateway は主にクエリルーティング・認証用)。
 # selector で write pod のみ対象にすることで、読み取り系 pod に push が当たって
 # forwarding が発生するのを回避する。
+#
+# 【構成】Pod 単位の LB Service を 3 つ用意し (loki-write-lan-0/1/2)、
+# Fluent Bit 側で Upstream round-robin 構成にして全 pod に均等に分散させる。
+# 単一 LB (loki-lan) では Cilium maglev hash が同一 src IP の複数接続を
+# 同じ pod に collision させて偏在してしまうため (vector-lan で実測 99% 片肺
+# の前例あり、log-archiver-vector-config/lan-service.yaml 参照)。
+# また Cilium の service backend programming が EndpointSlice と desync する
+# 事象を 2026-05-04 #193 で経験しており、単一 LB は障害ドメインも広い。
+# Loki SimpleScalable の write は StatefulSet なので、各 pod は
+# `statefulset.kubernetes.io/pod-name` ラベルで一意に selector できる。
+#
+# 【VIP 割当】既存 grafana-lan (.11) / vmselect-lan (.12) / vmalertmanager-lan (.13)
+# / loki-lan (.14) / hubble-ui-lan (.15) / scanopy-lan (.16) / vector-lan (.17) /
+# vector-lan-0 (.18) / vector-lan-1 (.19) に続き、loki-write-lan-0 (.20) /
+# loki-write-lan-1 (.21) / loki-write-lan-2 (.22)。
+#
+# 【loki-lan (.14)】移行期間中の互換性のため残置。Fluent Bit 側全ホストが
+# Upstream 設定に切り替わった後の別 PR で削除予定。
 apiVersion: v1
 kind: Service
 metadata:
@@ -21,6 +39,66 @@ spec:
   selector:
     app.kubernetes.io/instance: loki
     app.kubernetes.io/component: write
+  ports:
+    - name: http
+      port: 3100
+      protocol: TCP
+      targetPort: http-metrics
+---
+# Pod 単位 LB - loki-write-0
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-write-lan-0
+  namespace: loki
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.20
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/component: write
+    statefulset.kubernetes.io/pod-name: loki-write-0
+  ports:
+    - name: http
+      port: 3100
+      protocol: TCP
+      targetPort: http-metrics
+---
+# Pod 単位 LB - loki-write-1
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-write-lan-1
+  namespace: loki
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.21
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/component: write
+    statefulset.kubernetes.io/pod-name: loki-write-1
+  ports:
+    - name: http
+      port: 3100
+      protocol: TCP
+      targetPort: http-metrics
+---
+# Pod 単位 LB - loki-write-2
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-write-lan-2
+  namespace: loki
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.22
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/component: write
+    statefulset.kubernetes.io/pod-name: loki-write-2
   ports:
     - name: http
       port: 3100
