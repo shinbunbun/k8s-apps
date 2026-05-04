@@ -86,10 +86,10 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              # OpenSearch dump 込み 1 日分の最大 row 数想定 (補遺 7 で routeros 2.1M
-              # rows が 1.4 GiB peak、k8s-pods 860K rows が 1.18 GiB peak)。
-              # macos-unified の 130万 rows/日 は同程度。8Gi で全 source 安全側。
-              memory: 8Gi
+              # 実機 batch (494 件中 135 進行) で systemd 2026-01-25 (842K rows) 以降
+              # 8Gi では OOM が頻発 (1 月下旬以降の systemd は ~7-8 GiB 級が標準)。
+              # 16Gi に増量。macos-unified (130万 rows/日 想定) も保険を含めて十分。
+              memory: 16Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -102,6 +102,8 @@ spec:
       volumes:
         - name: tmp
           # tmpdir に NDJSON (decode 後) + 出力 Parquet が一時的に存在。
-          # routeros の 1MB record 100+ 件など想定し余裕を持って 4Gi。
+          # 実機検証で systemd 1.1M rows = 33MB NDJSON、routeros 3.2M rows = 33MB
+          # NDJSON。最大 50MB 想定で 8Gi は十分すぎるが、OOM リスクの方が大なので
+          # memory 増量に合わせて余裕を確保。
           emptyDir:
-            sizeLimit: 4Gi
+            sizeLimit: 8Gi
