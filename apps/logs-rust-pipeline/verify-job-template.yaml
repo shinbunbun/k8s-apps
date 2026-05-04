@@ -1,8 +1,8 @@
-# Rust + Polars 版 PoC: verify (旧 daily/ vs 新 daily-struct/) Job template
+# Rust + Polars: verify (旧 daily/ vs 新 daily-struct/) Job template
 #
-# kustomize 外。手動 `kubectl create -f apps/logs-typed-dbt/verify-rust-job-template.yaml`
-# で実行する。`--source` (systemd / routeros) と `--date` (TARGET_DATE) を都度書き
-# 換えること (sed 推奨、両方を編集してから create)。
+# kustomize 外。手動 `kubectl create -f apps/logs-rust-pipeline/verify-job-template.yaml`
+# で実行する。`--source` (systemd / routeros / k8s-pods / macos-unified) と `--date`
+# (TARGET_DATE) を都度書き換えること (sed 推奨、両方を編集してから create)。
 #
 # verify subcommand は logs-pipeline binary に実装済み:
 #   logs-pipeline verify --source systemd --date YYYY-MM-DD \
@@ -13,7 +13,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   generateName: logs-rust-pipeline-verify-systemd-
-  namespace: logs-typed-dbt
+  namespace: logs-rust-pipeline
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 600
@@ -44,7 +44,7 @@ spec:
               value: "info"
           envFrom:
             - secretRef:
-                name: logs-typed-dbt-credentials
+                name: logs-rust-pipeline-credentials
           resources:
             requests:
               cpu: 50m
