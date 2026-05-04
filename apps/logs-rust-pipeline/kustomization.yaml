@@ -33,4 +33,4 @@ resources:
 #   3. ArgoCD sync で 4 CronJob 全てが新 image で fire
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "708e173"  # logs-pipeline main HEAD: 708e173... (2026-05-04, PR #12 spawn_blocking fix for tokio runtime conflict)
+    newTag: "6385bcf"  # logs-pipeline main HEAD: 6385bcf... (2026-05-04, PR #13 empty Parquet handling)
