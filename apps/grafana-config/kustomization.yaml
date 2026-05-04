@@ -223,26 +223,11 @@ configMapGenerator:
   # 「Logs Archive」フォルダのダッシュボード群。短期 Loki ダッシュボード
   # (logs-errors / logs-overview / logs-explore) との重複を避けるため別フォルダに
   # 分離している。issue #654 参照。
-  - name: grafana-dashboard-routeros-archive
-    files:
-      - dashboards/routeros-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
-  - name: grafana-dashboard-k8s-pods-archive
-    files:
-      - dashboards/k8s-pods-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
-  # Rust + Polars 版 PoC (Phase 3、shinbunbun/dotfiles#662)。silver 廃止後の設計で、
-  # daily-struct/source=*/date=*/logs.parquet を直接 query する。
+  #
+  # Rust + Polars pipeline (apps/logs-rust-pipeline、Issue #191 Phase 4) 版で
+  # daily-struct/source=*/date=*/logs.parquet を直接 query する設計。
+  # 旧 typed/ 参照の routeros-archive / k8s-pods-archive は撤去済 (旧 dbt-duckdb 廃止
+  # の前段として、daily-struct/ 系の *-rust dashboard で完全置換)。
   - name: grafana-dashboard-systemd-archive
     files:
       - dashboards/systemd-archive.json
