@@ -19,3 +19,18 @@ resources:
   - cronjob-bronze-routeros.yaml
   - cronjob-bronze-k8s-pods.yaml
   - cronjob-bronze-macos-unified.yaml
+
+# Image SHA pin (Issue #191 Phase 4)
+#
+# 4 CronJob 共通の image を `:latest` から固定 SHA tag (logs-pipeline build workflow
+# で生成される `type=sha,format=short` 7-char SHA) に kustomize 側で書き換える。
+# CronJob YAML の `image:` field は `:latest` のまま残し、ここで一元管理。
+#
+# ArgoCD Image Updater は CronJob 非対応のため手動 bump 運用 (補遺 8 の判定 B)。
+# logs-pipeline 側で新しい SHA をデプロイしたいときの手順:
+#   1. logs-pipeline で feature branch -> PR -> main merge (workflow が SHA tag push)
+#   2. 本ファイルの newTag を新 SHA に更新する PR を切る
+#   3. ArgoCD sync で 4 CronJob 全てが新 image で fire
+images:
+  - name: ghcr.io/shinbunbun/logs-pipeline
+    newTag: "3880463"  # logs-pipeline main HEAD: 388046380f10... (2026-05-04, PR #9)
