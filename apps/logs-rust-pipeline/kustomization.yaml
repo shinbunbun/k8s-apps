@@ -33,4 +33,4 @@ resources:
 #   3. ArgoCD sync で 4 CronJob 全てが新 image で fire
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "3880463"  # logs-pipeline main HEAD: 388046380f10... (2026-05-04, PR #9)
+    newTag: "dade322"  # logs-pipeline main HEAD: dade322042e8... (2026-05-04, PR #10 migrate subcommand)
