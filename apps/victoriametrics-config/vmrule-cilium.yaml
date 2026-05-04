@@ -1,0 +1,115 @@
+# VMRule - Cilium 健全性監視
+#
+# shinbunbun/dotfiles-private#193 で Cilium service backend programming が
+# EndpointSlice (3 backend) と desync (BPF map に 1 backend のみ load) する
+# 事象を経験。`kubectl rollout restart ds/cilium` で復旧。
+#
+# Cilium 自体は service backend count を直接 export しないため、本事象を
+# 真因のレイヤで自動検出するのは難しい (custom exporter で cilium API →
+# service backend count を取って k8s endpoints と比較する仕組みが必要)。
+# 本 ruleset は最低限のカバレッジとして:
+#
+#   1. Cilium agent reconciliation 失敗の早期検出 (CiliumControllersFailing)
+#   2. ノード間連通性の監視 (CiliumUnreachableNodes / HealthEndpoints)
+#   3. LB IPAM の異常検出 (CiliumLBIPAMServicesUnsatisfied)
+#   4. BPF map 容量逼迫の予防 (CiliumBpfMapHighPressure)
+#   5. namespace の ready endpoint 急減で間接的に backend 喪失を検出
+#      (NamespaceReadyEndpointsDropped)
+#
+# (5) は k8s API 側からの観測なので Cilium BPF state desync 自体は捕まえない
+# が、Service の health 全般を捕捉する補助 alert として有用。
+#
+# Playbook: 本 alert で Cilium 異常が疑われたら、まず以下を確認:
+#   - kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium service list
+#   - kubectl -n loki get endpointslices -o yaml の ready/serving 数と比較
+#   - 不整合あれば: kubectl -n kube-system rollout restart ds/cilium
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: cilium-alerts
+  namespace: victoriametrics
+spec:
+  groups:
+    - name: cilium
+      interval: 30s
+      rules:
+        # Cilium agent の reconciliation controller 失敗
+        # cilium agent 内には複数の controller (k8s watcher, BPF map sync,
+        # endpoint regeneration 等) があり、それぞれが失敗すると counter 増加
+        - alert: CiliumControllersFailing
+          expr: "cilium_controllers_failing > 0"
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cilium controllers failing on {{ $labels.pod }}"
+            description: "{{ $labels.pod }} has {{ $value }} failing controller(s) for over 10m. Reconciliation may be stuck. Check `cilium status --verbose`."
+
+        # Cilium が他 node に到達不可と判断
+        - alert: CiliumUnreachableNodes
+          expr: "cilium_unreachable_nodes > 0"
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Cilium reports unreachable nodes from {{ $labels.pod }}"
+            description: "{{ $labels.pod }} cannot reach {{ $value }} other node(s) over 5m. Cluster networking may be impaired."
+
+        # LB IPAM が満たせない service あり
+        - alert: CiliumLBIPAMServicesUnsatisfied
+          expr: "cilium_operator_lbipam_services_unsatisfied > 0"
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Cilium LB IPAM has unsatisfied services"
+            description: "{{ $value }} LoadBalancer Service(s) don't have IP assigned from any IPAM pool. Check `kubectl get svc -A | grep pending` and Cilium operator logs."
+
+        # BPF map 容量逼迫
+        # cilium_bpf_map_pressure は (entries/capacity)、1.0 で entry 喪失リスク
+        # 0.9 は Cilium 公式 grafana dashboard で warning 閾値として使われる値
+        - alert: CiliumBpfMapHighPressure
+          expr: "cilium_bpf_map_pressure > 0.9"
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cilium BPF map {{ $labels.map_name }} pressure high on {{ $labels.pod }}"
+            description: "BPF map {{ $labels.map_name }} pressure {{ $value }} > 0.9 over 10m. May lose entries if reaches 1.0."
+
+        # Cilium が health endpoint に到達不可
+        - alert: CiliumUnreachableHealthEndpoints
+          expr: "cilium_unreachable_health_endpoints > 0"
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cilium reports unreachable health endpoints from {{ $labels.pod }}"
+            description: "{{ $value }} health endpoints unreachable over 10m. Possible network policy / connectivity issue."
+
+        # Namespace 単位での ready endpoint 数の急減
+        # critical namespace の ready=true endpoint 合計が 5 分前比で 50% 以上
+        # 減ったら alert。Service capacity 喪失の間接検出。
+        # endpointslice 名は random suffix 付きで再作成 (rolling update 等) で
+        # 値が変わるため、namespace 単位で集約することで rolling update での
+        # 偽陽性を回避する。
+        # offset 5m は「5 分前との比較」を意味するのみ (待機時間ではない)。
+        # 発火までのラグは for: 2m。
+        - alert: NamespaceReadyEndpointsDropped
+          expr: |
+            (
+              sum by (namespace) (
+                kube_endpointslice_endpoints{ready="true",namespace=~"loki|log-archiver-vector|victoriametrics|grafana|authentik"}
+              )
+            ) /
+            (
+              sum by (namespace) (
+                kube_endpointslice_endpoints{ready="true",namespace=~"loki|log-archiver-vector|victoriametrics|grafana|authentik"} offset 5m
+              )
+            ) < 0.5
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Namespace {{ $labels.namespace }} ready endpoint count dropped >50%"
+            description: "Total ready endpoint count in {{ $labels.namespace }} dropped by more than 50% vs 5m ago. Service may be losing capacity. Investigate with `kubectl get endpointslice -n {{ $labels.namespace }}` and `kubectl exec ds/cilium -c cilium-agent -- cilium service list`."

@@ -10,6 +10,7 @@ resources:
   - vmalertmanager.yaml
   - vmalertmanagerconfig.yaml
   - vmrule-alerts.yaml
+  - vmrule-cilium.yaml
   - vmrule-recording.yaml
   - scrape-config-secret.yaml
   - vmpodscrape-cilium.yaml
