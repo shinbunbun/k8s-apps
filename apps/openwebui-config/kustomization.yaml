@@ -1,0 +1,13 @@
+# Open WebUI 設定 - KSOPS による Secret 復号のみ
+#
+# Helm chart 側 (infrastructure/openwebui/application.yaml) が読む Secret
+# (openwebui-secrets) を SOPS 暗号化された secret.enc.yaml から生成する。
+# キー: OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET / WEBUI_SECRET_KEY
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# infrastructure/openwebui の StatefulSet が起動する namespace と一致させる必要がある
+# (ApplicationSet の destination は apps/openwebui-config の basename で openwebui-config になるが、
+# リソース側の metadata.namespace を openwebui に固定して Helm chart 側 Pod から参照可能にする)
+namespace: openwebui
+generators:
+  - secret-generator.yaml

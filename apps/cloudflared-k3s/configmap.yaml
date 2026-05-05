@@ -45,4 +45,8 @@ data:
         service: http://scanopy-server.scanopy.svc.cluster.local:60072
         originRequest:
           httpHostHeader: scanopy.shinbunbun.com
+      - hostname: chat.shinbunbun.com
+        service: http://open-webui.openwebui.svc.cluster.local:80
+        originRequest:
+          httpHostHeader: chat.shinbunbun.com
       - service: http_status:404
