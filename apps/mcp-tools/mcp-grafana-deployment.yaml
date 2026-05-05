@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-grafana
+  template:
+    metadata:
+      labels:
+        app: mcp-grafana
+    spec:
+      containers:
+        - name: mcp-grafana
+          image: mcp/grafana:latest
+          args:
+            - "-t"
+            - "streamable-http"
+            - "--addr"
+            - "0.0.0.0:8000"
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            # cluster internal で Grafana に到達 (LAN VIP 192.168.128.11 ではなく Service)
+            - name: GRAFANA_URL
+              value: http://grafana.grafana.svc.cluster.local:80
+          envFrom:
+            # GRAFANA_SERVICE_ACCOUNT_TOKEN を mcp-tools-secrets から注入
+            - secretRef:
+                name: mcp-tools-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /mcp
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /mcp
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3

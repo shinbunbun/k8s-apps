@@ -1,0 +1,28 @@
+# MCP Tools - OpenWebUI から呼び出す MCP サーバ群を mcpo (OpenAPI proxy) 経由で公開
+#
+# 構成:
+#   [OpenWebUI] --(Settings>Tools 登録 / API Key 認証)--> [mcpo]
+#                                                          |
+#                                                          +-- streamable-http --> [mcp-grafana] -> Grafana API
+#
+# - mcp-grafana: Docker Hub 公式 image (mcp/grafana) を streamable-http モードで起動
+# - mcpo: open-webui 公式 OpenAPI proxy。各 MCP server を /<name>/openapi.json で公開
+# - 認証は mcpo の --api-key (OpenWebUI からは Authorization: Bearer で渡す)
+# - 外部公開はしない (cluster internal のみ)
+#
+# ConfigMap は configMapGenerator で hash 付き名前にし、内容変更で Pod が自動 rollout する
+# (cloudflared のような手動再起動が不要)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mcp-tools
+resources:
+  - mcp-grafana-deployment.yaml
+  - mcp-grafana-service.yaml
+  - mcpo-deployment.yaml
+  - mcpo-service.yaml
+configMapGenerator:
+  - name: mcpo-config
+    files:
+      - config.json=mcpo-config.json
+generators:
+  - secret-generator.yaml
