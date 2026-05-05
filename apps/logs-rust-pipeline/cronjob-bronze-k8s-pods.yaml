@@ -1,21 +1,16 @@
 # Rust + Polars: bronze (raw -> daily-struct) for k8s-pods source
 #
-# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
-# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml) との並走 verify を継続。
-# 新 prefix `daily-struct/source=k8s-pods/` に書くので旧 `daily/` には触れない。
-# image source: shinbunbun/logs-pipeline
+# Source repo: shinbunbun/logs-pipeline
+# 経緯: shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し
 # credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
+# image SHA pin: kustomization.yaml の images transformer (newTag) で一元管理
 #
-# Schedule:
-#   00:55 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 / 新 routeros
-#   bronze 00:45 から 10 分ずつずらした連番)。raw/ を読むだけで delete はしないので
-#   衝突は理論上ないが、観測しやすく時間差。
+# Schedule: 00:55 JST。4 source の bronze を 10 分間隔の連番 (35/45/55/05) で走らせる。
 #
 # Memory:
 #   k8s-pods は OTLP-shape の NDJSON で attributes が struct (namespace/pod/container/
 #   level 等) で埋まり typed columns 数が systemd/routeros より多い。
-#   実測 (補遺 5、860K rows/日): peak_mib 1180 MiB (旧 8Gi limit の 14%)。
-#   推定の 4M+ 行から大幅下振れしており、4Gi (推定 peak の 3.4x 余裕) で十分。
+#   実測 (860K rows/日): peak ~1.2 GiB。Phase 4 で 8Gi → 4Gi に縮小済 (限度の 30% 使用)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:

@@ -1,19 +1,16 @@
 # Rust + Polars: bronze (raw -> daily-struct) for routeros source
 #
-# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
-# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml) との並走 verify を継続。
-# 新 prefix `daily-struct/source=routeros/` に書くので旧 `daily/` には触れない。
-# image source: shinbunbun/logs-pipeline
+# Source repo: shinbunbun/logs-pipeline
+# 経緯: shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し
 # credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
+# image SHA pin: kustomization.yaml の images transformer (newTag) で一元管理
 #
-# Schedule:
-#   00:45 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 から 10 分ずらし)。
-#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
+# Schedule: 00:45 JST。4 source の bronze を 10 分間隔の連番 (35/45/55/05) で走らせる。
 #
 # Memory:
-#   routeros は systemd の ~130x volume (2.1M rows/day)、巨大 record (5MB config dump
-#   100-200/日) も含めて全保持 (1MB filter / truncate なし)。Polars columnar 処理で
-#   sub-linear memory 想定だが、初回計測用に 8Gi 余裕を持つ。
+#   routeros は systemd の ~50x volume (5M+ rows/day)、巨大 record (5MB config dump
+#   100-200/日) も含めて全保持 (1MB filter / truncate なし)。実測 peak ~3.7 GiB
+#   (limit 8Gi の 45%)。1 週間以上観察後に 6Gi へ縮小余地あり (Issue #191 D-1)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
