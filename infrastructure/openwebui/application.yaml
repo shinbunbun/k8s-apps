@@ -55,13 +55,18 @@ spec:
           port: 80
           containerPort: 8080
 
-        # macmini の mlx-lm.server (OpenAI 互換) をバックエンドに指定。
-        # mlx-lm.server は API キー検証なしだが空だと chart のデフォルト
-        # ("0p3n-w3bu!") が流れるので明示的に dummy を渡す。
+        # OpenAI 互換バックエンドを 2 系統並列登録:
+        #   1. macmini (192.168.1.5:8081) — mlx-lm.server / Qwen3.5-4B-MLX-4bit (軽量)
+        #   2. nixos-desktop (192.168.1.4:8082) — llama.cpp / Qwen3.6-35B-A3B-UD-Q4_K_M (CPU 推論、思考重め)
+        # UI のモデル選択ドロップダウンで両方が現れるので用途に応じて切替。
+        # どちらも API キー検証なしだが空だと chart のデフォルト ("0p3n-w3bu!") が流れるので
+        # 明示的に dummy を 2 個並べる (URL の数と長さを合わせる必要あり)。
         enableOpenaiApi: true
         openaiBaseApiUrls:
           - "http://192.168.1.5:8081/v1"
+          - "http://192.168.1.4:8082/v1"
         openaiApiKeys:
+          - "dummy"
           - "dummy"
 
         # SQLite (デフォルト)
