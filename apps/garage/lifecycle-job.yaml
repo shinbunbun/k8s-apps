@@ -2,12 +2,10 @@
 # (Expiration 7d) を設定する。
 #
 # 目的:
-#   - 通常運用では compact.py (logs-compact-cronjob) が成功時に raw/ を削除する
-#     ため raw/ は 24h 以内に空。本 lifecycle はその安全網。compact 失敗時に
-#     raw/ が累積して容量を圧迫しないよう、7 日経過した raw/ オブジェクトを
-#     Garage 側で自動 expire させる。
-#   - Phase 2 で compact.py を dbt 化する際、Python 側の delete_prefix を
-#     廃止しても raw/ がリークしない布石でもある。
+#   - Phase 4 (Issue #191) で raw/ の能動的 delete を行う pipeline が無くなったため、
+#     raw/ オブジェクトは Garage 側 lifecycle (Expiration 7d) で自動 expire させる。
+#   - logs-rust-pipeline は raw/ を read のみで delete しない設計。本 lifecycle が
+#     raw/ 容量の唯一の控除パス。
 #
 # 適用:
 #   kubectl create -f apps/garage/lifecycle-job.yaml

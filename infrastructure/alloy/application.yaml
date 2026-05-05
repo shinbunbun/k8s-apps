@@ -38,7 +38,8 @@
 # (Loki 配送、既存)、もう片方は otelcol.receiver.loki → otelcol.exporter.otlphttp
 # 経由で log-archiver-vector の OTLP HTTP receiver (4318) に push する。
 # Vector 側で source=k8s-pods として Garage S3 (logs-archive バケット) に
-# ndjson.zst で書き出され、日次 logs-compact-cronjob が DuckDB で Parquet 化する。
+# ndjson.zst で書き出され、日次 logs-rust-pipeline が Rust + Polars で daily-struct/
+# Parquet 化する (Issue #191 Phase 4 本採用)。
 # OTLP 経路に障害が出ても Loki 経路は無影響 (forward_to 2 並列、独立配送)。
 #
 # 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 256Mi。

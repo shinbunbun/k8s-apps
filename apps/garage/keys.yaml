@@ -15,7 +15,6 @@
 #   cnpg            → cnpg-backups を owner (grafana-db の Barman が使用)
 #   cnpg-authentik  → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
 #   vector          → logs-archive を owner (retention lifecycle 設定用)
-#   compact         → logs-archive を read + write (DuckDB 圧縮専用、lifecycle 設定不要)
 #   logs-rust-pipeline → logs-archive を read + write (Rust + Polars pipeline で
 #                     raw/ → daily-struct/ 派生、Phase 4 本採用、旧 logs-typed-dbt の置換)
 #   grafana-duckdb  → logs-archive を read のみ (Grafana DuckDB datasource 専用、
@@ -152,35 +151,6 @@ spec:
   secretTemplate:
     name: vector-garage-credentials
     namespace: log-archiver-vector
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-apiVersion: garage.rajsingh.info/v1alpha1
-kind: GarageKey
-metadata:
-  name: compact
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  clusterRef:
-    name: garage
-  name: compact
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: COMPACT_KEY_ID
-    secretAccessKeyKey: COMPACT_SECRET
-  bucketPermissions:
-    - bucketRef: logs-archive
-      read: true
-      write: true
-  secretTemplate:
-    name: compact-garage-credentials
-    namespace: logs-compact-cronjob
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION
