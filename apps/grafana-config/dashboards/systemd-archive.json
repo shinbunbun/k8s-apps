@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Garage logs-archive の daily-struct/ (Rust + Polars bronze、Phase 3 PoC) を DuckDB datasource 経由で集計する systemd-journal 長期ログダッシュボード。silver 層は廃止され、daily-struct の typed columns を直読み (timestamp は CTE で TIMESTAMP cast)。Loki retention を超える 30/90 日範囲が対象。",
+  "description": "Garage logs-archive の daily-struct/source=systemd (Rust + Polars bronze) を DuckDB datasource 経由で集計する systemd-journal 長期ログダッシュボード。silver 層は廃止され、daily-struct の typed columns を直読み (timestamp は CTE で TIMESTAMP cast)。Loki retention を超える 30/90 日範囲が対象。",
   "editable": true,
   "graphTooltip": 0,
   "id": null,
@@ -51,7 +51,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -267,7 +269,12 @@
   ],
   "refresh": "",
   "schemaVersion": 39,
-  "tags": ["logs-archive", "systemd", "duckdb", "rust-pipeline"],
+  "tags": [
+    "logs-archive",
+    "systemd",
+    "duckdb",
+    "rust-pipeline"
+  ],
   "templating": {
     "list": []
   },
