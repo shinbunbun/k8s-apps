@@ -33,4 +33,4 @@ resources:
 #   3. ArgoCD sync で 4 CronJob 全てが新 image で fire
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "7da5239"  # logs-pipeline main HEAD: 7da5239... (2026-05-05, PR #15 bronze stringify nested fields)
+    newTag: "5eeaead"  # logs-pipeline main HEAD: 5eeaead... (2026-05-05, PR #16 migrate stringify nested fields)
