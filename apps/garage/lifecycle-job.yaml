@@ -1,11 +1,10 @@
-# 手動 one-shot Job: Garage logs-archive bucket の raw/ prefix に S3 lifecycle
-# (Expiration 7d) を設定する。
+# 手動 one-shot Job: Garage logs-archive bucket に S3 lifecycle rule を一括設定する。
 #
 # 目的:
-#   - Phase 4 (Issue #191) で raw/ の能動的 delete を行う pipeline が無くなったため、
-#     raw/ オブジェクトは Garage 側 lifecycle (Expiration 7d) で自動 expire させる。
-#   - logs-rust-pipeline は raw/ を read のみで delete しない設計。本 lifecycle が
-#     raw/ 容量の唯一の控除パス。
+#   - active raw/ archive は能動的 delete を行う pipeline が無いので 7 日 expire
+#     (Phase 4、Issue #191、logs-rust-pipeline は raw/ を read のみ)
+#   - 旧 stack の残骸 prefix (`daily/` / `typed/` / `daily-bronze/`) は新規書込
+#     ゼロで完全 redundant、Days=1 で全件 sweep
 #
 # 適用:
 #   kubectl create -f apps/garage/lifecycle-job.yaml
@@ -24,8 +23,16 @@
 #
 # Namespace 選定:
 #   logs-archive bucket の owner 権限を持つ vector key が log-archiver-vector
-#   ns に injected されているのでここで実行。compact / logs-typed-dbt キーは
-#   read+write のみで lifecycle 設定不可。
+#   ns に injected されているのでここで実行。logs-rust-pipeline / 旧 compact /
+#   logs-typed-dbt キーは read+write のみで lifecycle 設定不可。
+#
+# Issue #191 タスク B-3 (旧 prefix lifecycle expire):
+#   - daily/ (15.69 GiB / 546 files / 2025-10-14..2026-05-03) — 旧 logs-compact-cronjob
+#     + 過去 OpenSearch 一括 migrate 出力。Phase 4 で daily-struct/ 採用後は新規書込ゼロ。
+#     verify (samples diff=0) 済で daily-struct/ への完全置換確認済
+#   - typed/ (1.51 GiB / 22 files / 2026-04-23..2026-05-03) — 旧 dbt-duckdb silver
+#     (k8s-pods/routeros)。dashboard は daily-struct/ 直読みに切替済 (#191 タスク C-2)
+#   - daily-bronze/ (0.11 GiB / 3 files / 2026-05-02 のみ) — Phase 3 PoC experimental の残骸
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -65,7 +72,26 @@ spec:
                           "Status": "Enabled",
                           "Filter": {"Prefix": "raw/"},
                           "Expiration": {"Days": 7},
-                      }
+                      },
+                      # Issue #191 タスク B-3: 旧 stack 残骸 prefix の expire
+                      {
+                          "ID": "expire-daily-1d",
+                          "Status": "Enabled",
+                          "Filter": {"Prefix": "daily/"},
+                          "Expiration": {"Days": 1},
+                      },
+                      {
+                          "ID": "expire-typed-1d",
+                          "Status": "Enabled",
+                          "Filter": {"Prefix": "typed/"},
+                          "Expiration": {"Days": 1},
+                      },
+                      {
+                          "ID": "expire-daily-bronze-1d",
+                          "Status": "Enabled",
+                          "Filter": {"Prefix": "daily-bronze/"},
+                          "Expiration": {"Days": 1},
+                      },
                   ]
               }
               s3.put_bucket_lifecycle_configuration(
