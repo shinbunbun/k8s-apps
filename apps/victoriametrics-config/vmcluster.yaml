@@ -3,6 +3,13 @@
 # vminsert x2 + vmstorage x2 + vmselect x2 で HA 構成。
 # replicationFactor=2 により全データが両方の vmstorage に複製される。
 # ストレージは local-path (CNPG と同じパターン: アプリ層で冗長化済みのため DRBD 不要)。
+#
+# image.tag を明示 pin する理由:
+# v1.140.0 の MetricsQL に "X - (a + b + c)" を "X - a + b + c" として評価する
+# 既知バグがあり、Node Exporter ダッシュボードの Memory used 等が誤値を返す。
+# 修正は v1.141.0 (https://github.com/VictoriaMetrics/VictoriaMetrics/issues/10856)。
+# Operator chart のデフォルト tag に追従されると次回の意図しない bump で再混入し得るため
+# 明示固定。
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMCluster
 metadata:
@@ -14,6 +21,8 @@ spec:
 
   vmstorage:
     replicaCount: 2
+    image:
+      tag: v1.142.0-cluster
     extraArgs:
       dedup.minScrapeInterval: "15s"
     storage:
@@ -36,6 +45,8 @@ spec:
 
   vmselect:
     replicaCount: 2
+    image:
+      tag: v1.142.0-cluster
     extraArgs:
       dedup.minScrapeInterval: "15s"
       replicationFactor: "2"
@@ -53,6 +64,8 @@ spec:
 
   vminsert:
     replicaCount: 2
+    image:
+      tag: v1.142.0-cluster
     affinity:
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:

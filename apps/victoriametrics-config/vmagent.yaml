@@ -9,6 +9,9 @@ metadata:
   namespace: victoriametrics
 spec:
   replicaCount: 2
+  # tag pin の理由は vmcluster.yaml 冒頭コメント参照 (MetricsQL バグ回避)。
+  image:
+    tag: v1.142.0
   # VMServiceScrape / VMPodScrape / VMRule / VMProbe などのリソースを
   # ラベル/namespace セレクタの有無によらず全て拾う。
   # (未指定時の挙動は VM Operator のバージョン依存なので明示する)
