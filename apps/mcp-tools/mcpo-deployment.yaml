@@ -14,7 +14,11 @@ spec:
     spec:
       containers:
         - name: mcpo
-          image: ghcr.io/open-webui/mcpo:0.0.20
+          # GHCR には version tag がないので main を追従
+          # (configMapGenerator の hash 付き ConfigMap で Pod 自動 rollout するので
+          # --hot-reload は不要)
+          image: ghcr.io/open-webui/mcpo:main
+          imagePullPolicy: Always
           args:
             - "--port"
             - "8000"
@@ -22,7 +26,6 @@ spec:
             - "/etc/mcpo/config.json"
             - "--api-key"
             - "$(MCPO_API_KEY)"
-            - "--hot-reload"
           ports:
             - containerPort: 8000
               name: http

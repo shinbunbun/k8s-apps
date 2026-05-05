@@ -20,6 +20,7 @@ resources:
   - mcp-grafana-service.yaml
   - mcpo-deployment.yaml
   - mcpo-service.yaml
+  - networkpolicy.yaml
 configMapGenerator:
   - name: mcpo-config
     files:
