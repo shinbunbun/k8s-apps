@@ -10,6 +10,9 @@ metadata:
   namespace: victoriametrics
 spec:
   replicaCount: 2
+  # tag pin の理由は vmcluster.yaml 冒頭コメント参照 (MetricsQL バグ回避)。
+  image:
+    tag: v1.142.0
   selectAllByDefault: true
   evaluationInterval: "15s"
   datasource:
