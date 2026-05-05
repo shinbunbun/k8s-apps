@@ -6,6 +6,10 @@
 # 検証専用。新規 fire 後の日付では `--old-prefix daily` 配下に新規 write がないため
 # 意味のある比較にならない。
 #
+# 【ライフサイクル】
+# 旧 daily/ at-rest データの lifecycle expire (Issue #191 タスク B-3) が完了すると
+# 比較対象が消えて本テンプレート自身も意味を失う。B-3 完了時に削除予定。
+#
 # 【実行方法】
 # kustomize 外。手動 `kubectl create -f apps/logs-rust-pipeline/verify-job-template.yaml`
 # で実行する。`--source` (systemd / routeros / k8s-pods / macos-unified) と `--date`
@@ -17,7 +21,6 @@
 #     --old-prefix daily --new-prefix daily-struct
 # 旧 dbt-duckdb は `daily/date=*/source=*/` (date 先) で書き、新 Rust は
 # `daily-struct/source=*/date=*/` (source 先) で書く。binary 側で path 順序差を吸収。
-# 旧 daily/ 配下の at-rest データは Phase 4 lifecycle expire まで残存。
 apiVersion: batch/v1
 kind: Job
 metadata:

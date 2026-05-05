@@ -1,22 +1,16 @@
 # Rust + Polars: bronze (raw -> daily-struct) for macos-unified source
 #
-# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
-# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml の SOURCES に macos-unified
-# 含む) との並走 verify を継続。新 prefix `daily-struct/source=macos-unified/` に書く
-# ので旧 `daily/` には触れない。
-# image source: shinbunbun/logs-pipeline
+# Source repo: shinbunbun/logs-pipeline
+# 経緯: shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し
 # credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
+# image SHA pin: kustomization.yaml の images transformer (newTag) で一元管理
 #
-# Schedule:
-#   01:05 JST (旧 dbt-duckdb bronze 00:30 / 新 systemd bronze 00:35 / 新 routeros
-#   bronze 00:45 / 新 k8s-pods bronze 00:55 から 10 分ずつずらした連番)。raw/ を
-#   読むだけで delete はしないので衝突は理論上ないが、観測しやすく時間差。
+# Schedule: 01:05 JST。4 source の bronze を 10 分間隔の連番 (35/45/55/05) で走らせる。
 #
 # Memory:
-#   macos-unified は fluent-bit Lua filter で /nix/store/* と /kernel のみ通す
-#   ホワイトリスト方式のため volume 小 (systemd 同等以下を想定、16K-100K 行/日)。
-#   schema は flat (k8s-pods の OTLP attributes STRUCT のような落とし穴なし)。
-#   よって systemd と同じ 4Gi で start。実測 peak_mib 取得後に縮小可。
+#   fluent-bit Lua filter (/nix/store/*, /kernel) を経由するが nested object/array が
+#   含まれるため bronze.rs の preprocess (stringify_nested_to_ndjson) で flatten。
+#   実測 (1.3M rows/日): peak ~1.8 GiB / limit 4Gi (44% 使用)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:

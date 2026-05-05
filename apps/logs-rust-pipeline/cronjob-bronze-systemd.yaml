@@ -1,15 +1,12 @@
 # Rust + Polars: bronze (raw -> daily-struct) for systemd source
 #
-# shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し。
-# 旧 dbt-duckdb (apps/logs-typed-dbt/cronjob-bronze.yaml) との並走 verify を継続。
-# 新 prefix `daily-struct/` に書くので旧 `daily/` には触れない。
-# image source: shinbunbun/logs-pipeline
+# Source repo: shinbunbun/logs-pipeline
+# 経緯: shinbunbun/dotfiles-private#191 Phase 4 で apps/logs-typed-dbt/ から切り出し
 # credentials: logs-rust-pipeline-credentials (apps/garage/keys.yaml の専用 GarageKey)
+# image SHA pin: kustomization.yaml の images transformer (newTag) で一元管理
 #
-# Schedule:
-#   00:35 JST (旧 dbt-duckdb bronze 00:30 JST から 5 分ずらして競合回避)。
-#   両方とも raw/ を読むだけで delete はしないので衝突は理論上ないが、
-#   観測できるよう時間差を入れる。
+# Schedule: 00:35 JST。4 source の bronze を 10 分間隔の連番 (35/45/55/05) で
+#           走らせ、観測しやすく時間差を入れている。raw/ を読むだけなので競合なし。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -35,7 +32,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: pipeline
-              # 将来 ArgoCD Image Updater で SHA pin 化予定 (Phase 4 残タスク)。
+              # tag は kustomization.yaml の images transformer で SHA pin される。
               image: ghcr.io/shinbunbun/logs-pipeline:latest
               args:
                 - bronze
