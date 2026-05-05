@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "grafana": {
+      "type": "streamable-http",
+      "url": "http://mcp-grafana.mcp-tools.svc.cluster.local:8000/mcp"
+    }
+  }
+}

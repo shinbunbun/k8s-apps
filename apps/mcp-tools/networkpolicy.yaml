@@ -1,0 +1,40 @@
+# defense-in-depth: cluster internal で十分だが他 namespace からのアクセスは絞る
+# - mcpo: openwebui namespace からのみ ingress 許可
+# - mcp-grafana: mcp-tools namespace 内 (mcpo) からのみ ingress 許可
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcpo-allow-openwebui
+spec:
+  podSelector:
+    matchLabels:
+      app: mcpo
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openwebui
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-grafana-allow-mcpo
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp-grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: mcpo
+      ports:
+        - protocol: TCP
+          port: 8000
