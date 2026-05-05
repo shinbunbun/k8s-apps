@@ -18,6 +18,13 @@ spec:
           ports:
             - containerPort: 8080
             - containerPort: 8081
+          env:
+            - name: LLM_BASE_URL
+              value: "http://192.168.1.4:8082/v1"
+            - name: LLM_MODEL
+              value: "qwen3.6-35b-a3b"
+            - name: LLM_DISABLE_THINKING
+              value: "true"
           envFrom:
             - secretRef:
                 name: mixi2-shinbunbun-bot-secrets
