@@ -86,10 +86,12 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              # 実機 batch (494 件中 135 進行) で systemd 2026-01-25 (842K rows) 以降
-              # 8Gi では OOM が頻発 (1 月下旬以降の systemd は ~7-8 GiB 級が標準)。
-              # 16Gi に増量。macos-unified (130万 rows/日 想定) も保険を含めて十分。
-              memory: 16Gi
+              # 実機 batch run3 (494/494 完了、ok=348 fail=5) で 16Gi でも一部
+              # systemd 日 (2026-03-03, -03-14, -03-17, -03-21, -04-02) で OOM。
+              # macos-unified 6M rows/日 が 8.7 GiB peak で完走するのに対し、
+              # systemd は字幅が広く expansion factor が大きい。32Gi に増量で
+              # OOM 解消 (homemachine 64GB cluster で 1 件分なら問題なし)。
+              memory: 32Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
