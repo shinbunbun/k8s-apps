@@ -1,0 +1,74 @@
+# Drain3 sidecar: silver -> templates assignments for systemd
+#
+# Source repo: shinbunbun/logs-pipeline-drain (Python Drain3、private repo、image は public)
+# 経緯: shinbunbun/dotfiles-private#197 Phase 5 (再起動)
+#
+# silver/source=systemd/date=Y/logs.parquet を読み、message を Drain3 で template_id
+# に分類、templates/source=systemd/date=Y/assignments.parquet (sidecar table) を書く。
+# silver は immutable、本 Job は別 prefix templates/ にしか書かない (medallion sidecar
+# パターン)。新規 template は incremental learning で state に追加。
+#
+# Schedule: 02:30 JST (= silver 01:35 + ~1h、silver 完了を保証)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-drain-apply-systemd
+spec:
+  schedule: "30 2 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # Drain は row 単位の Python iter で systemd 100K rows なら数分、念のため 1h。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: drain-apply
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: drain
+              image: ghcr.io/shinbunbun/logs-pipeline-drain:latest
+              args:
+                - apply
+                - --source
+                - systemd
+                # --date は drain.py の default `yesterday-jst` に任せる
+                # (logs-pipeline-drain feat/date-aliases で対応)。
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  # Drain state load + silver parquet load + Drain tree。systemd 100K rows
+                  # は軽い、2 GiB で十分。peak 観測後に縮小可。
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                # boto3 / Drain3 が tmp file を作る可能性に備え /tmp emptyDir をマウント。
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi

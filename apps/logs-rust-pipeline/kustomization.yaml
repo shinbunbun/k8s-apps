@@ -24,18 +24,20 @@ resources:
   - cronjob-silver-routeros.yaml
   - cronjob-silver-k8s-pods.yaml
   - cronjob-silver-macos-unified.yaml
+  - cronjob-drain-apply-systemd.yaml
+  - cronjob-drain-apply-routeros.yaml
+  - cronjob-drain-apply-k8s-pods.yaml
+  - cronjob-drain-apply-macos-unified.yaml
 
-# Image SHA pin (Issue #191 Phase 4)
+# Image SHA pin (Issue #191 Phase 4 + #197 Phase 5)
 #
-# 4 CronJob 共通の image を `:latest` から固定 SHA tag (logs-pipeline build workflow
-# で生成される `type=sha,format=short` 7-char SHA) に kustomize 側で書き換える。
-# CronJob YAML の `image:` field は `:latest` のまま残し、ここで一元管理。
+# 各 image の `:latest` を固定 SHA tag に書き換える (build workflow が `type=sha,format=short`
+# で push する 7-char SHA)。CronJob YAML の `image:` は `:latest` のまま残し、ここで一元管理。
 #
-# ArgoCD Image Updater は CronJob 非対応のため手動 bump 運用 (補遺 8 の判定 B)。
-# logs-pipeline 側で新しい SHA をデプロイしたいときの手順:
-#   1. logs-pipeline で feature branch -> PR -> main merge (workflow が SHA tag push)
-#   2. 本ファイルの newTag を新 SHA に更新する PR を切る
-#   3. ArgoCD sync で 4 CronJob 全てが新 image で fire
+# 運用: 各 repo で feature branch -> PR -> main merge (workflow が SHA tag push) ->
+# 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
     newTag: "6804c91"  # logs-pipeline main HEAD: 6804c91 (2026-05-06, PR #19 silver subcommand 追加、Phase 5)
+  - name: ghcr.io/shinbunbun/logs-pipeline-drain
+    newTag: "e9a1aa0"  # logs-pipeline-drain main HEAD: e9a1aa0 (2026-05-06, PR #1 date aliases、Drain3 sidecar)
