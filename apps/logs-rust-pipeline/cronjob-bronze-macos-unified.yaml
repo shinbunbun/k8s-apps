@@ -10,13 +10,16 @@
 # Memory:
 #   fluent-bit Lua filter (/nix/store/*, /kernel) を経由するが nested object/array が
 #   含まれるため bronze.rs の preprocess (stringify_nested_to_ndjson) で flatten。
-#   実測 (1.3M rows/日): peak ~1.8 GiB / limit 4Gi (44% 使用)。
+#   実測 (6.1M rows/日, 2026-05-05 backfill): peak 8.0 GiB / limit 12Gi (67% 使用)。
+#   注: macOS は systemd の ~60x volume で fluent-bit が /nix/store ノイズを出している
+#   可能性あり (要別途調査)。volume 揺らぎを吸収する余裕を持たせる。
 #
 # Tmp:
-#   bronze.rs が hour 別 NDJSON を /tmp に展開してから Polars LazyJsonLineReader が
-#   読む。zstd 解凍後の NDJSON は zst の ~10-20x になるため、k8s-pods/routeros と
-#   同じ 4Gi を確保。1Gi だと 2026-05-05 (Cilium 復旧後初の full-volume 日) で
-#   "EmptyDir volume tmp exceeds limit 1Gi" Eviction が発生したため拡張。
+#   bronze.rs は merged.ndjson と merged-flat.ndjson の 2 つの tmpfile を併存させる
+#   (preprocess で nested を JSON string に stringify した結果を別ファイルに書く)
+#   ため、/tmp peak ≈ 2x NDJSON。zstd 解凍後の NDJSON は zst の ~25x。
+#   実測 (2026-05-05): merged 3.5 GiB + flat 3.6 GiB = peak 7.2 GiB。16Gi は 2x 余裕。
+#   経緯: 1Gi (Cilium 停止中の名残) → 4Gi (PR #288、まだ不足) → 16Gi (本 PR)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -61,7 +64,7 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 4Gi
+                  memory: 12Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -76,4 +79,4 @@ spec:
           volumes:
             - name: tmp
               emptyDir:
-                sizeLimit: 4Gi
+                sizeLimit: 16Gi
