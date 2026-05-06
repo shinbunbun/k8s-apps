@@ -1,0 +1,66 @@
+# Rust + Polars: silver (daily-struct -> silver) for k8s-pods
+#
+# Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #19)
+# 経緯: shinbunbun/dotfiles-private#197 Phase 5 (再起動)
+#
+# silver immutable layer。drain は templates/ sidecar に書く。
+# k8s-pods の attributes は bronze で stringify_nested 済の JSON 文字列、silver で
+# str.json_decode を介して STRUCT 化、namespace/pod/container/host/level を抽出。
+# Schedule: 01:55 JST (= bronze 00:55 + 1h)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-silver-k8s-pods
+spec:
+  schedule: "55 1 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: silver
+            source: k8s-pods
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - silver
+                - --source
+                - k8s-pods
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

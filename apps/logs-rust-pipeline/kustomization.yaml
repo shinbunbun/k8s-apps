@@ -1,8 +1,9 @@
-# logs-rust-pipeline: Rust + Polars 版 logs archive pipeline (Phase 4 本採用)
+# logs-rust-pipeline: Rust + Polars 版 logs archive pipeline
 #
-# raw/ NDJSON.zst → daily-struct/ Parquet (struct ネイティブ、Polars dynamic NDJSON
-# inference)。silver 層は廃止 (shinbunbun/dotfiles-private#191 補遺 3)、dashboard で
-# daily-struct/ を直 query する設計。
+# Phase 4: raw/ NDJSON.zst → daily-struct/ Parquet (bronze、faithful raw archive)
+# Phase 5: daily-struct/ → silver/ (immutable canonical schema、shinbunbun/dotfiles-private#197)
+#          drain (Python sidecar、別 image) → templates/source=*/date=*/assignments.parquet
+#          gold-build (Rust) → gold/* 集計テーブル群
 #
 # ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が自動検出
 # して ArgoCD Application を生成。namespace は basename と一致する `logs-rust-pipeline`
@@ -19,6 +20,10 @@ resources:
   - cronjob-bronze-routeros.yaml
   - cronjob-bronze-k8s-pods.yaml
   - cronjob-bronze-macos-unified.yaml
+  - cronjob-silver-systemd.yaml
+  - cronjob-silver-routeros.yaml
+  - cronjob-silver-k8s-pods.yaml
+  - cronjob-silver-macos-unified.yaml
 
 # Image SHA pin (Issue #191 Phase 4)
 #
