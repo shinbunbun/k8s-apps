@@ -1,0 +1,73 @@
+# Rust + Polars: silver (daily-struct -> silver canonical schema) for systemd source
+#
+# Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #18)
+# 経緯: shinbunbun/dotfiles-private#197 Phase 5 で再導入
+#
+# Schedule: 01:35 JST。bronze (00:35 JST) の 1 時間後に走らせ、上流完了を保証する。
+# bronze 失敗日は silver 側 S3 GetObject が NoSuchKey で fail-fast (concurrencyPolicy:
+# Forbid 維持、retry/backfill は手動)。
+#
+# Resources:
+#   silver は bronze parquet 1 file を読み projection するだけで bronze より軽い想定。
+#   初回は 4Gi で start、peak_mib log 観測後に縮小余地あり。systemd は 268 cols の
+#   bronze schema で coalesce 候補が多いが、silver 出力は 7 col の lean schema。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-silver-systemd
+spec:
+  schedule: "35 1 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: silver
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - silver
+                - --source
+                - systemd
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                # silver は bronze.parquet (S3 download) と silver.parquet (output) の
+                # 2 file を /tmp に同時に保持する。bronze parquet は zstd 圧縮済なので
+                # 100MB 級、silver はさらに小さい。4Gi は十分余裕。
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

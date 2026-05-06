@@ -1,0 +1,63 @@
+# Rust + Polars: silver (daily-struct -> silver canonical schema) for routeros source
+#
+# Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #18)
+# 経緯: shinbunbun/dotfiles-private#197 Phase 5
+#
+# Schedule: 01:45 JST。bronze (00:45 JST) の 1 時間後。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-silver-routeros
+spec:
+  schedule: "45 1 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: silver
+            source: routeros
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - silver
+                - --source
+                - routeros
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

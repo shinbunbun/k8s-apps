@@ -1,0 +1,72 @@
+# Rust + Polars: silver (daily-struct -> silver canonical schema) for macos-unified source
+#
+# Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #18)
+# 経緯: shinbunbun/dotfiles-private#197 Phase 5
+#
+# Schedule: 02:05 JST。bronze (01:05 JST) の 1 時間後。
+#
+# macos-unified の `timestamp` は ISO 8601 ではなく `YYYY-MM-DD HH:MM:SS.fff+0900`
+# 形式。silver subcommand がこれを strptime("%Y-%m-%d %H:%M:%S%.f%z") で parse して
+# Datetime[us, UTC] に変換する。
+#
+# Memory:
+#   bronze 側で 6.1M rows/日 (peak 8.0 GiB) と判明 (Issue #197 Phase 5 着手時の
+#   2026-05-05 backfill)。silver は bronze parquet 1 file を読んで projection する
+#   だけだが、行数が多いので余裕を持って 8Gi。peak_mib log 観測後に縮小可。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-silver-macos-unified
+spec:
+  schedule: "5 2 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: silver
+            source: macos-unified
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - silver
+                - --source
+                - macos-unified
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 8Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi
