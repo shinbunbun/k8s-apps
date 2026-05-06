@@ -11,6 +11,12 @@
 #   fluent-bit Lua filter (/nix/store/*, /kernel) を経由するが nested object/array が
 #   含まれるため bronze.rs の preprocess (stringify_nested_to_ndjson) で flatten。
 #   実測 (1.3M rows/日): peak ~1.8 GiB / limit 4Gi (44% 使用)。
+#
+# Tmp:
+#   bronze.rs が hour 別 NDJSON を /tmp に展開してから Polars LazyJsonLineReader が
+#   読む。zstd 解凍後の NDJSON は zst の ~10-20x になるため、k8s-pods/routeros と
+#   同じ 4Gi を確保。1Gi だと 2026-05-05 (Cilium 復旧後初の full-volume 日) で
+#   "EmptyDir volume tmp exceeds limit 1Gi" Eviction が発生したため拡張。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -70,4 +76,4 @@ spec:
           volumes:
             - name: tmp
               emptyDir:
-                sizeLimit: 1Gi
+                sizeLimit: 4Gi
