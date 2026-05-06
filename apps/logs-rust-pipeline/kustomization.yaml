@@ -38,6 +38,6 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "62eb7eb"  # logs-pipeline main HEAD: 62eb7eb (2026-05-06, PR #20 silver migrated bronze parse fix: json_path_match + ts dtype filter)
+    newTag: "53ac211"  # logs-pipeline main HEAD: 53ac211 (2026-05-06, PR #21 parse_ts explicit format、ISO 8601 variant 混在対応)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
     newTag: "e9a1aa0"  # logs-pipeline-drain main HEAD: e9a1aa0 (2026-05-06, PR #1 date aliases、Drain3 sidecar)
