@@ -38,6 +38,6 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "eb2e546"  # logs-pipeline main HEAD: eb2e546 (2026-05-07, PR #22 macos-unified service basename 化、shinbunbun/dotfiles-private#202 Phase A)
+    newTag: "1a4746c"  # logs-pipeline main HEAD: 1a4746c (2026-05-08, PR #23 silver level canonical 化、shinbunbun/dotfiles-private#205 改修 A/B/C)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
     newTag: "e9a1aa0"  # logs-pipeline-drain main HEAD: e9a1aa0 (2026-05-06, PR #1 date aliases、Drain3 sidecar)
