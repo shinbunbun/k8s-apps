@@ -199,6 +199,31 @@ spec:
                 .archived_at = now()
                 .date = format_timestamp!(.archived_at, format: "%Y-%m-%d", timezone: "Asia/Tokyo")
                 .hour = format_timestamp!(.archived_at, format: "%H", timezone: "Asia/Tokyo")
+                # OTLP severity_text を bronze attributes.level に inject
+                # (Issue shinbunbun/dotfiles-private#205)。
+                #
+                # severity_text は Alloy の otelcol.receiver.loki が Loki labels の
+                # level 等から変換した OTLP log record standard field。
+                # vector 0.54 の opentelemetry source は OTLP log record の
+                # severity_text を vector event の `.severity_text` に展開する。
+                #
+                # 改修動機: 改修前の bronze attributes は `{container, host, instance}`
+                # の 3 field のみで level 情報を持たず、silver の attr_field("level")
+                # JSONPath が常に NULL (k8s-pods で 78% NULL)。Loki path では同じ OTLP
+                # record の severity_text が level label として保持され、Grafana で
+                # 表示されるが、bronze 側はここで捨てていた。
+                #
+                # 過去 bronze は変えられない (immutable raw archive 原則)、silver の
+                # regex chain (logs-pipeline 改修 C) で救済する。本改修は新規 bronze
+                # 以降の品質改善 + silver の defense-in-depth 階層化。
+                if exists(.severity_text) && is_string(.severity_text) {
+                  .attributes.level = .severity_text
+                }
+                # severity_number も保存 (forensic / debug 用、silver では現状未使用、
+                # 将来 NUMBER ベースの集計や OTLP 仕様変更時の再 mapping 余地のため)
+                if exists(.severity_number) {
+                  .attributes.severity_number = .severity_number
+                }
           sinks:
             # Garage (S3 互換) へ ndjson + zstd で書き出し
             # raw/source=<log_type>/date=YYYY-MM-DD/hour=HH/ prefix で
