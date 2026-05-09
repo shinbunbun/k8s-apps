@@ -42,6 +42,8 @@ spec:
                 - systemd
                 # --date は drain.py の default `yesterday-jst` に任せる
                 # (logs-pipeline-drain feat/date-aliases で対応)。
+                - --dump-templates  # apply 後に template_id → text dict も snapshot 上書き
+                # (shinbunbun/dotfiles-private#208 Phase 6 prereq 2)
               env:
                 - name: AWS_S3_ENDPOINT
                   value: "http://garage.garage.svc.cluster.local:3900"
