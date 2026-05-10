@@ -19,6 +19,7 @@ resources:
   - cluster.yaml
   - buckets.yaml
   - keys.yaml
+  - lan-service.yaml
 
 generators:
   - secret-generator.yaml
