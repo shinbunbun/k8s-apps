@@ -1,0 +1,39 @@
+# Garage LAN 内アクセス用 LoadBalancer Service (S3 API)
+#
+# 既定の garage Service (ClusterIP) は cluster-internal でしか到達できず、
+# LAN 上の Claude Code MCP サーバ (mcp-server-motherduck via uvx) から
+# `s3://logs-archive/...` を直接 read_parquet できない。
+#
+# 本 Service は Cilium LB IPAM から固定 VIP を割り当て、Cilium BGP が
+# 192.168.128.0/24 を RouterOS に広告しているため LAN 上のクライアントから
+# ルーター経由で port 3900 (S3 API) に到達可能になる。
+# grafana-lan / loki-lan / vmselect-lan と同方式。
+#
+# 公開ポートは S3 API (3900) のみ。admin (3903) / web (3902) / RPC (3901)
+# は cluster-internal に留める (admin Bearer token が漏れると key/layout を
+# 操作できるため、最小公開原則)。
+#
+# 認可は Garage 側のアクセスキー (GarageKey "grafana-duckdb" 等) で行う。
+# read-only キーを使うことで、LAN 上のクライアントから誤って COPY/DELETE を
+# 実行しても AccessDenied で弾かれる (apps/garage/keys.yaml 参照)。
+#
+# 既存 LAN VIP 一覧 (.10 Traefik / .11 grafana / .12 vmselect / .13 vmalertmanager
+# / .14 loki / .15 hubble-ui / .16 scanopy / .17-.19 log-archiver-vector)。
+# 次に利用可能な VIP は 192.168.128.20。
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-lan
+  namespace: garage
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.20
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: garage
+    app.kubernetes.io/name: garage
+  ports:
+    - name: s3
+      port: 3900
+      protocol: TCP
+      targetPort: 3900
