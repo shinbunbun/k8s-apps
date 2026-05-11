@@ -31,9 +31,12 @@ spec:
     # (旧 grafana/helm-charts では更新が止まる)。詳細: grafana/helm-charts#4087
     repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
-    # Chart 12.0.1 bundles Grafana 13.0.0 appVersion (debian image)。image.tag は
-    # 上書きせず chart デフォルト (debian) に任せる。
-    # chart 12.x 内 patch (12.0.x → 12.3.0、appVersion 13.0.0 → 13.0.1) は別 PR で対応。
+    # Chart 12.1.3 bundles Grafana 13.0.1 appVersion。image.tag は上書きせず
+    # chart デフォルトに任せる。
+    # 注: chart 12.0.0 / 12.0.1 / 12.1.0 は appVersion 13.0.0 だが grafana/grafana:13.0.0
+    # image が Docker Hub に未公開 (GA skip)、chart 12.1.1 で appVersion 13.0.1 に
+    # 修正済。これらの版を踏むと ImagePullBackOff となるため 12.1.x 最新を採用。
+    # chart 12.2.x / 12.3.0 への patch は別 PR で対応 (chart helm template の細かい差分のみ)。
     #
     # Grafana 12 → 13 メジャーアップグレードのチェック (2026-05-11 時点):
     # - annotation full-rewrite migration: 0 rows / 72 kB → 影響なし
@@ -41,8 +44,10 @@ spec:
     # - Image Renderer plugin 内蔵廃止: 未使用なので影響なし
     # - Legacy Alertmanager API 削除: unified_alerting.enabled=true で対応済
     # - React 18→19: motherduck plugin が PR #308 で撤去済、UI 影響なし
-    # - 直近 backup: 2026-05-10T18:00 完了済 (rollback 可能)
-    targetRevision: "12.0.1"
+    # - 直近 backup: 2026-05-10T18:00 完了済 (Barman Cloud Plugin)
+    # - rollback: chart pin を戻すだけでは Grafana 13→12 ダウングレードは公式非サポート、
+    #   失敗時は CNPG Cluster を直近 base backup から restore (kubectl cnpg restore) する
+    targetRevision: "12.1.3"
     helm:
       valuesObject:
         replicas: 2
