@@ -19,9 +19,11 @@
 # 【watch スコープ】chart デフォルト (`configs.files."config.yaml".watch.namespaces.include: []`)
 # は operator pod の自 namespace (`clickhouse-operator`) のみ watch する仕様。CHI 本体は
 # 別 namespace (`clickhouse`) に置くため全 namespace 監視を強制する必要がある。
-# chart の entrypoint は config.yaml 内の `WATCH_NAMESPACES=` プレースホルダを env 値で
-# 置換する公式 hook を持つので、`operator.env` で `WATCH_NAMESPACES=.*` を渡す方式が
-# 最も安全 (configs.files 全体を override すると defaults が消えるリスクあり)。
+# operator バイナリの起動時に `applyEnvVarParams()` が `WATCH_NAMESPACES` env を読み、
+# `,` / `:` 区切りで `OperatorConfig.Watch.Namespaces.Include` を in-memory で上書きする
+# 仕組みがあるため、`operator.env` で `WATCH_NAMESPACES=.*` を渡す方式を採用 (regexp で
+# 全 namespace にマッチ)。`configs.files."config.yaml"` を直接 override すると chart
+# デフォルト config 全体を上書きしてしまうリスクがあるので env 経由が安全。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -39,9 +41,8 @@ spec:
       valuesObject:
         operator:
           # WATCH_NAMESPACES=.* で全 namespace を監視させる (詳細は冒頭【watch スコープ】参照)。
-          # chart の entrypoint が config.yaml の WATCH_NAMESPACES= プレースホルダをこの env
-          # で置換する公式 hook。`configs.files."config.yaml".watch.namespaces` を直接
-          # override すると chart デフォルト config 全体を上書きしてしまうため env 方式を採用。
+          # operator 起動時に applyEnvVarParams() が env を読んで Watch.Namespaces.Include
+          # を in-memory で上書きする。configs.files 全体 override を避ける安全な方式。
           env:
             - name: WATCH_NAMESPACES
               value: ".*"
