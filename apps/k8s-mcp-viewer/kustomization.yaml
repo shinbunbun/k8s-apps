@@ -1,0 +1,16 @@
+# k8s-mcp-viewer: kubernetes-mcp-server (https://github.com/containers/kubernetes-mcp-server)
+# 用の read-only ServiceAccount
+#
+# 用途: ローカル Claude Code が npx kubernetes-mcp-server@latest --read-only 経由で
+# k3s クラスタを観測する。kubeconfig は dotfiles の .envrc が token-secret から
+# token を取り出して ~/.kube/mcp-viewer.kubeconfig を生成する。
+#
+# 権限: 標準 view ClusterRole (Secret/Role/RoleBinding は除外される)
+# 配置: 専用 namespace k8s-mcp-viewer (ApplicationSet が path basename から作成)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: k8s-mcp-viewer
+resources:
+  - serviceaccount.yaml
+  - clusterrolebinding.yaml
+  - token-secret.yaml
