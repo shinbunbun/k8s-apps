@@ -62,7 +62,7 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)",
           "format": 1,
           "refId": "A"
         }
@@ -114,7 +114,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  toStartOfHour(ts) AS time,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT\n  toStartOfHour(ts) AS time,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
           "format": 0,
           "refId": "A"
         }
@@ -151,7 +151,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.namespace AS namespace, date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  coalesce(namespace, '(unknown)') AS namespace,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.namespace AS namespace, date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT\n  coalesce(namespace, '(unknown)') AS namespace,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -188,7 +188,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.pod AS pod, date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  coalesce(pod, '(unknown)') AS pod,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.pod AS pod, date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT\n  coalesce(pod, '(unknown)') AS pod,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -225,7 +225,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.level AS level, date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, attributes.level AS level, date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
           "format": 1,
           "refId": "A"
         }
@@ -258,7 +258,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT\n    toDateTime64(timestamp, 6) AS ts,\n    attributes.namespace AS namespace,\n    attributes.pod AS pod,\n    attributes.container AS container,\n    attributes.level AS level,\n    message,\n    date\n  FROM s3(garage, 'daily-struct/source=k8s-pods/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  ts, namespace, pod, container, level, message\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "WITH t AS (\n  SELECT\n    toDateTime64(timestamp, 6) AS ts,\n    attributes.namespace AS namespace,\n    attributes.pod AS pod,\n    attributes.container AS container,\n    attributes.level AS level,\n    message,\n    date\n  FROM s3(garage, filename='daily-struct/source=k8s-pods/date=*/logs.parquet')\n)\nSELECT\n  ts, namespace, pod, container, level, message\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
