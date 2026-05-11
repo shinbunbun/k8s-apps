@@ -16,10 +16,12 @@
 # 【helm repo】Altinity 公式 helm repo `https://docs.altinity.com/clickhouse-operator/`。
 # chart 名は `altinity-clickhouse-operator` (release tag と同名)。
 #
-# 【watch スコープ】chart デフォルト (`watch.namespaces.include: []`) は operator pod の
-# 自 namespace (`clickhouse-operator`) のみ watch する仕様。CHI 本体は別 namespace
-# (`clickhouse`) に置くため、`watch.namespaces.include: [".*"]` で全 namespace を
-# watch するよう明示。kube-system 配置なら空でも全 watch だが本構成は専用 namespace。
+# 【watch スコープ】chart デフォルト (`configs.files."config.yaml".watch.namespaces.include: []`)
+# は operator pod の自 namespace (`clickhouse-operator`) のみ watch する仕様。CHI 本体は
+# 別 namespace (`clickhouse`) に置くため全 namespace 監視を強制する必要がある。
+# chart の entrypoint は config.yaml 内の `WATCH_NAMESPACES=` プレースホルダを env 値で
+# 置換する公式 hook を持つので、`operator.env` で `WATCH_NAMESPACES=.*` を渡す方式が
+# 最も安全 (configs.files 全体を override すると defaults が消えるリスクあり)。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -35,12 +37,14 @@ spec:
     targetRevision: "0.27.0"
     helm:
       valuesObject:
-        watch:
-          namespaces:
-            # CHI を apps/clickhouse/ (= clickhouse namespace) に置くため、operator 自身の
-            # namespace (clickhouse-operator) 以外も監視させる。.* で全 namespace。
-            include:
-              - ".*"
+        operator:
+          # WATCH_NAMESPACES=.* で全 namespace を監視させる (詳細は冒頭【watch スコープ】参照)。
+          # chart の entrypoint が config.yaml の WATCH_NAMESPACES= プレースホルダをこの env
+          # で置換する公式 hook。`configs.files."config.yaml".watch.namespaces` を直接
+          # override すると chart デフォルト config 全体を上書きしてしまうため env 方式を採用。
+          env:
+            - name: WATCH_NAMESPACES
+              value: ".*"
   destination:
     server: https://kubernetes.default.svc
     namespace: clickhouse-operator
