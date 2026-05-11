@@ -2,9 +2,10 @@
 #
 # values は chart デフォルトを活かし、運用上の差分だけを明示:
 # - replicas: 2 (chart デフォルト 1)
-# - image.tag: 12.4.2-ubuntu (motherduck DuckDB datasource プラグインが glibc 必須、
-#   Alpine ベースだとロード不可。Apache-2.0 ライセンスのプラグインを GF_INSTALL_PLUGINS
-#   から固定バージョン取得 + allow_loading_unsigned_plugins で許可)
+# - image.tag: 12.4.3-ubuntu (motherduck DuckDB datasource プラグインが glibc 必須、
+#   Alpine ベースだとロード不可。Apache-2.0 ライセンスのプラグインを
+#   GF_PLUGINS_PREINSTALL_SYNC (chart 11.x で env 名変更、values キー名は plugins[]
+#   据え置き) から固定バージョン取得 + allow_loading_unsigned_plugins で許可)
 # - admin: existingSecret (OIDC 優先なのでフォールバック用途)
 # - envFromSecret: grafana-secrets (DB / OAuth / secret_key を注入)
 # - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化、
@@ -33,25 +34,28 @@ spec:
     # (旧 grafana/helm-charts では更新が止まる)。詳細: grafana/helm-charts#4087
     repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
-    # Chart 10.5.15 bundles Grafana 12.3.1 appVersion. image.tag で 12.4.2 に上書きする。
-    # chart が 12.4.x を正式サポートしたら tag を空に戻して chart デフォルトに任せる。
-    # NOTE: 12.x への chart 本体アップグレードは別 PR で対応 (breaking change 検証要)。
-    targetRevision: "10.5.15"
+    # Chart 11.6.1 bundles Grafana 12.4.3 appVersion (debian image)。image.tag で
+    # ubuntu バリアントへ上書きする (motherduck plugin の glibc 依存、下記参照)。
+    # NOTE: chart 12.x (Grafana 13) へのアップグレードは別 PR で対応する
+    # (annotation テーブル full-rewrite migration / motherduck plugin の React 19
+    # 動作確認が必要)。
+    targetRevision: "11.6.1"
     helm:
       valuesObject:
         replicas: 2
 
         image:
-          # chart 側 appVersion より新しい Grafana を使うための tag 上書き。
           # ubuntu バリアントを選ぶ理由: motherduck DuckDB datasource プラグインの
           # backend バイナリが glibc 2.35+ にリンクされており、Alpine (musl libc) では
-          # plugin がロードできないため。chart 側 image.repository は grafana/grafana
-          # デフォルトのまま、tag だけ ubuntu サフィックス付きに切り替える。
-          tag: "12.4.2-ubuntu"
+          # plugin がロードできないため。chart 11.6.1 のデフォルトは debian image だが、
+          # 既存運用との連続性 (とより新しい glibc) のため ubuntu suffix を維持する。
+          # chart appVersion (12.4.3) と一致させる。
+          tag: "12.4.3-ubuntu"
 
         # motherduck DuckDB datasource プラグインを固定バージョンで install。
-        # zip URL;plugin-id 形式で chart の plugins[] が GF_INSTALL_PLUGINS
-        # 環境変数に展開される。Apache-2.0 ライセンス、unsigned のため下記
+        # zip URL;plugin-id 形式で chart の plugins[] が GF_PLUGINS_PREINSTALL_SYNC
+        # 環境変数に展開される (chart 11.x で旧 GF_INSTALL_PLUGINS から rename)。
+        # Apache-2.0 ライセンス、unsigned のため下記
         # grafana.ini.plugins.allow_loading_unsigned_plugins と組で機能する。
         plugins:
           - https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v0.4.1/motherduck-duckdb-datasource-0.4.1.zip;motherduck-duckdb-datasource
