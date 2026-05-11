@@ -15,6 +15,11 @@
 #
 # 【helm repo】Altinity 公式 helm repo `https://docs.altinity.com/clickhouse-operator/`。
 # chart 名は `altinity-clickhouse-operator` (release tag と同名)。
+#
+# 【watch スコープ】chart デフォルト (`watch.namespaces.include: []`) は operator pod の
+# 自 namespace (`clickhouse-operator`) のみ watch する仕様。CHI 本体は別 namespace
+# (`clickhouse`) に置くため、`watch.namespaces.include: [".*"]` で全 namespace を
+# watch するよう明示。kube-system 配置なら空でも全 watch だが本構成は専用 namespace。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -29,7 +34,13 @@ spec:
     chart: altinity-clickhouse-operator
     targetRevision: "0.27.0"
     helm:
-      valuesObject: {}
+      valuesObject:
+        watch:
+          namespaces:
+            # CHI を apps/clickhouse/ (= clickhouse namespace) に置くため、operator 自身の
+            # namespace (clickhouse-operator) 以外も監視させる。.* で全 namespace。
+            include:
+              - ".*"
   destination:
     server: https://kubernetes.default.svc
     namespace: clickhouse-operator
