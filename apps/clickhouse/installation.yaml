@@ -45,10 +45,12 @@ spec:
           shardsCount: 1
           replicasCount: 1
     files:
-      # Garage S3 への named collection。s3('garage', 'path/...', 'Parquet') で参照する。
+      # Garage S3 への named collection。`s3(garage, filename='path/...')` で参照する。
       # credential は podTemplate.envFrom で注入される env 経由で from_env 補間。
-      # endpoint は cluster DNS (Service garage.garage), path-style 必須 (Garage は
-      # virtual-hosted style 非対応)。
+      # endpoint は cluster DNS (Service garage.garage)。path-style/virtual-hosted は
+      # ClickHouse の S3 client が URL 書式から auto-detect する (bucket 名が path 内
+      # にある = path-style)。25.x の named_collection allowed key には
+      # `use_path_style_url` が含まれないため明示しない。
       named_collections.xml: |
         <clickhouse>
           <named_collections>
@@ -57,7 +59,6 @@ spec:
               <access_key_id from_env="AWS_ACCESS_KEY_ID"/>
               <secret_access_key from_env="AWS_SECRET_ACCESS_KEY"/>
               <format>Parquet</format>
-              <use_path_style_url>true</use_path_style_url>
             </garage>
           </named_collections>
         </clickhouse>
