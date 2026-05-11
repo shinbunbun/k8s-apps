@@ -46,3 +46,8 @@ spec:
     # Barman Cloud Plugin の ObjectStore CR を apps/ 配下で使えるようにする
     - group: barmancloud.cnpg.io
       kind: "*"
+    # Altinity ClickHouse Operator の ClickHouseInstallation / ClickHouseInstallationTemplate /
+    # ClickHouseOperatorConfiguration / ClickHouseKeeperInstallation を apps/ 配下で使えるようにする
+    # (dotfiles-private #215 で apps/clickhouse/ から CHI を deploy するため)
+    - group: clickhouse.altinity.com
+      kind: "*"
