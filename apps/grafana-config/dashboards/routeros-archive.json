@@ -12,15 +12,15 @@
       }
     ]
   },
-  "description": "Garage logs-archive の daily-struct/source=routeros (Rust + Polars bronze) を DuckDB datasource 経由で集計する MikroTik RouterOS 長期ログダッシュボード。silver 層は廃止、daily-struct を直読み (timestamp は CTE で TIMESTAMP cast)。fluent-bit 出力には severity 列が存在せず level のみが Lua mapping 結果として入る。",
+  "description": "Garage logs-archive の daily-struct/source=routeros (Rust + Polars bronze) を ClickHouse datasource (s3 table function 経由) で集計する MikroTik RouterOS 長期ログダッシュボード。daily-struct を直読み (timestamp は CTE で DateTime64 cast)。fluent-bit 出力には severity 列が存在せず level のみが Lua mapping 結果として入る。",
   "editable": true,
   "graphTooltip": 0,
   "id": null,
   "panels": [
     {
       "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
+        "type": "grafana-clickhouse-datasource",
+        "uid": "Pchlogs0001"
       },
       "fieldConfig": {
         "defaults": {
@@ -62,7 +62,7 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, 'daily-struct/source=routeros/date=*/logs.parquet', 'Parquet')\n)\nSELECT count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)",
           "format": 1,
           "refId": "A"
         }
@@ -72,8 +72,8 @@
     },
     {
       "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
+        "type": "grafana-clickhouse-datasource",
+        "uid": "Pchlogs0001"
       },
       "fieldConfig": {
         "defaults": {
@@ -114,7 +114,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  time_bucket(INTERVAL '1 hour', ts) AS time,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, date\n  FROM s3(garage, 'daily-struct/source=routeros/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  toStartOfHour(ts) AS time,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1",
           "format": 0,
           "refId": "A"
         }
@@ -124,8 +124,8 @@
     },
     {
       "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
+        "type": "grafana-clickhouse-datasource",
+        "uid": "Pchlogs0001"
       },
       "fieldConfig": {
         "defaults": {
@@ -151,7 +151,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(host, '(unknown)') AS host,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, host, date\n  FROM s3(garage, 'daily-struct/source=routeros/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  coalesce(host, '(unknown)') AS host,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 10",
           "format": 1,
           "refId": "A"
         }
@@ -161,8 +161,8 @@
     },
     {
       "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
+        "type": "grafana-clickhouse-datasource",
+        "uid": "Pchlogs0001"
       },
       "fieldConfig": {
         "defaults": {
@@ -188,7 +188,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, level, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count(*) AS cnt\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, level, date\n  FROM s3(garage, 'daily-struct/source=routeros/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  coalesce(level, '(none)') AS level,\n  count() AS cnt\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY cnt DESC\nLIMIT 20",
           "format": 1,
           "refId": "A"
         }
@@ -198,8 +198,8 @@
     },
     {
       "datasource": {
-        "type": "motherduck-duckdb-datasource",
-        "uid": "Pduckdblogs0001"
+        "type": "grafana-clickhouse-datasource",
+        "uid": "Pchlogs0001"
       },
       "fieldConfig": {
         "defaults": {
@@ -221,7 +221,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH t AS (\n  SELECT CAST(timestamp AS TIMESTAMP) AS ts, host, level, message, date\n  FROM read_parquet(\n    's3://logs-archive/daily-struct/source=routeros/date=*/logs.parquet',\n    hive_partitioning = true,\n    union_by_name = true\n  )\n)\nSELECT\n  ts, host, level, message\nFROM t\nWHERE date >= $__timeFrom()::TIMESTAMP::DATE\n  AND date <= $__timeTo()::TIMESTAMP::DATE\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
+          "rawSql": "WITH t AS (\n  SELECT toDateTime64(timestamp, 6) AS ts, host, level, message, date\n  FROM s3(garage, 'daily-struct/source=routeros/date=*/logs.parquet', 'Parquet')\n)\nSELECT\n  ts, host, level, message\nFROM t\nWHERE toDate(date) >= toDate($__fromTime)\n  AND toDate(date) <= toDate($__toTime)\n  AND $__timeFilter(ts)\nORDER BY ts DESC\nLIMIT 200",
           "format": 1,
           "refId": "A"
         }
@@ -235,7 +235,7 @@
   "tags": [
     "logs-archive",
     "routeros",
-    "duckdb",
+    "clickhouse",
     "rust-pipeline"
   ],
   "templating": {
@@ -247,7 +247,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "RouterOS Long-term Logs (DuckDB)",
+  "title": "RouterOS Long-term Logs (ClickHouse)",
   "uid": "logs-archive-routeros",
   "version": 1,
   "weekStart": ""
