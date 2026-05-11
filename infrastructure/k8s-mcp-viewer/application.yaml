@@ -1,0 +1,25 @@
+# k8s-mcp-viewer: kubernetes-mcp-server 用 read-only SA
+#
+# ClusterRoleBinding (cluster-scoped) を含むため、cluster resource を制限している
+# user-apps project ではなく default project でデプロイする。
+# 実体マニフェストは manifests/k8s-mcp-viewer/ 配下。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8s-mcp-viewer
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:shinbunbun/k8s-apps.git
+    targetRevision: main
+    path: manifests/k8s-mcp-viewer
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: k8s-mcp-viewer
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
