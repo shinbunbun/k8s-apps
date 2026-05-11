@@ -219,8 +219,8 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
-  # DuckDB datasource (motherduck plugin) で Garage 上の長期 Parquet を集計する
-  # 「Logs Archive」フォルダのダッシュボード群。短期 Loki ダッシュボード
+  # 「Logs Archive」フォルダ。Garage 上の長期 Parquet (daily-struct/source=*/date=*) を
+  # 集計する archive 系ダッシュボード群。短期 Loki ダッシュボード
   # (logs-errors / logs-overview / logs-explore) との重複を避けるため別フォルダに
   # 分離している。issue #654 参照。
   #
@@ -229,45 +229,42 @@ configMapGenerator:
   # の dashboard と並走期に区別するため一時的に -rust suffix を付けていたが、Phase 4
   # 完了により canonical となったため Issue #191 タスク C-2 で suffix を除去した。
   #
-  # NOTE: chart 11.x で plugin install 機構 (GF_PLUGINS_PREINSTALL_SYNC) が unsigned
-  # zip URL install を受け付けなくなり motherduck DuckDB datasource を一時撤去した
-  # ため、sidecar からのロード対象からも外す (datasource not found エラーで
-  # ダッシュボード全体が壊れた表示になるのを避けるため)。dashboards/*.json 自体は
-  # 残置し、復活時に下記 generator entry をコメントアウト解除すればすぐ戻せる。
-  # 詳細は infrastructure/grafana/application.yaml の NOTE / dotfiles-private Issue 参照。
-  # - name: grafana-dashboard-systemd-archive
-  #   files:
-  #     - dashboards/systemd-archive.json
-  #   options:
-  #     labels:
-  #       grafana_dashboard: "1"
-  #     annotations:
-  #       grafana_folder: Logs Archive
-  #     disableNameSuffixHash: false
-  # - name: grafana-dashboard-routeros-archive
-  #   files:
-  #     - dashboards/routeros-archive.json
-  #   options:
-  #     labels:
-  #       grafana_dashboard: "1"
-  #     annotations:
-  #       grafana_folder: Logs Archive
-  #     disableNameSuffixHash: false
-  # - name: grafana-dashboard-k8s-pods-archive
-  #   files:
-  #     - dashboards/k8s-pods-archive.json
-  #   options:
-  #     labels:
-  #       grafana_dashboard: "1"
-  #     annotations:
-  #       grafana_folder: Logs Archive
-  #     disableNameSuffixHash: false
-  # - name: grafana-dashboard-macos-unified-archive
-  #   files:
-  #     - dashboards/macos-unified-archive.json
-  #   options:
-  #     labels:
-  #       grafana_dashboard: "1"
-  #     annotations:
-  #       grafana_folder: Logs Archive
-  #     disableNameSuffixHash: false
+  # datasource は dotfiles-private #215 で旧 motherduck DuckDB plugin (#212 撤去) から
+  # 公式署名済 grafana-clickhouse-datasource に置換済。クエリは ClickHouse の s3()
+  # table function (named_collection 'garage') で同じ Parquet を読む。
+  - name: grafana-dashboard-systemd-archive
+    files:
+      - dashboards/systemd-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-routeros-archive
+    files:
+      - dashboards/routeros-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-k8s-pods-archive
+    files:
+      - dashboards/k8s-pods-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-macos-unified-archive
+    files:
+      - dashboards/macos-unified-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
