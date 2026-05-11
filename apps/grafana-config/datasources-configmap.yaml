@@ -29,8 +29,13 @@ data:
     # PR #66 で追加した VMAlert datasource を PR #67 (vmauth 統合) で廃止した際、
     # editable: false で provisioning 管理下にあったため Grafana DB に orphan として
     # 残った。provisioning の deleteDatasources で明示削除する。
+    # DuckDB datasource は chart 11.x への upgrade 時に motherduck plugin install が
+    # 壊れたため一時撤去 (詳細は infrastructure/grafana/application.yaml の NOTE 参照)。
+    # 同じく editable: false で残るため deleteDatasources で清掃する。
     deleteDatasources:
       - name: VMAlert
+        orgId: 1
+      - name: DuckDB
         orgId: 1
     datasources:
       - name: Prometheus
@@ -63,57 +68,3 @@ data:
         jsonData:
           implementation: prometheus
           handleGrafanaManagedAlerts: false
-      # DuckDB datasource (motherduckdb/grafana-duckdb-datasource v0.4.1, Apache-2.0)
-      # 用途: Garage logs-archive の長期 Parquet (compact.py 出力) を SQL で集計し
-      # ダッシュボード化 (Loki 系の短期 retention を超える分析)。
-      #
-      # path: "" で in-memory DuckDB。プロセス終了で揮発するが、initSql を毎接続で
-      # 流すため problem なし (永続テーブルは作らず、read_parquet で都度 S3 から
-      # 直接読む)。
-      #
-      # initSql の中身:
-      #   - SET home_directory / extension_directory: Grafana pod は $HOME 未設定で、
-      #     DuckDB が INSTALL 時に extension cache の home (~/.duckdb) を作れず
-      #     "IO Error: Can't find the home directory at ''" で失敗する。
-      #     /tmp は emptyDir 配下で書込可能、pod 寿命と同じなので extension の
-      #     再ダウンロードは pod 起動毎 (毎回 ~数百ms 程度の追加コスト)。
-      #   - httpfs/json extension load
-      #   - memory_limit=2GB / threads=2 で Grafana pod (chart デフォルト 1Gi 想定)
-      #     の OOM を防ぐ。compact.py は 12GB/4 threads を使うが、こちらは対話
-      #     クエリ用なので絞る。重い集計は compact.py が daily/ にすでに圧縮済。
-      #   - preserve_insertion_order=false: 集計順序非依存、メモリ節約
-      #   - temp_directory=/tmp/duckdb-spill: spill 先 (Grafana pod の emptyDir / で OK)
-      #   - CREATE OR REPLACE SECRET garage_s3: DuckDB v1.4 の httpfs は legacy
-      #     `SET s3_*` 設定を読まなくなり、Secret Manager (CREATE SECRET) 経由でのみ
-      #     S3 認証情報を取得する。SET だけだと "region '' (HTTP 403 Forbidden) -
-      #     Authentication Failure" で失敗する。
-      #     アクセスキーは extraSecretMounts で grafana-duckdb-credentials Secret
-      #     (Garage Operator が GarageKey "grafana-duckdb" の secretTemplate で
-      #     生成) を /var/run/secrets/grafana-duckdb にマウントし、Grafana 標準の
-      #     $__file{...} 補間で SQL に埋め込む。read-only キーなので、Explore から
-      #     COPY/DELETE 等を実行しても AccessDenied で弾かれる。
-      - name: DuckDB
-        type: motherduck-duckdb-datasource
-        uid: Pduckdblogs0001
-        access: proxy
-        editable: false
-        jsonData:
-          path: ""
-          initSql: |
-            SET home_directory='/tmp/duckdb-home';
-            SET extension_directory='/tmp/duckdb-extensions';
-            INSTALL httpfs; LOAD httpfs;
-            INSTALL json;   LOAD json;
-            SET memory_limit='2GB';
-            SET threads=2;
-            SET preserve_insertion_order=false;
-            SET temp_directory='/tmp/duckdb-spill';
-            CREATE OR REPLACE SECRET garage_s3 (
-              TYPE S3,
-              KEY_ID '$__file{/var/run/secrets/grafana-duckdb/AWS_ACCESS_KEY_ID}',
-              SECRET '$__file{/var/run/secrets/grafana-duckdb/AWS_SECRET_ACCESS_KEY}',
-              ENDPOINT 'garage.garage.svc.cluster.local:3900',
-              REGION 'garage',
-              URL_STYLE 'path',
-              USE_SSL false
-            );

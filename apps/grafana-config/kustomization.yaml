@@ -228,39 +228,46 @@ configMapGenerator:
   # daily-struct/source=*/date=*/logs.parquet を直接 query する設計。旧 typed/ 参照
   # の dashboard と並走期に区別するため一時的に -rust suffix を付けていたが、Phase 4
   # 完了により canonical となったため Issue #191 タスク C-2 で suffix を除去した。
-  - name: grafana-dashboard-systemd-archive
-    files:
-      - dashboards/systemd-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
-  - name: grafana-dashboard-routeros-archive
-    files:
-      - dashboards/routeros-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
-  - name: grafana-dashboard-k8s-pods-archive
-    files:
-      - dashboards/k8s-pods-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
-  - name: grafana-dashboard-macos-unified-archive
-    files:
-      - dashboards/macos-unified-archive.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      annotations:
-        grafana_folder: Logs Archive
-      disableNameSuffixHash: false
+  #
+  # NOTE: chart 11.x で plugin install 機構 (GF_PLUGINS_PREINSTALL_SYNC) が unsigned
+  # zip URL install を受け付けなくなり motherduck DuckDB datasource を一時撤去した
+  # ため、sidecar からのロード対象からも外す (datasource not found エラーで
+  # ダッシュボード全体が壊れた表示になるのを避けるため)。dashboards/*.json 自体は
+  # 残置し、復活時に下記 generator entry をコメントアウト解除すればすぐ戻せる。
+  # 詳細は infrastructure/grafana/application.yaml の NOTE / dotfiles-private Issue 参照。
+  # - name: grafana-dashboard-systemd-archive
+  #   files:
+  #     - dashboards/systemd-archive.json
+  #   options:
+  #     labels:
+  #       grafana_dashboard: "1"
+  #     annotations:
+  #       grafana_folder: Logs Archive
+  #     disableNameSuffixHash: false
+  # - name: grafana-dashboard-routeros-archive
+  #   files:
+  #     - dashboards/routeros-archive.json
+  #   options:
+  #     labels:
+  #       grafana_dashboard: "1"
+  #     annotations:
+  #       grafana_folder: Logs Archive
+  #     disableNameSuffixHash: false
+  # - name: grafana-dashboard-k8s-pods-archive
+  #   files:
+  #     - dashboards/k8s-pods-archive.json
+  #   options:
+  #     labels:
+  #       grafana_dashboard: "1"
+  #     annotations:
+  #       grafana_folder: Logs Archive
+  #     disableNameSuffixHash: false
+  # - name: grafana-dashboard-macos-unified-archive
+  #   files:
+  #     - dashboards/macos-unified-archive.json
+  #   options:
+  #     labels:
+  #       grafana_dashboard: "1"
+  #     annotations:
+  #       grafana_folder: Logs Archive
+  #     disableNameSuffixHash: false

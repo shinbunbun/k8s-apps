@@ -2,23 +2,20 @@
 #
 # values は chart デフォルトを活かし、運用上の差分だけを明示:
 # - replicas: 2 (chart デフォルト 1)
-# - image.tag: 12.4.3-ubuntu (motherduck DuckDB datasource プラグインが glibc 必須、
-#   Alpine ベースだとロード不可。Apache-2.0 ライセンスのプラグインを
-#   GF_PLUGINS_PREINSTALL_SYNC (chart 11.x で env 名変更、values キー名は plugins[]
-#   据え置き) から固定バージョン取得 + allow_loading_unsigned_plugins で許可)
 # - admin: existingSecret (OIDC 優先なのでフォールバック用途)
 # - envFromSecret: grafana-secrets (DB / OAuth / secret_key を注入)
-# - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化、
-#   plugins.allow_loading_unsigned_plugins で DuckDB datasource (unsigned) を許可
+# - grafana.ini: database, auth.generic_oauth, alerting 無効化、analytics 無効化
 # - extraConfigmapMounts: datasources provisioning ConfigMap をマウント
-# - extraSecretMounts: grafana-duckdb-credentials (Garage read-only key) を
-#   /var/run/secrets/grafana-duckdb にマウント。datasource provisioning の
-#   $__file{...} 補間で initSql に S3 認証情報を流す
 # - sidecar.dashboards: label grafana_dashboard=1 を grafana namespace 内で探索
 # - affinity: podAntiAffinity preferred でノード分散
 # - persistence: chart デフォルト無効のまま (/var/lib/grafana と /var/lib/grafana-search
 #   は chart が自動で emptyDir マウントするので unified_storage.index_path もそのまま動く)
 # - unified_alerting: 有効化（アラート表示のみ、ルール評価は vmalert が担当）
+#
+# NOTE: motherduck DuckDB datasource プラグインは chart 11.x で plugin install 機構
+# (GF_PLUGINS_PREINSTALL_SYNC) が Plugin Catalog ID 形式しか受けなくなり、
+# unsigned 配布の zip URL install で 404 → CrashLoopBackOff となったため一旦撤去。
+# 復活方針 (extraInitContainers での手動展開 等) は dotfiles-private の Issue を参照。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -34,31 +31,14 @@ spec:
     # (旧 grafana/helm-charts では更新が止まる)。詳細: grafana/helm-charts#4087
     repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
-    # Chart 11.6.1 bundles Grafana 12.4.3 appVersion (debian image)。image.tag で
-    # ubuntu バリアントへ上書きする (motherduck plugin の glibc 依存、下記参照)。
+    # Chart 11.6.1 bundles Grafana 12.4.3 appVersion (debian image)。image.tag は
+    # 上書きせず chart デフォルト (debian) に任せる。
     # NOTE: chart 12.x (Grafana 13) へのアップグレードは別 PR で対応する
-    # (annotation テーブル full-rewrite migration / motherduck plugin の React 19
-    # 動作確認が必要)。
+    # (annotation テーブル full-rewrite migration が伴う)。
     targetRevision: "11.6.1"
     helm:
       valuesObject:
         replicas: 2
-
-        image:
-          # ubuntu バリアントを選ぶ理由: motherduck DuckDB datasource プラグインの
-          # backend バイナリが glibc 2.35+ にリンクされており、Alpine (musl libc) では
-          # plugin がロードできないため。chart 11.6.1 のデフォルトは debian image だが、
-          # 既存運用との連続性 (とより新しい glibc) のため ubuntu suffix を維持する。
-          # chart appVersion (12.4.3) と一致させる。
-          tag: "12.4.3-ubuntu"
-
-        # motherduck DuckDB datasource プラグインを固定バージョンで install。
-        # zip URL;plugin-id 形式で chart の plugins[] が GF_PLUGINS_PREINSTALL_SYNC
-        # 環境変数に展開される (chart 11.x で旧 GF_INSTALL_PLUGINS から rename)。
-        # Apache-2.0 ライセンス、unsigned のため下記
-        # grafana.ini.plugins.allow_loading_unsigned_plugins と組で機能する。
-        plugins:
-          - https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v0.4.1/motherduck-duckdb-datasource-0.4.1.zip;motherduck-duckdb-datasource
 
         admin:
           existingSecret: grafana-secrets
@@ -98,28 +78,11 @@ spec:
             execute_alerts: false
           alerting:
             enabled: false
-          plugins:
-            # motherduck DuckDB datasource (id: motherduck-duckdb-datasource) は
-            # Grafana Plugin Catalog で署名されていないため、明示的に許可リストへ
-            # 追加しないとロードを拒否される。複数許可する場合はカンマ区切り。
-            allow_loading_unsigned_plugins: motherduck-duckdb-datasource
 
         extraConfigmapMounts:
           - name: datasources
             mountPath: /etc/grafana/provisioning/datasources
             configMap: grafana-datasources
-            readOnly: true
-
-        # GarageKey "grafana-duckdb" (apps/garage/keys.yaml) の secretTemplate が
-        # grafana namespace に grafana-duckdb-credentials Secret を生成する。
-        # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION の 3 ファイル。
-        # datasources-configmap.yaml の DuckDB datasource initSql から
-        # $__file{/var/run/secrets/grafana-duckdb/AWS_ACCESS_KEY_ID} で参照する。
-        # secretName が "name" フィールドにも secret 名にも使われる chart 仕様。
-        extraSecretMounts:
-          - name: grafana-duckdb-credentials
-            secretName: grafana-duckdb-credentials
-            mountPath: /var/run/secrets/grafana-duckdb
             readOnly: true
 
         sidecar:
