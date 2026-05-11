@@ -31,11 +31,18 @@ spec:
     # (旧 grafana/helm-charts では更新が止まる)。詳細: grafana/helm-charts#4087
     repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
-    # Chart 11.6.1 bundles Grafana 12.4.3 appVersion (debian image)。image.tag は
+    # Chart 12.0.1 bundles Grafana 13.0.0 appVersion (debian image)。image.tag は
     # 上書きせず chart デフォルト (debian) に任せる。
-    # NOTE: chart 12.x (Grafana 13) へのアップグレードは別 PR で対応する
-    # (annotation テーブル full-rewrite migration が伴う)。
-    targetRevision: "11.6.1"
+    # chart 12.x 内 patch (12.0.x → 12.3.0、appVersion 13.0.0 → 13.0.1) は別 PR で対応。
+    #
+    # Grafana 12 → 13 メジャーアップグレードのチェック (2026-05-11 時点):
+    # - annotation full-rewrite migration: 0 rows / 72 kB → 影響なし
+    # - unified storage 自動 migration: 既に chart 11.x で有効化済、自動完了する
+    # - Image Renderer plugin 内蔵廃止: 未使用なので影響なし
+    # - Legacy Alertmanager API 削除: unified_alerting.enabled=true で対応済
+    # - React 18→19: motherduck plugin が PR #308 で撤去済、UI 影響なし
+    # - 直近 backup: 2026-05-10T18:00 完了済 (rollback 可能)
+    targetRevision: "12.0.1"
     helm:
       valuesObject:
         replicas: 2
