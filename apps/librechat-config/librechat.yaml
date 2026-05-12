@@ -67,11 +67,11 @@ endpoints:
 
 # Web Search - cluster 内 SearXNG + Firecrawl (両方 self-host) を組み合わせる。
 #
-# LibreChat v0.8.4 の webSearch は 3 段構成で、scraperType: "none" 等の skip 設定が
-# 存在しないため scraper (Firecrawl) は必須:
+# LibreChat v0.8.5 の webSearch は 3 段構成で、scraperType: "none" 等の skip 設定が
+# 存在しないため scraper (Firecrawl) は必須。reranker は v0.8.5 で "none" 許容に:
 #   1. Search Provider (SearXNG)    : URL リスト取得
 #   2. Scraper (Firecrawl)          : URL を読んで本文取得 ← skip 不可
-#   3. Reranker (Jina / Cohere)     : 結果再ランク → 初期は無効 (外部 SaaS のため別 PR)
+#   3. Reranker                     : "none" で skip (v0.8.5 で対応、infinity も追加)
 #
 # - SearXNG (apps/searxng/)         : formats:[html,json] + limiter:false で API 開放済
 # - Firecrawl (apps/firecrawl/)     : USE_DB_AUTHENTICATION=false で auth bypass、
@@ -85,8 +85,11 @@ webSearch:
   searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   firecrawlApiUrl: "${FIRECRAWL_API_URL}"
   firecrawlApiKey: "${FIRECRAWL_API_KEY}"
-  # Reranker (Jina / Cohere) は外部 SaaS のため初期は skip。
-  # "none" を指定しないと UI で「API key を入力してください」ダイアログが出る。
-  # 必要に応じて jinaApiKey / cohereApiKey を Secret 経由で env var 参照に変更し有効化する。
+  # Reranker (Jina / Cohere / Infinity) は外部 SaaS のため初期は skip。
+  # v0.8.5 から rerankerType 'none' が valid (data-provider/src/config.ts の
+  # RerankerTypes enum で確認)。infrastructure/librechat/application.yaml で
+  # image.tag を v0.8.5 に pin している前提。
+  # 必要に応じて rerankerType を 'jina' 等に変更し、jinaApiKey / cohereApiKey を
+  # Secret 経由で env var 参照に追加すれば有効化できる。
   rerankerType: "none"
   safeSearch: 0

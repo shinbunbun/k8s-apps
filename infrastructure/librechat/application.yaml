@@ -32,6 +32,14 @@ spec:
         fullnameOverride: librechat
         replicaCount: 1
 
+        # Image override: chart 2.0.2 の default appVersion は v0.8.4 だが、
+        # v0.8.5 で webSearch.rerankerType enum に "none" が追加されたため、
+        # reranker dialog 抑止のために v0.8.5 を pin する。
+        # chart 自体 (2.0.2) は最新リリース。次の chart リリースで v0.8.5 が
+        # default appVersion になったら image override を削除可能。
+        image:
+          tag: "v0.8.5"
+
         global:
           librechat:
             existingSecretName: librechat-credentials-env
