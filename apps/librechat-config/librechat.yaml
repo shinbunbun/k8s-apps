@@ -69,6 +69,10 @@ endpoints:
 # SearXNG 側は formats:[html,json] + limiter:false で API access 開放済
 # (ClusterIP 限定で外部公開なし、bot 検出/レート制限不要)。
 # Reranker (Jina / Cohere) は外部 SaaS のため初期は無効、必要に応じて別 PR で追加。
+#
+# 注意: LibreChat は searxngInstanceUrl に直接値を書くと warn を出して機能を
+# 無効化するため、必ず ${ENV_VAR} 参照にする。実値は infrastructure/librechat/
+# application.yaml の librechat.configEnv.SEARXNG_INSTANCE_URL で供給。
 webSearch:
-  searxngInstanceUrl: http://searxng.searxng.svc.cluster.local:8080
+  searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   safeSearch: 0

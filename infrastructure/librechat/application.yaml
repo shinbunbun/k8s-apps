@@ -58,6 +58,10 @@ spec:
             ALLOW_SOCIAL_LOGIN: "true"
             ALLOW_SOCIAL_REGISTRATION: "true"
             ALLOW_EMAIL_LOGIN: "false"
+            # Web Search backend (librechat.yaml の webSearch.searxngInstanceUrl
+            # から ${SEARXNG_INSTANCE_URL} で参照される)。
+            # cluster internal の searxng service なので secret 扱い不要。
+            SEARXNG_INSTANCE_URL: "http://searxng.searxng.svc.cluster.local:8080"
             # MONGO_URI / CREDS_* / JWT_* / OPENID_* は Secret(envFrom) で上書き
 
         # 自前 StatefulSet (apps/librechat-mongodb/) を使うので無効化
