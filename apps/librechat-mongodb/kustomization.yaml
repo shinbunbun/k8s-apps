@@ -1,0 +1,15 @@
+# LibreChat 用 MongoDB - シングルレプリカ + PVC
+#
+# StatefulSet, Service, NetworkPolicy, Secret (KSOPS) を librechat namespace に展開する。
+# ApplicationSet の destination namespace は basename (librechat-mongodb) になるが、
+# 各リソースの metadata.namespace を librechat に固定して LibreChat Pod から
+# 同 namespace で参照できるようにする (mongo.librechat.svc.cluster.local)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: librechat
+resources:
+  - statefulset.yaml
+  - service.yaml
+  - networkpolicy.yaml
+generators:
+  - secret-generator.yaml

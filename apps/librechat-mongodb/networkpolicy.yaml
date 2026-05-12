@@ -1,0 +1,19 @@
+# MongoDB は LibreChat (同 namespace) からのみ ingress を許可
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mongo-allow-librechat
+spec:
+  podSelector:
+    matchLabels:
+      app: mongo
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: librechat
+      ports:
+        - protocol: TCP
+          port: 27017

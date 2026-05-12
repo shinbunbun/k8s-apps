@@ -1,0 +1,96 @@
+# LibreChat - MCP ネイティブ chat UI (OpenWebUI 後継)
+#
+# 公式 OCI Helm chart (oci://ghcr.io/danny-avila/librechat-chart/librechat) を使用。
+# 後段の LLM 推論バックエンドは librechat.yaml の endpoints.custom で:
+#   - macmini (192.168.1.5:8081) — mlx-lm.server / Qwen3.5-4B-MLX-4bit
+#   - nixos-desktop (192.168.1.4:8082) — llama.cpp / Qwen3.6-35B-A3B-UD-Q4_K_M
+#
+# MCP は librechat.yaml の mcpServers.grafana (streamable-http) で
+# mcp-grafana.mcp-tools.svc.cluster.local:8000/mcp を直接接続 (mcpo 不要)。
+#
+# 認証は Authentik OIDC + Cloudflare Zero Trust Access の二重防御 (chat.shinbunbun.com)。
+# OIDC client_id / client_secret / CREDS_* / JWT_* / MONGO_URI は KSOPS で復号した
+# Secret (apps/librechat-config/) から envFrom で注入。
+#
+# DB は自前 StatefulSet (apps/librechat-mongodb/、mongo:7.0、PVC 20Gi、local-path)。
+# Bitnami subchart は 2025-09-29 OSS 廃止のため不使用。
+# Redis / Meilisearch / RAG API subchart は不要なので無効化。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: librechat
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # ArgoCD は OCI Helm chart を repoURL (no scheme) + chart 名で扱う (piraeus と同パターン)
+    repoURL: ghcr.io/danny-avila/librechat-chart
+    chart: librechat
+    targetRevision: "2.0.2"
+    helm:
+      valuesObject:
+        fullnameOverride: librechat
+        replicaCount: 1
+
+        global:
+          librechat:
+            existingSecretName: librechat-credentials-env
+
+        librechat:
+          existingSecretName: librechat-credentials-env
+          existingConfigYaml: librechat-config-yaml
+          imageVolume:
+            enabled: true
+            size: 10G
+            accessModes: ReadWriteOnce
+          configEnv:
+            HOST: 0.0.0.0
+            PORT: "3080"
+            NODE_ENV: production
+            # Authentik OIDC のみ
+            ALLOW_REGISTRATION: "true"
+            ALLOW_SOCIAL_LOGIN: "true"
+            ALLOW_SOCIAL_REGISTRATION: "true"
+            ALLOW_EMAIL_LOGIN: "false"
+            # MONGO_URI / CREDS_* / JWT_* / OPENID_* は Secret(envFrom) で上書き
+
+        # 自前 StatefulSet (apps/librechat-mongodb/) を使うので無効化
+        mongodb:
+          enabled: false
+
+        # 初期は無効。会話履歴・添付ファイル全文検索を使いたくなったら有効化
+        meilisearch:
+          enabled: false
+
+        redis:
+          enabled: false
+
+        librechat-rag-api:
+          enabled: false
+
+        service:
+          type: ClusterIP
+          port: 3080
+          targetPort: 3080
+
+        # Cloudflare Tunnel 経由で公開するので Ingress は不要
+        ingress:
+          enabled: false
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: librechat
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
