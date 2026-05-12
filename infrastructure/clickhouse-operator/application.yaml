@@ -58,3 +58,14 @@ spec:
       # CRD (ClickHouseInstallation 等) が大きいため client-side apply の annotation
       # 上限を回避するため必須 (garage-operator と同パターン)
       - ServerSideApply=true
+  # operator Deployment の env 内 resourceFieldRef.divisor が ArgoCD desired には
+  # 含まれない (chart 出力に無い) が、k8s API server の defaulting で `0` が補填される。
+  # ServerSideApply でも API server defaulting は ArgoCD field manager の外で行われるため、
+  # diff として残り続け OutOfSync → selfHeal → 再 apply → 再 default のループになる
+  # (実測: 15h で autoHealAttemptsCount=183)。jqPathExpressions で全 container/env の
+  # divisor を ignore し、ループを停止させる (実害は無いが etcd への定期書き込みノイズを除去)。
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].env[].valueFrom.resourceFieldRef.divisor'
