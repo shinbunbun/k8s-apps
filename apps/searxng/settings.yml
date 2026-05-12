@@ -1,0 +1,37 @@
+# SearXNG runtime settings (= /etc/searxng/settings.yml)
+#
+# このファイルは kustomization.yaml の configMapGenerator により
+# ConfigMap `searxng-settings` の data.settings.yml キーとして配信される。
+# disableNameSuffixHash: true で suffix を抑制しているので、Deployment の
+# volume 参照は `searxng-settings` 固定名で OK。
+#
+# 起動時のフロー:
+#   1. ConfigMap → Pod の `settings-source` volume (readOnly)
+#   2. initContainer が emptyDir `/etc/searxng` に cp し、
+#      "ultrasecretkey" を /dev/urandom 由来の base64 乱数に sed 置換
+#      (SearXNG 公式 entrypoint と同じロジックを先回り実行)
+#   3. main container が emptyDir の settings.yml を読んで起動
+#
+# `use_default_settings: true` で SearXNG image 内蔵の default settings.yml と
+# マージされるので、上書きしたい値だけここに書く。
+use_default_settings: true
+server:
+  # initContainer が起動時に /dev/urandom 由来の base64 乱数に置換する。
+  # ConfigMap には placeholder の "ultrasecretkey" のまま残しておく
+  # (SearXNG 公式 entrypoint と同じ仕掛け、Kubernetes Secret 不要にしている)
+  secret_key: "ultrasecretkey"
+  # 内部限定 (ClusterIP) なので bot detection / レート制限は不要、Redis 依存も避ける
+  limiter: false
+  # 検索結果に含まれる外部画像を SearXNG が proxy する機能。
+  # SSRF 経路と帯域消費の元なので無効化
+  image_proxy: false
+search:
+  # JSON API を許可 (デフォは html のみ。json 無しだと外部クライアントから
+  # /search?q=...&format=json が 403 Forbidden になる)
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+ui:
+  static_use_hash: true

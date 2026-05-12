@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: searxng
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: searxng
+    spec:
+      # 公式 image の searxng user/group (UID/GID 977)。fsGroup を合わせて
+      # emptyDir に書き込み可能にする。runAsNonRoot で root 起動禁止を明示。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+        fsGroup: 977
+      initContainers:
+        # ConfigMap の settings.yml を writable な emptyDir にコピーし、
+        # SearXNG 公式 entrypoint と同じロジックで "ultrasecretkey" を /dev/urandom
+        # 由来の base64 乱数に sed 置換する。
+        # 公式 entrypoint は settings.yml が存在しない場合のみ sed するが、
+        # ConfigMap マウントすると「存在する」と判定されて sed されないため、
+        # ここで先回りして置換しておく。
+        - name: prepare-config
+          image: busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              cp /tmp/settings-source/settings.yml /etc/searxng/settings.yml
+              sed -i "s/ultrasecretkey/$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')/g" /etc/searxng/settings.yml
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: settings-source
+              mountPath: /tmp/settings-source
+              readOnly: true
+            - name: searxng-config
+              mountPath: /etc/searxng
+      containers:
+        - name: searxng
+          # Docker Hub `searxng/searxng` の最新 stable (2026-05-10)
+          image: searxng/searxng:2026.5.10-df1f24fb7
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: searxng-config
+              mountPath: /etc/searxng
+            - name: searxng-data
+              mountPath: /var/cache/searxng
+      volumes:
+        - name: settings-source
+          configMap:
+            name: searxng-settings
+            defaultMode: 0444
+        # initContainer で書き換える必要があるので emptyDir
+        - name: searxng-config
+          emptyDir: {}
+        # SearXNG の cache (favicon 等)、Pod 単位で揮発で OK
+        - name: searxng-data
+          emptyDir: {}
