@@ -26,10 +26,15 @@ registration:
 
 # MCP server SSRF 防御の exemption。
 # .svc.cluster.local は LibreChat の SSRF 防御で .local TLD としてブロックされるため、
-# 内部 mcp-grafana を host:port で明示的に許可する (private-IP-space 専用 allowlist)。
+# 内部 mcp-grafana を明示的に許可する。
+#
+# 注意: v0.8.4 (chart 2.0.2 appVersion) では mcpSettings.allowedAddresses が未対応で
+# allowedDomains のみが createMCPServersRegistry に渡される。allowedDomains は
+# strict whitelist mode を有効化するため、新規 MCP server を mcpServers に追加する際は
+# 必ずここにも host を追記すること。
 mcpSettings:
-  allowedAddresses:
-    - "mcp-grafana.mcp-tools.svc.cluster.local:8000"
+  allowedDomains:
+    - "mcp-grafana.mcp-tools.svc.cluster.local"
 
 mcpServers:
   grafana:
