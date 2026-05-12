@@ -64,3 +64,11 @@ endpoints:
       titleConvo: true
       titleModel: "qwen3.6-35b-a3b-ud-q4-k-m"
       modelDisplayLabel: "Qwen3.6 35B (desktop CPU)"
+
+# Web Search - cluster 内 SearXNG (apps/searxng/) を直接接続。
+# SearXNG 側は formats:[html,json] + limiter:false で API access 開放済
+# (ClusterIP 限定で外部公開なし、bot 検出/レート制限不要)。
+# Reranker (Jina / Cohere) は外部 SaaS のため初期は無効、必要に応じて別 PR で追加。
+webSearch:
+  searxngInstanceUrl: http://searxng.searxng.svc.cluster.local:8080
+  safeSearch: 0
