@@ -47,8 +47,14 @@ spec:
             HOST: 0.0.0.0
             PORT: "3080"
             NODE_ENV: production
-            # Authentik OIDC のみ
-            ALLOW_REGISTRATION: "true"
+            # Authentik OIDC のみで認証する。
+            # ALLOW_REGISTRATION=false: email/password 登録フォーム (UI + POST /api/auth/register)
+            #   を完全遮断。validateRegistration.js が 403 で reject。
+            # ALLOW_SOCIAL_REGISTRATION=true: Authentik OIDC 初回ユーザの auto-create を許可
+            #   (socialLogin.js は ALLOW_REGISTRATION 非依存、独立フラグ)。
+            # ALLOW_EMAIL_LOGIN=false: email/password ログイン UI も非表示。
+            # 二重防御として Cloudflare Zero Trust Access が Authentik OIDC で先に認証。
+            ALLOW_REGISTRATION: "false"
             ALLOW_SOCIAL_LOGIN: "true"
             ALLOW_SOCIAL_REGISTRATION: "true"
             ALLOW_EMAIL_LOGIN: "false"
