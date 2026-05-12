@@ -24,6 +24,13 @@ interface:
 registration:
   socialLogins: ["openid"]
 
+# MCP server SSRF 防御の exemption。
+# .svc.cluster.local は LibreChat の SSRF 防御で .local TLD としてブロックされるため、
+# 内部 mcp-grafana を host:port で明示的に許可する (private-IP-space 専用 allowlist)。
+mcpSettings:
+  allowedAddresses:
+    - "mcp-grafana.mcp-tools.svc.cluster.local:8000"
+
 mcpServers:
   grafana:
     type: streamable-http
