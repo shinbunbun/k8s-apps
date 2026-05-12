@@ -32,13 +32,33 @@ spec:
         fullnameOverride: librechat
         replicaCount: 1
 
-        # Image override: chart 2.0.2 の default appVersion は v0.8.4 だが、
-        # v0.8.5 で webSearch.rerankerType enum に "none" が追加されたため、
-        # reranker dialog 抑止のために v0.8.5 を pin する。
-        # chart 自体 (2.0.2) は最新リリース。次の chart リリースで v0.8.5 が
-        # default appVersion になったら image override を削除可能。
+        # Image override: dev image を使う。
+        #
+        # webSearch.rerankerType="none" による reranker skip は v0.8.5 release
+        # 時点では RerankerTypes enum に未実装 (TypeScript type のみ存在し
+        # runtime で Zod reject される) で、Pod が CrashLoop または UI dialog
+        # が出続けて web search 機能が使えない問題があった。
+        #
+        # main branch では 2026-04-29 の commit 2503365 (#12765) で
+        # RerankerTypes.NONE = 'none' が enum に追加され、loadWebSearchAuth で
+        # `if (specificService === 'none') return [true, false]` の特別処理が
+        # 入った。これは official docs (librechat.ai/docs/features/web_search)
+        # 記載の動作と一致する。
+        #
+        # 公式 docs が指す動作を再現するには v0.8.5 release より新しい code を
+        # 使う必要があるため、dev image (commit SHA pin) に切り替える。
+        # registry.librechat.ai は :latest と v0.8.5 が同 digest で dev tag 無し、
+        # ghcr.io/danny-avila/librechat-dev のみが main branch を反映している。
+        #
+        # 将来 v0.8.6 (or 後継 stable release) が出て none 対応を含むようになったら
+        # registry.librechat.ai/danny-avila/librechat:vX.Y.Z (chart default) に
+        # 戻すべき。その際は image: section ごと削除すれば chart default appVersion
+        # に追従する。
         image:
-          tag: "v0.8.5"
+          registry: ghcr.io
+          repository: danny-avila/librechat-dev
+          # main HEAD 2026-05-12 build (none reranker 対応含む)
+          tag: "8eb9de011fda1698a7584150524d07078d855555"
 
         global:
           librechat:
