@@ -67,11 +67,10 @@ endpoints:
 
 # Web Search - cluster 内 SearXNG + Firecrawl (両方 self-host) を組み合わせる。
 #
-# LibreChat v0.8.5 の webSearch は 3 段構成。scraperType / rerankerType の
-# どちらにも "none" 等の skip 設定は ランタイムでサポートされていない:
+# LibreChat の webSearch は 3 段構成 (search/scrape/rerank):
 #   1. Search Provider (SearXNG)    : URL リスト取得
 #   2. Scraper (Firecrawl)          : URL を読んで本文取得 ← skip 不可
-#   3. Reranker (Jina/Cohere)       : 結果再ランク ← 未設定で起動は可、UI に dialog
+#   3. Reranker                     : "none" で skip (main branch / commit 2503365 で対応)
 #
 # - SearXNG (apps/searxng/)         : formats:[html,json] + limiter:false で API 開放済
 # - Firecrawl (apps/firecrawl/)     : USE_DB_AUTHENTICATION=false で auth bypass、
@@ -81,17 +80,15 @@ endpoints:
 # 注意: LibreChat は instanceUrl / apiKey 等を直接値で書くと warn を出して機能を
 # 無効化するため、必ず ${ENV_VAR} 参照にする。実値は infrastructure/librechat/
 # application.yaml の librechat.configEnv で供給。
+#
+# rerankerType: "none" は v0.8.5 release では未実装で、infrastructure 側で
+# dev image (main HEAD) に切り替えている。詳細は application.yaml のコメント参照。
 webSearch:
   searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   firecrawlApiUrl: "${FIRECRAWL_API_URL}"
   firecrawlApiKey: "${FIRECRAWL_API_KEY}"
-  # Reranker (Jina / Cohere) は外部 SaaS のため設定しない。
-  # v0.8.5 でも RerankerTypes enum は JINA | COHERE のみ (TypeScript の
-  # RerankerType type alias には 'none'/'infinity' が含まれるが、ランタイム
-  # zod schema は z.nativeEnum(RerankerTypes) で enum 値のみ accept)。
-  # rerankerType を omit すれば schema は通る (optional)。Pod 起動は OK だが
-  # UI 上で Web Search ON 時に Jina/Cohere API key 入力ダイアログが出続ける
-  # 可能性あり (close すれば search + scrape は機能する想定)。
-  # 完全な dialog 抑止には Jina/Cohere の API key 取得 + Secret 経由で
-  # jinaApiKey / cohereApiKey + rerankerType: 'jina' or 'cohere' を設定する必要。
+  # Reranker (Jina / Cohere) は外部 SaaS のため設定しない (none で skip)。
+  # 必要に応じて rerankerType を 'jina' 等に変更し、jinaApiKey / cohereApiKey を
+  # Secret 経由で env var 参照に追加すれば有効化できる。
+  rerankerType: "none"
   safeSearch: 0
