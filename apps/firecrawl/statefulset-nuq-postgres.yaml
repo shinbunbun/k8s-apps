@@ -1,0 +1,79 @@
+# Firecrawl nuq-postgres - nuq-worker job persistence
+#
+# 公式 ghcr.io/firecrawl/nuq-postgres は nuq 拡張入りカスタム postgres image。
+# 標準の postgres:16-alpine には差し替え不可。
+# PVC 5Gi (local-path) で永続化 (in-flight crawl の job state 保護)。
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nuq-postgres
+  labels:
+    app: nuq-postgres
+    tier: firecrawl
+spec:
+  serviceName: nuq-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nuq-postgres
+  template:
+    metadata:
+      labels:
+        app: nuq-postgres
+        tier: firecrawl
+    spec:
+      containers:
+        - name: postgres
+          image: ghcr.io/firecrawl/nuq-postgres@sha256:f9388bd25ae2e1f1d034518236f993ce236173c1d8800ce24092ea6643a95a33
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: firecrawl-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: firecrawl-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: firecrawl-credentials
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

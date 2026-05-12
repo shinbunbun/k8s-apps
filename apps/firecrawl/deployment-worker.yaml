@@ -1,0 +1,61 @@
+# Firecrawl worker - BullMQ queue worker (Redis-backed)
+#
+# Service 不要 (HTTP server を expose せず、liveness probe 用に :3005 のみ listen)。
+# api と同 image、CMD で queue-worker.js に分岐。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firecrawl-worker
+  labels:
+    app: firecrawl-worker
+    tier: firecrawl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firecrawl-worker
+  template:
+    metadata:
+      labels:
+        app: firecrawl-worker
+        tier: firecrawl
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/firecrawl/firecrawl@sha256:70486215adb0602debeb075706aa1a8a7d3e45a4827ac129fc91b550d9af1363
+          command: ["node"]
+          args:
+            - "--max-old-space-size=768"
+            - "dist/src/services/queue-worker.js"
+          ports:
+            - name: liveness
+              containerPort: 3005
+          env:
+            - name: PORT
+              value: "3005"
+          envFrom:
+            - configMapRef:
+                name: firecrawl-config
+            - secretRef:
+                name: firecrawl-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /liveness
+              port: liveness
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: liveness
+            periodSeconds: 30
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 60

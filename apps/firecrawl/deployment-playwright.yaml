@@ -1,0 +1,73 @@
+# Firecrawl playwright-service - Chromium headless scraper
+#
+# api からは PLAYWRIGHT_MICROSERVICE_URL=http://playwright-service:3000/scrape で呼ばれる。
+# /dev/shm と /tmp/.cache は emptyDir Memory にマウント (Chromium クラッシュ防止)。
+# upstream で --disable-dev-shm-usage は既定だが二重保険として /dev/shm も拡張。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playwright-service
+  labels:
+    app: playwright-service
+    tier: firecrawl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: playwright-service
+  template:
+    metadata:
+      labels:
+        app: playwright-service
+        tier: firecrawl
+    spec:
+      containers:
+        - name: playwright
+          image: ghcr.io/firecrawl/playwright-service@sha256:9e0737bc09df28275aab29726b1c0824a7725113945434e843385d487b7f7ec6
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: playwright-config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: tmp-cache
+              mountPath: /tmp/.cache
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        - name: tmp-cache
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+      terminationGracePeriodSeconds: 60

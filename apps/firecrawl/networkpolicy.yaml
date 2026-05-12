@@ -1,0 +1,127 @@
+# Firecrawl NetworkPolicy
+#
+# - firecrawl-api: librechat namespace から ingress 許可 (LibreChat → Firecrawl /v1/scrape)
+# - 内部通信 (api/worker/nuq-worker ↔ playwright/redis/postgres): tier=firecrawl の Pod 間のみ
+# - Egress: DNS (kube-dns) + Internet (scrape 対象) を許可
+#
+# k8s 1.22+ では namespace 自動 label (kubernetes.io/metadata.name) が付与されるため、
+# librechat namespace は namespaceSelector で名前指定可能。
+---
+# firecrawl-api: librechat namespace + 内部 Pod から ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: firecrawl-api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: firecrawl-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: librechat
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: librechat
+      ports:
+        - protocol: TCP
+          port: 3002
+---
+# playwright-service: tier=firecrawl の Pod (api) からのみ
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: playwright-service-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: playwright-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: firecrawl
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# redis: tier=firecrawl の Pod から
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: firecrawl
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# nuq-postgres: tier=firecrawl の Pod から
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nuq-postgres-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: nuq-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: firecrawl
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Egress: tier=firecrawl の全 Pod に DNS + Internet を許可 (scrape 対象が外部 web)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: firecrawl-egress
+spec:
+  podSelector:
+    matchLabels:
+      tier: firecrawl
+  policyTypes:
+    - Egress
+  egress:
+    # cluster DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # cluster 内通信 (Service / Pod IP)
+    - to:
+        - podSelector:
+            matchLabels:
+              tier: firecrawl
+    # Internet (scrape 対象、playwright-service が外部に出る)
+    # private network への egress も許可 (LAN 内 mock site scrape 用、scope は ALLOW_LOCAL_WEBHOOKS で制御)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0

@@ -58,10 +58,17 @@ spec:
             ALLOW_SOCIAL_LOGIN: "true"
             ALLOW_SOCIAL_REGISTRATION: "true"
             ALLOW_EMAIL_LOGIN: "false"
-            # Web Search backend (librechat.yaml の webSearch.searxngInstanceUrl
-            # から ${SEARXNG_INSTANCE_URL} で参照される)。
-            # cluster internal の searxng service なので secret 扱い不要。
+            # Web Search backend (librechat.yaml の webSearch.* から
+            # ${SEARXNG_INSTANCE_URL} / ${FIRECRAWL_API_URL} / ${FIRECRAWL_API_KEY} で参照される)。
+            # すべて cluster internal の self-host サービスなので secret 扱い不要。
+            #
+            # - SearXNG    : Search Provider (URL リスト取得)
+            # - Firecrawl  : Scraper (URL → 本文取得)。USE_DB_AUTHENTICATION=false で
+            #                auth bypass のため API key は dummy で良い。NetworkPolicy で
+            #                librechat ns からの ingress のみ許可。
             SEARXNG_INSTANCE_URL: "http://searxng.searxng.svc.cluster.local:8080"
+            FIRECRAWL_API_URL: "http://firecrawl-api.firecrawl.svc.cluster.local:3002"
+            FIRECRAWL_API_KEY: "self-hosted-no-auth"
             # MONGO_URI / CREDS_* / JWT_* / OPENID_* は Secret(envFrom) で上書き
 
         # 自前 StatefulSet (apps/librechat-mongodb/) を使うので無効化

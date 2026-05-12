@@ -1,0 +1,53 @@
+# Firecrawl redis - BullMQ queue + rate-limit
+#
+# Queue 状態は ephemeral でよい (LibreChat の単発 scrape 用途、再起動時の損失許容)。
+# 永続化したくなったら StatefulSet + PVC へ移行する。
+# redis password なし (cluster internal + NetworkPolicy で防御)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+    tier: firecrawl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        tier: firecrawl
+    spec:
+      containers:
+        - name: redis
+          image: redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+          command: ["redis-server", "--bind", "0.0.0.0"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}

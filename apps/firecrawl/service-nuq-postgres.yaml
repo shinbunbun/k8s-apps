@@ -1,0 +1,17 @@
+# nuq-postgres Service - nuq-worker / api / worker からの接続用
+apiVersion: v1
+kind: Service
+metadata:
+  name: nuq-postgres
+  labels:
+    app: nuq-postgres
+    tier: firecrawl
+spec:
+  type: ClusterIP
+  selector:
+    app: nuq-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
