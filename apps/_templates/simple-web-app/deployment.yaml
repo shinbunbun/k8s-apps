@@ -4,12 +4,6 @@
 # ghcr.ioプライベートイメージを使う場合:
 #   - image: ghcr.io/shinbunbun/my-app:latest
 #   - k3sノードレベルでレジストリ認証済みのためimagePullSecretsは不要
-#
-# ArgoCD Image Updaterで自動タグ更新する場合:
-#   ApplicationまたはApplicationSetのmetadata.annotationsに以下を追加:
-#     argocd-image-updater.argoproj.io/image-list: myapp=ghcr.io/shinbunbun/my-app
-#     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-#     argocd-image-updater.argoproj.io/write-back-method: argocd
 apiVersion: apps/v1
 kind: Deployment
 metadata:
