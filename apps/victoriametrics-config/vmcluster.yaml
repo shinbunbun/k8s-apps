@@ -25,6 +25,17 @@ spec:
       tag: v1.142.0-cluster
     extraArgs:
       dedup.minScrapeInterval: "15s"
+    # Operator デフォルトの memory limit 1500Mi では vmstorage-1 が常時 ~1.49GB
+    # まで張り付いて OOMKilled が発生 (2026-05-12)。
+    # -memory.allowedPercent=60 default のため limit の 60% を cache に使う想定で
+    # 2500Mi に引き上げる。replica 間の使用量偏りは別途調査予定。
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2500Mi
+      requests:
+        cpu: 250m
+        memory: 1000Mi
     storage:
       volumeClaimTemplate:
         spec:
