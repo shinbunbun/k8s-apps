@@ -46,7 +46,7 @@ data:
         originRequest:
           httpHostHeader: scanopy.shinbunbun.com
       - hostname: chat.shinbunbun.com
-        service: http://open-webui.openwebui.svc.cluster.local:80
+        service: http://librechat.librechat.svc.cluster.local:3080
         originRequest:
           httpHostHeader: chat.shinbunbun.com
       - service: http_status:404
