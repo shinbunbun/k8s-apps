@@ -1,0 +1,20 @@
+# LibreChat 設定 - librechat.yaml ConfigMap + KSOPS による Secret 復号
+#
+# Helm chart 側 (infrastructure/librechat/application.yaml) が読む:
+#   - librechat-config-yaml ConfigMap (configMapGenerator、suffix hash 無効化で固定名)
+#   - librechat-credentials-env Secret (envFrom、CREDS_*/JWT_*/OPENID_*/MONGO_URI 等)
+#
+# ApplicationSet の destination namespace は basename (librechat-config) になるが、
+# 各リソースの metadata.namespace を librechat に固定して Helm chart 側 Pod から
+# 同 namespace で参照できるようにする (openwebui-config と同パターン)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: librechat
+configMapGenerator:
+  - name: librechat-config-yaml
+    files:
+      - librechat.yaml=librechat.yaml
+    options:
+      disableNameSuffixHash: true
+generators:
+  - secret-generator.yaml

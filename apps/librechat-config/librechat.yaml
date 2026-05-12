@@ -1,0 +1,54 @@
+# LibreChat 設定 - MCP ネイティブ chat UI
+#
+# Helm chart 側 (infrastructure/librechat/application.yaml) の
+# librechat.existingConfigYaml で librechat-config-yaml ConfigMap を
+# /app/librechat.yaml にマウントして読まれる。
+#
+# 提供する設定:
+#   - registration: Authentik OIDC 一本化 (socialLogins: ["openid"])
+#   - mcpServers.grafana: mcp-grafana (streamable-http) を直接接続
+#   - endpoints.custom:
+#       - macmini-mlx     : mlx-lm.server (Qwen3.5-4B-MLX-4bit、軽量)
+#       - nixos-desktop-llamacpp : llama.cpp (Qwen3.6-35B、思考重め)
+#
+# モデル名は OpenAI 互換 API の /v1/models から fetch (models.fetch: true)。
+# default は UI 初期表示用の placeholder。
+version: 1.2.1
+cache: true
+
+interface:
+  privacyPolicy:
+    externalUrl: "https://chat.shinbunbun.com"
+    openNewTab: false
+
+registration:
+  socialLogins: ["openid"]
+
+mcpServers:
+  grafana:
+    type: streamable-http
+    url: http://mcp-grafana.mcp-tools.svc.cluster.local:8000/mcp
+    timeout: 30000
+    serverInstructions: true
+    chatMenu: true
+
+endpoints:
+  custom:
+    - name: "macmini-mlx"
+      apiKey: "dummy"
+      baseURL: "http://192.168.1.5:8081/v1"
+      models:
+        default: ["qwen3.5-4b-mlx-4bit"]
+        fetch: true
+      titleConvo: true
+      titleModel: "qwen3.5-4b-mlx-4bit"
+      modelDisplayLabel: "Qwen3.5 (macmini MLX)"
+    - name: "nixos-desktop-llamacpp"
+      apiKey: "dummy"
+      baseURL: "http://192.168.1.4:8082/v1"
+      models:
+        default: ["qwen3.6-35b-a3b-ud-q4-k-m"]
+        fetch: true
+      titleConvo: true
+      titleModel: "qwen3.6-35b-a3b-ud-q4-k-m"
+      modelDisplayLabel: "Qwen3.6 35B (desktop CPU)"

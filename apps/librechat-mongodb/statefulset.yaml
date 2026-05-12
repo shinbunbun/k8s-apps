@@ -1,0 +1,71 @@
+# MongoDB 7.0 - LibreChat 専用シングルレプリカ
+#
+# Bitnami の OSS Helm chart が 2025-09-29 で廃止されたため subchart は使わず、
+# 公式 mongo:7.0 image を直接 StatefulSet で立てる。HA / replica set は組まず、
+# 1 replica + local-path PVC (20Gi) で運用する。
+#
+# root credentials は KSOPS で復号する Secret `mongo-root` (envFrom) から注入。
+# LibreChat 側は MONGO_URI に root credentials を含めて接続する (authSource=admin)。
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+spec:
+  serviceName: mongo
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: mongo
+          image: mongo:7.0
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          envFrom:
+            - secretRef:
+                name: mongo-root
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
