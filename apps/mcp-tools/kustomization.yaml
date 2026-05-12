@@ -1,29 +1,21 @@
-# MCP Tools - OpenWebUI から呼び出す MCP サーバ群を mcpo (OpenAPI proxy) 経由で公開
+# MCP Tools - LibreChat から呼び出す MCP サーバ群
 #
 # 構成:
-#   [OpenWebUI] --(Settings>Tools 登録 / API Key 認証)--> [mcpo]
-#                                                          |
-#                                                          +-- streamable-http --> [mcp-grafana] -> Grafana API
+#   [LibreChat] --(librechat.yaml mcpServers / streamable-http)--> [mcp-grafana] -> Grafana API
 #
 # - mcp-grafana: Docker Hub 公式 image (mcp/grafana) を streamable-http モードで起動
-# - mcpo: open-webui 公式 OpenAPI proxy。各 MCP server を /<name>/openapi.json で公開
-# - 認証は mcpo の --api-key (OpenWebUI からは Authorization: Bearer で渡す)
+# - LibreChat は librechat.yaml の mcpServers.grafana で直接接続 (mcpo bridge 不要)
 # - 外部公開はしない (cluster internal のみ)
 #
-# ConfigMap は configMapGenerator で hash 付き名前にし、内容変更で Pod が自動 rollout する
-# (cloudflared のような手動再起動が不要)
+# mcpo (MCP→OpenAPI bridge) は OpenWebUI→LibreChat 移行時に撤去 (PR-D)。
+# secret.enc.yaml の MCPO_API_KEY は dangling field となるが、復号鍵がローカルに無いため
+# 当該 cleanup は別途 cluster 内で `sops` 経由で削除する想定 (PR description 参照)。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: mcp-tools
 resources:
   - mcp-grafana-deployment.yaml
   - mcp-grafana-service.yaml
-  - mcpo-deployment.yaml
-  - mcpo-service.yaml
   - networkpolicy.yaml
-configMapGenerator:
-  - name: mcpo-config
-    files:
-      - config.json=mcpo-config.json
 generators:
   - secret-generator.yaml
