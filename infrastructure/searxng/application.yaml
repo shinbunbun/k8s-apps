@@ -1,0 +1,104 @@
+# SearXNG — self-hosted meta search engine
+#
+# chart: chr0n1x/searxng-helm-chart (公式 searxng/searxng-helm-chart が
+# 2025-05 にアーカイブされた後の active fork、k8s-at-home common library 4.4.2 ベース)
+#
+# 内部限定 (ClusterIP)、Cloudflare Tunnel 配線なし。
+# JSON API (/search?q=...&format=json) を有効化済みで、将来 OpenWebUI などの
+# 外部クライアントから利用可能にしてある。
+#
+# `searxng.config` 直下に SearXNG `settings.yml` の中身をそのまま書く設計。
+# chart 側で Secret `searxng-config` として render され、/etc/searxng/settings.yml に
+# subPath マウントされる。`existingSecret` 非対応のため、`server.secret_key` は
+# values 直書き (private repo + ClusterIP 限定で許容)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: searxng
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://chr0n1x.github.io/searxng-helm-chart/
+    chart: searxng
+    targetRevision: "1.0.4"
+    helm:
+      valuesObject:
+        # Service 名を `searxng` に固定 (将来の参照側 FQDN を安定化)
+        fullnameOverride: searxng
+
+        image:
+          repository: searxng/searxng
+          # Docker Hub `searxng/searxng` の最新 stable (2026-05-10)
+          tag: "2026.5.10-df1f24fb7"
+          pullPolicy: IfNotPresent
+
+        # k8s-at-home common library schema
+        controller:
+          strategy: RollingUpdate
+          replicas: 1
+
+        service:
+          main:
+            ports:
+              http:
+                port: 8080
+
+        ingress:
+          main:
+            enabled: false
+
+        persistence:
+          config:
+            # settings.yml は chart が Secret として render するので PVC 不要
+            enabled: false
+
+        env:
+          # SearXNG コンテナ env (settings.yml と独立)
+          BASE_URL: "http://searxng.searxng.svc.cluster.local:8080/"
+          INSTANCE_NAME: "searxng"
+
+        # SearXNG settings.yml の中身をここに直書きすると、chart 側で
+        # Secret `searxng-config` として render され、Pod に subPath マウントされる
+        searxng:
+          config:
+            use_default_settings: true
+            server:
+              # CSRF/cookie 署名用。private repo + ClusterIP 限定で API JSON クエリ
+              # には影響しないため、values 直書きで許容。
+              secret_key: "0f9b249fbf8632710f1603bc6d1f0171683f8a70f94ca9db08e0d764d3709ee9"
+              # 内部限定なので bot detection は不要、Redis 依存も避ける
+              limiter: false
+              image_proxy: false
+            search:
+              # JSON API を許可。デフォは html のみで、json 無しだと外部クライアントから 403。
+              formats:
+                - html
+                - json
+              safe_search: 0
+              autocomplete: ""
+            ui:
+              static_use_hash: true
+
+        # limiter 無効なので Redis 不要 (chart 依存も condition: redis.enabled で skip)
+        redis:
+          enabled: false
+
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: "500m"
+            memory: 512Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: searxng
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
