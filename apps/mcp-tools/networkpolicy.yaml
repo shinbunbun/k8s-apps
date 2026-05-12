@@ -1,26 +1,5 @@
 # defense-in-depth: cluster internal で十分だが他 namespace からのアクセスは絞る
-# - mcpo: openwebui namespace からのみ ingress 許可 (mcpo 撤去後 (PR-D) でこの NetworkPolicy も削除予定)
-# - mcp-grafana: mcp-tools namespace 内 (mcpo) と librechat namespace からのみ ingress 許可
-#                LibreChat (PR-B 投入) は librechat.yaml の mcpServers.grafana で直接接続するため
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: mcpo-allow-openwebui
-spec:
-  podSelector:
-    matchLabels:
-      app: mcpo
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: openwebui
-      ports:
-        - protocol: TCP
-          port: 8000
----
+# - mcp-grafana: librechat namespace からのみ ingress 許可 (mcpo 撤去後 LibreChat が直接接続)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -33,9 +12,6 @@ spec:
     - Ingress
   ingress:
     - from:
-        - podSelector:
-            matchLabels:
-              app: mcpo
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: librechat
