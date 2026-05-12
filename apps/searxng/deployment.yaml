@@ -14,6 +14,12 @@ spec:
       labels:
         app: searxng
     spec:
+      # Service 名 `searxng` から自動注入される legacy service link env
+      # (`SEARXNG_PORT=tcp://<clusterIP>:8080` 等) を抑止する。
+      # 有効のままだと SearXNG entrypoint の `export GRANIAN_PORT="${SEARXNG_PORT:-$GRANIAN_PORT}"`
+      # が k8s 注入値を拾い、granian の --port に "tcp://..." を渡してクラッシュする
+      # (Invalid value for '--port': 'tcp://...' is not a valid integer)。
+      enableServiceLinks: false
       # 公式 image の searxng user/group (UID/GID 977)。fsGroup を合わせて
       # emptyDir に書き込み可能にする。runAsNonRoot で root 起動禁止を明示。
       securityContext:
