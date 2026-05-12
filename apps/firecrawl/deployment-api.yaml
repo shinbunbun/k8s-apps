@@ -1,0 +1,69 @@
+# Firecrawl api - Express REST endpoint (LibreChat から叩かれる)
+#
+# Image は ghcr.io/firecrawl/firecrawl (api / worker / nuq-worker 共通、CMD で分岐)。
+# digest pin は :latest の breaking change 防止のため必須。
+# liveness/readiness path は /v0/health/{liveness,readiness} (v1 ではなく v0)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firecrawl-api
+  labels:
+    app: firecrawl-api
+    tier: firecrawl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firecrawl-api
+  template:
+    metadata:
+      labels:
+        app: firecrawl-api
+        tier: firecrawl
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/firecrawl/firecrawl@sha256:70486215adb0602debeb075706aa1a8a7d3e45a4827ac129fc91b550d9af1363
+          command: ["node"]
+          args:
+            - "--max-old-space-size=2048"
+            - "dist/src/index.js"
+          ports:
+            - name: http
+              containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+          envFrom:
+            - configMapRef:
+                name: firecrawl-config
+            - secretRef:
+                name: firecrawl-credentials
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2.5Gi
+          # 起動時間が長いので initialDelaySeconds を多めに
+          startupProbe:
+            httpGet:
+              path: /v0/health/liveness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /v0/health/liveness
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /v0/health/readiness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 60

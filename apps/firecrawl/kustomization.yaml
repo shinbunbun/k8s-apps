@@ -1,0 +1,33 @@
+# Firecrawl - LibreChat Web Search 用 scraper backend
+#
+# Firecrawl OSS (https://github.com/firecrawl/firecrawl) を cluster 内で self-host し、
+# LibreChat の webSearch.firecrawlApiUrl から cluster internal URL で叩く。
+#
+# 6 component 構成 (公式 examples/kubernetes/cluster-install/ 準拠):
+#   - api          : Express REST :3002 (LibreChat から叩かれる)
+#   - worker       : BullMQ queue worker (Redis-backed)
+#   - nuq-worker   : nuq queue worker (Postgres-backed)
+#   - playwright-service : Chromium headless :3000 (api → playwright)
+#   - redis        : BullMQ + rate-limit (ephemeral emptyDir)
+#   - nuq-postgres : nuq-worker job persistence (PVC 5Gi, local-path)
+#
+# 認証は `USE_DB_AUTHENTICATION=false` で完全 bypass (cluster internal + NetworkPolicy で防御)。
+# LibreChat 側の FIRECRAWL_API_KEY は dummy 文字列で良い。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: firecrawl
+resources:
+  - configmap.yaml
+  - deployment-api.yaml
+  - deployment-worker.yaml
+  - deployment-nuq-worker.yaml
+  - deployment-playwright.yaml
+  - deployment-redis.yaml
+  - statefulset-nuq-postgres.yaml
+  - service-api.yaml
+  - service-playwright.yaml
+  - service-redis.yaml
+  - service-nuq-postgres.yaml
+  - networkpolicy.yaml
+generators:
+  - secret-generator.yaml

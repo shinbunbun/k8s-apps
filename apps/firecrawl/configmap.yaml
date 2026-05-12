@@ -1,0 +1,39 @@
+# Firecrawl 全 Pod 共通 ConfigMap + playwright-service 専用 ConfigMap
+#
+# - firecrawl-config: api / worker / nuq-worker / nuq-postgres が envFrom で参照
+# - playwright-config: playwright-service が envFrom で参照
+#
+# 機密値 (POSTGRES_PASSWORD, NUQ_DATABASE_URL, BULL_AUTH_KEY) は secrets/secret.enc.yaml へ。
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: firecrawl-config
+data:
+  HOST: "0.0.0.0"
+  REDIS_URL: "redis://redis.firecrawl.svc.cluster.local:6379"
+  REDIS_RATE_LIMIT_URL: "redis://redis.firecrawl.svc.cluster.local:6379"
+  # 末尾の /scrape は必須 (Firecrawl は base URL ではなく完全 URL を要求)
+  PLAYWRIGHT_MICROSERVICE_URL: "http://playwright-service.firecrawl.svc.cluster.local:3000/scrape"
+  # nuq-postgres credential
+  POSTGRES_USER: "postgres"
+  POSTGRES_DB: "postgres"
+  POSTGRES_HOST: "nuq-postgres.firecrawl.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  # self-host では auth 完全 bypass (withAuth() が即 {success: true} を返す)
+  USE_DB_AUTHENTICATION: "false"
+  LOGGING_LEVEL: "INFO"
+  ENV: "production"
+  IS_KUBERNETES: "true"
+  NUM_WORKERS_PER_QUEUE: "4"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playwright-config
+data:
+  PORT: "3000"
+  # LAN 内サイト (192.168.x.x) を scrape したくなったら true に変更
+  ALLOW_LOCAL_WEBHOOKS: "false"
+  BLOCK_MEDIA: "false"
+  MAX_CONCURRENT_PAGES: "10"

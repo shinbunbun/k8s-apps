@@ -1,0 +1,67 @@
+# Firecrawl nuq-worker - nuq queue worker (Postgres-backed、RabbitMQ-less モード)
+#
+# 公式 default replicas: 5 だが LibreChat の単発 scrape 用途では 1 で十分。
+# api と同 image、CMD で nuq-worker.js に分岐。/health で readiness 判定。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firecrawl-nuq-worker
+  labels:
+    app: firecrawl-nuq-worker
+    tier: firecrawl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firecrawl-nuq-worker
+  template:
+    metadata:
+      labels:
+        app: firecrawl-nuq-worker
+        tier: firecrawl
+    spec:
+      containers:
+        - name: nuq-worker
+          image: ghcr.io/firecrawl/firecrawl@sha256:70486215adb0602debeb075706aa1a8a7d3e45a4827ac129fc91b550d9af1363
+          command: ["node"]
+          args:
+            - "--max-old-space-size=768"
+            - "dist/src/services/worker/nuq-worker.js"
+          ports:
+            - name: health
+              containerPort: 3006
+          env:
+            - name: NUQ_WORKER_PORT
+              value: "3006"
+          envFrom:
+            - configMapRef:
+                name: firecrawl-config
+            - secretRef:
+                name: firecrawl-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            periodSeconds: 10
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 60
