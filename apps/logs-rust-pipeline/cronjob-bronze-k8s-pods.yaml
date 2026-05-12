@@ -10,8 +10,10 @@
 # Memory:
 #   k8s-pods は OTLP-shape の NDJSON で attributes が struct (namespace/pod/container/
 #   level 等) で埋まり typed columns 数が systemd/routeros より多い。
-#   2026-05-13 0:55 JST の Job が tmp 4Gi 超過で Evicted (3 試行すべて BackoffLimitExceeded)。
-#   Phase 4 で 8Gi → 4Gi に縮小していたが 8Gi に復帰。ログ量増加に伴い実測値要再確認。
+#   container memory limit: 実測 (860K rows/日) peak ~1.2 GiB、Phase 4 で 8Gi → 4Gi
+#   に縮小済 (限度の 30% 使用)。
+#   tmp emptyDir sizeLimit: 新設時から 4Gi だったが 2026-05-13 0:55 JST の Job がログ量
+#   増加で超過 Evict (3 試行すべて BackoffLimitExceeded) → 8Gi に拡張。実測値要再確認。
 apiVersion: batch/v1
 kind: CronJob
 metadata:
