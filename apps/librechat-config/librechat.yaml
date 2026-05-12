@@ -85,4 +85,8 @@ webSearch:
   searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
   firecrawlApiUrl: "${FIRECRAWL_API_URL}"
   firecrawlApiKey: "${FIRECRAWL_API_KEY}"
+  # Reranker (Jina / Cohere) は外部 SaaS のため初期は skip。
+  # "none" を指定しないと UI で「API key を入力してください」ダイアログが出る。
+  # 必要に応じて jinaApiKey / cohereApiKey を Secret 経由で env var 参照に変更し有効化する。
+  rerankerType: "none"
   safeSearch: 0
