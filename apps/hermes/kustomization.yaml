@@ -1,0 +1,20 @@
+# Hermes Agent (Phase 0.5: 朝サマリ push)
+#
+# 構成:
+#   [Telegram] <--(long-polling)--> [hermes Pod on nixos-desktop k3s node]
+#                                         |
+#                                         +-> LLM endpoint http://192.168.1.4:8082 (host process, Qwen3.6)
+#                                         +-> Grafana LAN VIP http://192.168.128.11 (mcp-grafana 経由)
+#                                         +-> Google Calendar API (calendar.readonly)
+#                                         +-> hermes-runtime private repo (sidecar git push 15min cycle)
+#
+# Pod は nodeSelector で nixos-desktop に固定 (LLM endpoint と同 node、LAN hop ゼロ)。
+# 詳細設計は dotfiles-private Issue #228 (Phase 0.5 計画) を参照。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - pvc.yaml
+  - networkpolicy.yaml
+generators:
+  - secret-generator.yaml
