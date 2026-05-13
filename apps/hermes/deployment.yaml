@@ -24,6 +24,10 @@ spec:
       labels:
         app: hermes
     spec:
+      # Hermes は k8s API を叩かない (cluster 内通信は NetworkPolicy で完全 deny)
+      # → SA token の auto-mount を無効化、`/var/run/secrets/kubernetes.io/serviceaccount` が
+      #    deploy-key mount 先 `/run/secrets` (/var/run は /run の symlink) と衝突するのも回避
+      automountServiceAccountToken: false
       nodeSelector:
         kubernetes.io/hostname: nixos-desktop
       hostNetwork: false
