@@ -64,6 +64,14 @@ endpoints:
       titleConvo: true
       titleModel: "qwen3.6-35b-a3b-ud-q4-k-m"
       modelDisplayLabel: "Qwen3.6 35B (desktop CPU)"
+      # Qwen3.6 thinking モデルの reasoning loop 抑制のため公式推奨値を送る。
+      # top_k / min_p は OpenAI 互換 API で送れないため llama-server 起動時に固定
+      # (dotfiles-private の services.llamaCpp.extraArgs を参照)。
+      addParams:
+        temperature: 0.6
+        top_p: 0.95
+        presence_penalty: 1.0
+        max_tokens: 32768
 
 # Web Search - cluster 内 SearXNG + Firecrawl (両方 self-host) を組み合わせる。
 #
