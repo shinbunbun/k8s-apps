@@ -57,6 +57,9 @@ spec:
               github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
               EOF
               export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
+              # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
+              git config --global --add safe.directory /opt/data
               cd /opt/data
               if [ -d .git ]; then
                 echo "Existing git repo, fetching latest"
@@ -123,6 +126,9 @@ spec:
               github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
               EOF
               export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
+              # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
+              git config --global --add safe.directory /opt/data
               cd /opt/data
               git config user.email "hermes@bot.local"
               git config user.name "Hermes Bot"
