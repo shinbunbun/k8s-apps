@@ -1,0 +1,163 @@
+# Hermes Agent Deployment (Gateway mode 常駐)
+#
+# - main container: 公式 image `nousresearch/hermes-agent` を gateway run で起動
+# - initContainer: hermes-runtime repo を deploy key で clone/fetch、PVC に展開
+# - sidecar `state-syncer`: 15 min ごとに git add/commit/push (skill/memory/config の差分を private repo に同期)
+#
+# nodeSelector で nixos-desktop に固定 (LLM endpoint と同 node)。
+# PVC ReadWriteOnce + strategy Recreate で Pod 入れ替え時の競合回避。
+# Hermes 公式 image は UID=10000 (hermes user) で動作、HOME=/opt/data (PVC mount 先)。
+# image は git/openssh-client 同梱なので initContainer / sidecar も同 image 共有 (cache 共有)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hermes
+  template:
+    metadata:
+      labels:
+        app: hermes
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: nixos-desktop
+      hostNetwork: false
+      # cluster 内 DNS (kube-dns) を bypass、外部 DNS を直接使う
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+          - 1.1.1.1
+          - 9.9.9.9
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      initContainers:
+        # hermes-runtime repo を deploy key で clone、PVC に展開
+        - name: clone-runtime
+          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /tmp/ssh
+              cat > /tmp/ssh/known_hosts <<'EOF'
+              github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+              EOF
+              export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              cd /opt/data
+              if [ -d .git ]; then
+                echo "Existing git repo, fetching latest"
+                git fetch origin main
+                git reset --hard origin/main
+              else
+                echo "Bootstrap: init + fetch hermes-runtime"
+                git init -q -b main
+                git remote add origin "$GITHUB_REPO_URL"
+                git fetch origin main
+                git reset --hard origin/main
+              fi
+              echo "clone-runtime done"
+          env:
+            - name: GITHUB_REPO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-credentials
+                  key: GITHUB_REPO_URL
+          volumeMounts:
+            - name: state
+              mountPath: /opt/data
+            - name: deploy-key
+              mountPath: /run/secrets
+              readOnly: true
+      containers:
+        - name: hermes
+          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          args: ["gateway", "run"]
+          env:
+            # 個別 env で渡す (envFrom を使うと GITHUB_DEPLOY_KEY も env 化されて process listing に露出するため避ける)
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: TELEGRAM_BOT_TOKEN}}
+            - name: TELEGRAM_ALLOWED_USERS
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: TELEGRAM_ALLOWED_USERS}}
+            - name: GOOGLE_CALENDAR_OAUTH_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GOOGLE_CALENDAR_OAUTH_CLIENT_ID}}
+            - name: GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET}}
+            - name: GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GOOGLE_CALENDAR_OAUTH_REFRESH_TOKEN}}
+            - name: GRAFANA_URL
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GRAFANA_URL}}
+            - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GRAFANA_SERVICE_ACCOUNT_TOKEN}}
+          volumeMounts:
+            - name: state
+              mountPath: /opt/data
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "200m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+        - name: state-syncer
+          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /tmp/ssh
+              cat > /tmp/ssh/known_hosts <<'EOF'
+              github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+              EOF
+              export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              cd /opt/data
+              git config user.email "hermes@bot.local"
+              git config user.name "Hermes Bot"
+              while true; do
+                sleep 900
+                git add -A
+                if ! git diff --cached --quiet; then
+                  git commit -m "[auto] hermes state sync $(date -Iminutes)"
+                  git push origin HEAD:main || echo "push failed, will retry next cycle"
+                fi
+              done
+          env:
+            - name: GITHUB_REPO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-credentials
+                  key: GITHUB_REPO_URL
+          volumeMounts:
+            - name: state
+              mountPath: /opt/data
+            - name: deploy-key
+              mountPath: /run/secrets
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "20m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: hermes-state
+        - name: deploy-key
+          secret:
+            secretName: hermes-credentials
+            items:
+              - key: GITHUB_DEPLOY_KEY
+                path: deploy-key
+                mode: 0400
+            defaultMode: 0400

@@ -1,0 +1,70 @@
+# Hermes Pod egress policy:
+#   - cluster 内通信は完全 deny (kube-dns も含む、DNS は dnsConfig で 1.1.1.1/9.9.9.9 直接)
+#   - LAN は LLM endpoint と Grafana LAN VIP の 2 endpoint のみ allowlist
+#   - Internet (RFC1918 等除く) は 53/UDP+TCP, 443/TCP のみ
+#   - GitHub SSH (deploy key 経由 git push) は GitHub 公開 IP レンジ 4 つに限定して 22/TCP
+#   - Ingress は全 deny (Telegram long-polling 前提、外部到達不要)
+#
+# GitHub IP レンジは https://api.github.com/meta の git[] セクション参照。
+# 年 1-2 回 GitHub が CIDR を追加する可能性、push 失敗時に手動更新。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hermes-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: hermes
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # LAN: LLM endpoint (Qwen3.6 on nixos-desktop host)
+    - to:
+        - ipBlock:
+            cidr: 192.168.1.4/32
+      ports:
+        - protocol: TCP
+          port: 8082
+
+    # LAN: Grafana LAN VIP (Cilium LB IPAM)
+    - to:
+        - ipBlock:
+            cidr: 192.168.128.11/32
+      ports:
+        - protocol: TCP
+          port: 80
+
+    # Internet: DNS + HTTPS (RFC1918 / CGNAT / link-local / loopback 除外で cluster 内も deny)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+
+    # GitHub SSH (deploy key 経由 git push) - 4 公開 IP レンジ限定
+    - to:
+        - ipBlock:
+            cidr: 192.30.252.0/22
+        - ipBlock:
+            cidr: 185.199.108.0/22
+        - ipBlock:
+            cidr: 140.82.112.0/20
+        - ipBlock:
+            cidr: 143.55.64.0/20
+      ports:
+        - protocol: TCP
+          port: 22
