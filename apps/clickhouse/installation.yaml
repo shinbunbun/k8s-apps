@@ -25,6 +25,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "5"
 spec:
+  # 一時停止: dotfiles-private#221 で調査中の MergeTreeBackgroundExecutor の
+  # memory_limit_exceeded ループによる Error スタックトレース大量出力が
+  # bronze-k8s-pods CronJob を連鎖失敗させているため、根本対応まで停止する。
+  # Altinity ChOp が StatefulSet replicas を 0 にして Pod を停止する。
+  stop: "yes"
   defaults:
     templates:
       podTemplate: clickhouse-pod
