@@ -2,11 +2,8 @@
 #   - cluster 内通信は完全 deny (kube-dns も含む、DNS は dnsConfig で 1.1.1.1/9.9.9.9 直接)
 #   - LAN は LLM endpoint と Grafana LAN VIP の 2 endpoint のみ allowlist
 #   - Internet (RFC1918 等除く) は 53/UDP+TCP, 443/TCP のみ
-#   - GitHub SSH (deploy key 経由 git push) は GitHub 公開 IP レンジ 4 つに限定して 22/TCP
+#   - GitHub git push は SSH-over-HTTPS (ssh.github.com:443) で 443 egress を再利用
 #   - Ingress は全 deny (Telegram long-polling 前提、外部到達不要)
-#
-# GitHub IP レンジは https://api.github.com/meta の git[] セクション参照。
-# 年 1-2 回 GitHub が CIDR を追加する可能性、push 失敗時に手動更新。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -55,16 +52,5 @@ spec:
         - protocol: TCP
           port: 443
 
-    # GitHub SSH (deploy key 経由 git push) - 4 公開 IP レンジ限定
-    - to:
-        - ipBlock:
-            cidr: 192.30.252.0/22
-        - ipBlock:
-            cidr: 185.199.108.0/22
-        - ipBlock:
-            cidr: 140.82.112.0/20
-        - ipBlock:
-            cidr: 143.55.64.0/20
-      ports:
-        - protocol: TCP
-          port: 22
+    # GitHub への git push は ssh.github.com:443 経由 (SSH-over-HTTPS、deployment.yaml の ssh config 参照)
+    # → port 22 は不要、上の 443/TCP egress allowlist でカバー

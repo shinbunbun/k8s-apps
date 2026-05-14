@@ -52,11 +52,20 @@ spec:
           args:
             - |
               set -e
+              # GitHub SSH endpoint を `ssh.github.com:443` 経由にする (port 22 不要、443 egress allowlist のみで完結)
+              # 元の理由: github.com の git SSH IP は Azure CDN 経由で広く分散しており、
+              # NetworkPolicy で `git[]` の 4 CIDR allow しても外れることが多い (実測: 20.27.177.113 等)
               mkdir -p /tmp/ssh
               cat > /tmp/ssh/known_hosts <<'EOF'
-              github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+              [ssh.github.com]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
               EOF
-              export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              cat > /tmp/ssh/config <<'EOF'
+              Host github.com
+                Hostname ssh.github.com
+                Port 443
+                User git
+              EOF
+              export GIT_SSH_COMMAND="ssh -F /tmp/ssh/config -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
               # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
               # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
               git config --global --add safe.directory /opt/data
@@ -124,11 +133,20 @@ spec:
           args:
             - |
               set -e
+              # GitHub SSH endpoint を `ssh.github.com:443` 経由にする (port 22 不要、443 egress allowlist のみで完結)
+              # 元の理由: github.com の git SSH IP は Azure CDN 経由で広く分散しており、
+              # NetworkPolicy で `git[]` の 4 CIDR allow しても外れることが多い (実測: 20.27.177.113 等)
               mkdir -p /tmp/ssh
               cat > /tmp/ssh/known_hosts <<'EOF'
-              github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+              [ssh.github.com]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
               EOF
-              export GIT_SSH_COMMAND="ssh -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+              cat > /tmp/ssh/config <<'EOF'
+              Host github.com
+                Hostname ssh.github.com
+                Port 443
+                User git
+              EOF
+              export GIT_SSH_COMMAND="ssh -F /tmp/ssh/config -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
               # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
               # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
               git config --global --add safe.directory /opt/data
