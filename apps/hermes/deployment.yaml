@@ -84,6 +84,19 @@ spec:
               echo "Fetching origin/main"
               git fetch origin main
               git reset --hard origin/main
+
+              # mcp-grafana binary を PVC に配置 (Phase 0 PoC では host 側に install 済みだったが
+              # Hermes 公式 image に同梱されてないため別途取得が必要)。PVC 上にあるので Pod restart 時は skip
+              mkdir -p /opt/data/bin
+              if [ ! -x /opt/data/bin/mcp-grafana ]; then
+                echo "Installing mcp-grafana v${MCP_GRAFANA_VERSION}"
+                curl -fsSL "https://github.com/grafana/mcp-grafana/releases/download/v${MCP_GRAFANA_VERSION}/mcp-grafana_Linux_x86_64.tar.gz" \
+                  | tar -xz -C /opt/data/bin/ mcp-grafana
+                chmod +x /opt/data/bin/mcp-grafana
+                /opt/data/bin/mcp-grafana --version || true
+              else
+                echo "mcp-grafana already present at /opt/data/bin/mcp-grafana, skipping install"
+              fi
               echo "clone-runtime done"
           env:
             - name: GITHUB_REPO_URL
@@ -91,6 +104,10 @@ spec:
                 secretKeyRef:
                   name: hermes-credentials
                   key: GITHUB_REPO_URL
+            # mcp-grafana version (initContainer が PVC に install)。
+            # Renovate datasource: github-releases / depName=grafana/mcp-grafana
+            - name: MCP_GRAFANA_VERSION
+              value: "0.14.0"
           volumeMounts:
             - name: state
               mountPath: /opt/data
