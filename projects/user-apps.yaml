@@ -51,3 +51,7 @@ spec:
     # (dotfiles-private #215 で apps/clickhouse/ から CHI を deploy するため)
     - group: clickhouse.altinity.com
       kind: "*"
+    # CiliumNetworkPolicy / CiliumClusterwideNetworkPolicy を apps/ 配下で使えるようにする
+    # (apps/hermes/ で host network への egress 制御に必要、標準 ipBlock は Cilium 環境で host/LB-VIP に効かない)
+    - group: cilium.io
+      kind: "*"
