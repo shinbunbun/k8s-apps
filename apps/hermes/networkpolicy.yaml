@@ -41,12 +41,11 @@ spec:
               protocol: TCP
 
     # Grafana LAN VIP (Cilium LB IPAM で割当てた固定 VIP)
-    - toCIDR:
-        - 192.168.128.11/32
-      toPorts:
-        - ports:
-            - port: "80"
-              protocol: TCP
+    # toCIDR は outside-cluster 用、cluster Service の LB VIP 経由 trafic は toServices を使う
+    - toServices:
+        - k8sService:
+            serviceName: grafana-lan
+            namespace: grafana
 
     # Internet: DNS + HTTPS (RFC1918 / CGNAT / link-local / loopback 除外で cluster 内も deny)
     - toCIDRSet:
