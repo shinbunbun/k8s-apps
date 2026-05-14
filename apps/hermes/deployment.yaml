@@ -61,17 +61,20 @@ spec:
               # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
               git config --global --add safe.directory /opt/data
               cd /opt/data
-              if [ -d .git ]; then
-                echo "Existing git repo, fetching latest"
-                git fetch origin main
-                git reset --hard origin/main
-              else
-                echo "Bootstrap: init + fetch hermes-runtime"
+              # 過去の起動で .git/ だけ作って remote add 前に死んでた場合に対応するため、
+              # init → remote 設定 → fetch → reset の各 step を idempotent に並べる
+              if [ ! -d .git ]; then
+                echo "Bootstrap: git init"
                 git init -q -b main
-                git remote add origin "$GITHUB_REPO_URL"
-                git fetch origin main
-                git reset --hard origin/main
               fi
+              if git remote get-url origin >/dev/null 2>&1; then
+                git remote set-url origin "$GITHUB_REPO_URL"
+              else
+                git remote add origin "$GITHUB_REPO_URL"
+              fi
+              echo "Fetching origin/main"
+              git fetch origin main
+              git reset --hard origin/main
               echo "clone-runtime done"
           env:
             - name: GITHUB_REPO_URL
