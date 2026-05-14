@@ -1,56 +1,68 @@
-# Hermes Pod egress policy:
+# Hermes Pod network policy:
 #   - cluster 内通信は完全 deny (kube-dns も含む、DNS は dnsConfig で 1.1.1.1/9.9.9.9 直接)
-#   - LAN は LLM endpoint と Grafana LAN VIP の 2 endpoint のみ allowlist
+#   - host node (LLM endpoint on nixos-desktop) への egress は port 8082 限定
+#   - Grafana LAN VIP (Cilium LB IPAM) は port 80 限定
 #   - Internet (RFC1918 等除く) は 53/UDP+TCP, 443/TCP のみ
-#   - GitHub git push は SSH-over-HTTPS (ssh.github.com:443) で 443 egress を再利用
 #   - Ingress は全 deny (Telegram long-polling 前提、外部到達不要)
+#
+# 実装注意:
+#   - 標準 NetworkPolicy の `ipBlock` は Cilium 環境では同 node の host network や LB VIP の
+#     enforcement が想定外 (実機で hermes Pod の LAN egress 全 timeout を確認)。
+#   - CiliumNetworkPolicy の `toEntities: [host]` と `toCIDR` を使う必要がある。
+#   - Cilium NP は allow rule のみ、ingress 全 deny には Standard NP の `policyTypes: [Ingress]`
+#     + 空 ingress list を併用 (allow-list の OR で評価されるので isolation を起動するだけで十分)。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: hermes-egress
+  name: hermes-ingress-deny
 spec:
   podSelector:
     matchLabels:
       app: hermes
   policyTypes:
     - Ingress
-    - Egress
   ingress: []
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: hermes-egress
+spec:
+  endpointSelector:
+    matchLabels:
+      app: hermes
   egress:
-    # LAN: LLM endpoint (Qwen3.6 on nixos-desktop host)
-    - to:
-        - ipBlock:
-            cidr: 192.168.1.4/32
-      ports:
-        - protocol: TCP
-          port: 8082
+    # Host node (= LLM endpoint on nixos-desktop の host process)
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8082"
+              protocol: TCP
 
-    # LAN: Grafana LAN VIP (Cilium LB IPAM)
-    - to:
-        - ipBlock:
-            cidr: 192.168.128.11/32
-      ports:
-        - protocol: TCP
-          port: 80
+    # Grafana LAN VIP (Cilium LB IPAM で割当てた固定 VIP)
+    - toCIDR:
+        - 192.168.128.11/32
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
 
     # Internet: DNS + HTTPS (RFC1918 / CGNAT / link-local / loopback 除外で cluster 内も deny)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
-              - 100.64.0.0/10
-              - 169.254.0.0/16
-              - 127.0.0.0/8
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-        - protocol: TCP
-          port: 443
-
-    # GitHub への git push は ssh.github.com:443 経由 (SSH-over-HTTPS、deployment.yaml の ssh config 参照)
-    # → port 22 は不要、上の 443/TCP egress allowlist でカバー
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 127.0.0.0/8
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP
