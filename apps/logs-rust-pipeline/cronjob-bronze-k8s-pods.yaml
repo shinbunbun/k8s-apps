@@ -12,6 +12,8 @@
 #   level 等) で埋まり typed columns 数が systemd/routeros より多い。
 #   container memory limit: 実測 (860K rows/日) peak ~1.2 GiB、Phase 4 で 8Gi → 4Gi
 #   に縮小済 (限度の 30% 使用)。
+#   2026-05-15 nixos-desktop ハング根本原因調査 (dotfiles-private#233) で 5/14 daily run の
+#   OOM 観測 (anon-rss 4.1GB)、経年でデータ量が増えていた → 4Gi → 6Gi に引き上げ。
 #   tmp emptyDir sizeLimit: 新設時から 4Gi だったが 2026-05-13 0:55 JST の Job がログ量
 #   増加で超過 Evict (3 試行すべて BackoffLimitExceeded) → 8Gi に拡張。実測値要再確認。
 apiVersion: batch/v1
@@ -58,7 +60,7 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 4Gi
+                  memory: 6Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
