@@ -100,7 +100,9 @@ spec:
               # daily apply cronjob は per-day で 2-4 GiB peak。mine は per-day silver
               # を順次 load + Drain tree が累積成長、routeros / macos の数百日 backfill
               # では tree サイズ + Polars frame で 8 GiB を上限。peak 観測後に縮小可。
-              memory: 8Gi
+              # 2026-05-15 ハング根本原因調査 (dotfiles-private#233): 5/3-5/5 backfill で
+              # anon-rss 8.3GB に張り付いて OOM 多発 → 8Gi → 12Gi に引き上げ。
+              memory: 12Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

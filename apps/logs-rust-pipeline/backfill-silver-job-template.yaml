@@ -109,7 +109,9 @@ spec:
               # silver は projection + sort のみで bronze より軽い。cron 側 macos-unified
               # は 8Gi で steady-state 動作中、backfill も同値で start (peak_mib log 観測後
               # に right-size 余地)。
-              memory: 8Gi
+              # 2026-05-15 ハング根本原因調査 (dotfiles-private#233): drain-mine と並走時の
+              # 圧力で OOM kill 観測の可能性、安全側に 8Gi → 12Gi に引き上げ。
+              memory: 12Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
