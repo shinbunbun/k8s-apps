@@ -40,4 +40,4 @@ images:
   - name: ghcr.io/shinbunbun/logs-pipeline
     newTag: "1a4746c"  # logs-pipeline main HEAD: 1a4746c (2026-05-08, PR #23 silver level canonical 化、shinbunbun/dotfiles-private#205 改修 A/B/C)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
-    newTag: "3fec9f8"  # logs-pipeline-drain main HEAD: 3fec9f8 (2026-05-09, PR #2 dump-templates subcommand + apply --dump-templates flag、shinbunbun/dotfiles-private#208)
+    newTag: "98bf621"  # logs-pipeline-drain main HEAD: 98bf621 (2026-05-15, PR #3 apply --workers N read-only 並列モード、shinbunbun/dotfiles-private#207 Step 3 backfill 高速化)

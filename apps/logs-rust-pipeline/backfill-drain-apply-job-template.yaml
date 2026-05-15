@@ -58,10 +58,14 @@
 #   template_id × hour count) が秒オーダーで返ること
 #
 # 【binary subcommand】
-# drain apply --source <SOURCE> --date YYYY-MM-DD --force
+# drain apply --source <SOURCE> --date YYYY-MM-DD --force --workers 8
 # - --force なし: dst (assignments.parquet) が既存ならスキップ
 # - --force あり: 上書き。本テンプレでは backfill 想定で必ず付ける
-# - 新規 template が出れば state を update して書き戻す (incremental learning)
+# - --workers 8: mine 後の固定 state 前提の read-only 並列モード。drain3 match()
+#   を multiprocessing.Pool で 8 並列実行、state mutate なし (state save 省略)。
+#   未 match 行は template_id=NULL で書き出し。shinbunbun/logs-pipeline-drain#3。
+# - daily apply CronJob は --workers 未指定 (default 1) で逐次 incremental learning
+#   モードのまま、本テンプレ (backfill) だけ並列モード使用。
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -97,9 +101,12 @@ spec:
             - --date
             - "{{DATE}}"    # ← edit before kubectl create (sed 推奨)
             - --force
+            - --workers     # mine 後の固定 state を前提とした read-only 並列モード
+            - "8"           # 8 worker process × match() で 1 pod 内 8 core 飽和
             # --dump-templates は付けない: backfill 中に都度 dict 上書きすると
             # daily cron の dict 状態と race するため、dict 更新は backfill 完了後の
             # 次 daily cron に任せる (Issue #208 で daily 統合済)。
+            # --workers >1 では state mutate しないので --dump-templates 自体無効。
           env:
             - name: AWS_S3_ENDPOINT
               value: "http://garage.garage.svc.cluster.local:3900"
@@ -108,13 +115,16 @@ spec:
                 name: logs-rust-pipeline-credentials
           resources:
             requests:
-              cpu: 300m
-              memory: 512Mi
+              # --workers 8 で 8 core 食うので request も 4 core (実 burst は 8)。
+              # scheduler が pod packing する際の guideline にもなる。
+              cpu: 4000m
+              # 8 worker × ~150MB (state load + match overhead) + polars frame
+              # ~500MB-1GB = ~2GB ベース。安全側で 2Gi request。
+              memory: 2Gi
             limits:
-              # daily apply cronjob と同じ上限: systemd / k8s-pods 2 GiB、
-              # routeros / macos は 4 GiB。本テンプレは worst-case (routeros / macos)
-              # 想定で 4 GiB に揃える (軽量 source でも害なし、cluster 64GB 余裕)。
-              memory: 4Gi
+              # 8 worker × silver parquet load 共有 + Drain tree。1 pod で 8 並列
+              # match する分、daily apply 4Gi より上限を厚くして 8Gi に。
+              memory: 8Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
