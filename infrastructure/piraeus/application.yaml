@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: ghcr.io/piraeusdatastore/piraeus-operator
     chart: piraeus
-    targetRevision: "2.10.6"
+    targetRevision: "2.10.7"
     helm:
       valuesObject:
         installCRDs: true
