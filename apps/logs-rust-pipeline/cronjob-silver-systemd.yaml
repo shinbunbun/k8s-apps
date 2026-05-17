@@ -54,7 +54,10 @@ spec:
                   # silver は bronze parquet 1 file の projection + sort のみ。bronze より
                   # 軽い想定だが、stable sort + xxh3 hash 計算で peak が出る可能性あり。
                   # 初回は 4Gi で start、peak_mib log 観測後に縮小余地あり。
-                  memory: 4Gi
+                  # 2026-05-15/16 bronze-systemd OOM 連鎖で silver も Failed (bronze
+                  # 不在で読込元なし)。bronze 同期に予防的に 6Gi へ bump
+                  # (dotfiles-private#242 系)。
+                  memory: 6Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
