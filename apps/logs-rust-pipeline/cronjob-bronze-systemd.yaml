@@ -55,7 +55,10 @@ spec:
                   # Polars dynamic NDJSON inference + concat(diagonal=true) で全 hour
                   # を in-memory に乗せるため、systemd 25K 行でも余裕を持って 4Gi。
                   # 実測 (peak_mib log) 後に縮小可。
-                  memory: 4Gi
+                  # 2026-05-15/16 OOM-killed 発生 (anon-rss 4.1GB で limit 突破、
+                  # systemd silver 量増加で 449MB NDJSON / 338K records に到達):
+                  # bronze-k8s-pods と同じ +50% 6Gi に bump (dotfiles-private#242 系)。
+                  memory: 6Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
