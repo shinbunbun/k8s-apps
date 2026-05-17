@@ -63,6 +63,10 @@ spec:
           enabled: false
         chunksCache:
           enabled: true
+          # 2026-05-17: chart デフォルト 8192MB は homemachine (16GB RAM) には過大。
+          # 5.5GB/limit 9.6GB まで成長して node メモリ使用率が 93% に達したため半減。
+          # memcached limit は allocatedMemory * 1.2 = ~4.8GB に自動縮小される。
+          allocatedMemory: 4096
         resultsCache:
           enabled: true
         monitoring:
