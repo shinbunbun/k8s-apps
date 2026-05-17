@@ -72,6 +72,21 @@
       labels: ["dependencies", "renovate", "major"],
     },
     {
+      // 2026-05-17 の nixos-desktop ハングインシデント (PR #353 自動マージ
+      // → 約 2 分後に kubepods OOM → DRBD I/O ストール → ホスト沈黙) を
+      // 受けて、piraeus-operator は patch/minor/major 問わず手動承認制とする。
+      // DRBD カーネルモジュール経由で kernel space に到達する変更が含まれるため
+      // ブラインドな自動マージのリスクが特に高い。
+      description: "piraeus-operator は手動承認必須 (DRBD I/O ストール再発防止、Refs #353/#359)",
+      matchPackageNames: [
+        "/piraeusdatastore/piraeus-operator/",
+        "/piraeusdatastore/drbd9-/",
+      ],
+      automerge: false,
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "renovate", "needs-manual-review", "storage"],
+    },
+    {
       description: "latest 系タグは追跡不可のため無効化",
       matchCurrentVersion: "/^(latest|stable|main|master|edge)$/",
       enabled: false,
