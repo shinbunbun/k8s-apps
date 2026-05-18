@@ -589,8 +589,14 @@ spec:
           description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff state."
 
       # Pod未準備
+      # piraeus-datastore の linstor-controller は k8s-await-election パターンで
+      # standby pod が構造的に Ready=False (main container が起動しない) になるため除外。
       - alert: KubePodNotReady
-        expr: 'kube_pod_status_phase{phase=~"Pending|Unknown|Failed"} == 1'
+        expr: |
+          (kube_pod_status_phase{phase=~"Pending|Unknown|Failed"} == 1)
+          unless on(namespace, pod) (
+            kube_pod_status_phase{namespace="piraeus-datastore", pod=~"linstor-controller-.*"}
+          )
         for: 10m
         labels:
           severity: warning
