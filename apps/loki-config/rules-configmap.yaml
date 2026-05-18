@@ -36,9 +36,11 @@ data:
               description: "Error rate is {{ $value }} errors/sec sustained over 30 minutes on {{ $labels.host }}"
     
           # エラーログ即時検知（1分間に1件以上でアラート）
+          # fluent-bit は Loki への push エラー (broken connection 等) を 5-15分間隔で吐く
+          # ノイズ源 (バッファで吸収されておりログロスなし) なので除外する。dotfiles-private Issue #250 参照。
           - alert: ErrorLogDetected
             expr: |
-              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start", level="error"} [1m])) by (host) > 0
+              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start|fluent-bit", level="error"} [1m])) by (host) > 0
             for: 0s
             labels:
               severity: warning
