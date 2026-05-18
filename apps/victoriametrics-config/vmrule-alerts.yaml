@@ -643,10 +643,12 @@ spec:
 
       # コンテナ CPU throttling（limit に達して実行がスケジューリング待ちになっている）
       # container!="" フィルタで pod レベル cgroup (container="") と container レベルの重複集計を避ける
+      # namespace="mktxp" は除外：polling exporter の特性上 100ms CFS period 内で短時間バーストし
+      # 30〜40% の throttle が常時発生するが、scrape 健全性 (up / scrape_duration_seconds) は健全で実害なし
       - alert: KubeContainerCPUThrottling
         expr: |
-          sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD"}[5m]))
-          / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD"}[5m])) > 0.25
+          sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD",namespace!="mktxp"}[5m]))
+          / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD",namespace!="mktxp"}[5m])) > 0.25
         for: 10m
         labels:
           severity: warning
