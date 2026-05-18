@@ -73,4 +73,8 @@ spec:
           volumes:
             - name: tmp
               emptyDir:
-                sizeLimit: 1Gi
+                # 2026-05-17 00:35 JST daily run が 1Gi 超過で 19s で Evict、systemd の
+                # bronze 出力だけ Parquet 欠落 (silver/drain-apply も連鎖スキップ)。
+                # bronze-k8s-pods が 5/13 に同じ理由で 4→8Gi 拡張済み。systemd は
+                # 当面 silver-systemd と同水準の 4Gi に揃える。
+                sizeLimit: 4Gi
