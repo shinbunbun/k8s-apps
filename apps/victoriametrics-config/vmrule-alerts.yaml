@@ -643,18 +643,30 @@ spec:
 
       # コンテナ CPU throttling（limit に達して実行がスケジューリング待ちになっている）
       # container!="" フィルタで pod レベル cgroup (container="") と container レベルの重複集計を避ける
-      # namespace="mktxp" は除外：polling exporter の特性上 100ms CFS period 内で短時間バーストし
-      # 30〜40% の throttle が常時発生するが、scrape 健全性 (up / scrape_duration_seconds) は健全で実害なし
+      # 実害判定: throttle 比率 > 25% かつ CPU 使用率 > limit の 50% を AND 条件で要求する。
+      # polling 系 sidecar (mktxp, hermes/state-syncer 等) は短時間バーストで CFS quota を使い切るため
+      # throttle 比率は高くなるが、平均 CPU 使用率は limit の数 % に留まり実害は無いため AND で自動除外される。
       - alert: KubeContainerCPUThrottling
         expr: |
-          sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD",namespace!="mktxp"}[5m]))
-          / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD",namespace!="mktxp"}[5m])) > 0.25
+          (
+            sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD"}[5m]))
+            / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD"}[5m]))
+            > 0.25
+          )
+          and on(namespace, pod, container) (
+            sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]))
+            / on(namespace, pod, container) (
+              sum by (namespace, pod, container) (container_spec_cpu_quota{container!="",container!="POD"})
+              / sum by (namespace, pod, container) (container_spec_cpu_period{container!="",container!="POD"})
+            )
+            > 0.5
+          )
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is CPU throttled"
-          description: "Container is throttled in {{ $value | humanizePercentage }} of CFS periods for more than 10 minutes. Raise limits.cpu or reduce workload."
+          description: "Container is throttled in {{ $value | humanizePercentage }} of CFS periods for more than 10 minutes while using >50% of its CPU limit. Raise limits.cpu or reduce workload."
 
       # スクレイプ時間が長すぎる（scrape_interval 15s に対し 5s 超は rate() 分母が歪むため）
       - alert: ScrapeSlow
