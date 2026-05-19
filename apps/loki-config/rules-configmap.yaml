@@ -134,16 +134,23 @@ data:
       - name: routeros_monitoring
         interval: 30s
         rules:
-          # SSH userauth failure の急増 (ブルートフォース兆候)
+          # SSH login failure 検知 (ブルートフォース兆候)
+          # 2026-05: 旧定義は {ident="packet"} |~ "userauth failure" を見ていたが、
+          # これは SSH RFC4252 標準の "none" auth method の失敗 (= publickey 成功前の
+          # 正常な handshake step) を debug topic に記録したもの。peer-issuer の
+          # reconciler が 60s 間隔で wgissuer ユーザとして SSH 接続するため、
+          # ベースラインで毎分1件発火していた (10件/10min)。
+          # 本物の login failure は ident="user" かつ level=warning|error|critical で
+          # 出るため、これを対象に変更。閾値も > 0 に下げる。
           - alert: RouterOSSSHAuthFailure
             expr: |
-              sum(count_over_time({job="routeros", ident="packet"} |~ "userauth failure" [10m])) by (host) > 20
+              sum(count_over_time({job="routeros", ident="user", level=~"warning|error|critical"} |~ "(?i)login failure|invalid user|authentication fail" [10m])) by (host) > 0
             for: 2m
             labels:
               severity: warning
             annotations:
-              summary: "RouterOS SSH userauth failures spike on {{ $labels.host }}"
-              description: "{{ $value }} userauth failure events in last 10m"
+              summary: "RouterOS SSH login failure on {{ $labels.host }}"
+              description: "{{ $value }} login failure events in last 10m"
 
           # 上流 DNS 応答失敗レート (NGN resolver 不調の検知)
           - alert: RouterOSDNSUpstreamFailure
