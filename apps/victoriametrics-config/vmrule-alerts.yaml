@@ -625,8 +625,10 @@ spec:
           description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} was terminated due to OOM."
 
       # コンテナ高CPU使用率（絶対値。limit を持たない重い pod を発見する用途）
+      # container!="drain" 除外: logs-rust-pipeline の Drain3 cronjob は仕様上 ~1 core を
+      # 数十分使い切る batch なので警告対象外（namespace=logs-rust-pipeline 専用 container 名）。
       - alert: KubeContainerHighCPU
-        expr: 'rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]) > 0.9'
+        expr: 'rate(container_cpu_usage_seconds_total{container!="",container!="POD",container!="drain"}[5m]) > 0.9'
         for: 10m
         labels:
           severity: warning
