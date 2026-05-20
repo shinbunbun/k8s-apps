@@ -45,7 +45,11 @@ spec:
         image:
           # release tag と揃えて明示 pin (Renovate が chart targetRevision だけ bump して
           # image を取り残す事故を防ぐため。詳細はファイル上部コメント参照)
-          tag: "0.4.1"
+          # 注: 上流 v0.5.7 まで Chart.yaml の appVersion が "0.4.1" のまま (upstream の
+          # bump 漏れ) なので、ここで明示 pin しないと operator binary が v0.4.1 のまま
+          # 古いまま走り、v0.5.6+ で導入された StatefulSet identity / v0.5.7 の gateway
+          # 設計と template 不整合を起こす。
+          tag: "0.5.7"
         crds:
           install: true
           keep: true
