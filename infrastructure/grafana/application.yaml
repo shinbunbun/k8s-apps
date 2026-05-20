@@ -41,7 +41,7 @@ spec:
     # となるため 12.1.x 以降を採用すること。
     # rollback: chart pin を戻すだけでは Grafana 13→12 ダウングレードは公式非サポート、
     # 失敗時は CNPG Cluster を直近 base backup から restore (kubectl cnpg restore) する。
-    targetRevision: "12.3.0"
+    targetRevision: "12.3.3"
     helm:
       valuesObject:
         replicas: 2
