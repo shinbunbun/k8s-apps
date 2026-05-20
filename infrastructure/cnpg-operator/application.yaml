@@ -33,7 +33,7 @@ spec:
     repoURL: https://cloudnative-pg.github.io/charts
     chart: cloudnative-pg
     # Chart 0.28.0 = Operator v1.29.0 (https://cloudnative-pg.github.io/charts/index.yaml で確認)
-    targetRevision: "0.28.0"
+    targetRevision: "0.28.2"
     helm:
       valuesObject:
         replicaCount: 2
