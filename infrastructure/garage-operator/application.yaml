@@ -14,14 +14,17 @@
 # 【sync-wave】-5 は piraeus 等より後、Loki (10) 等のクライアント Application より前。
 #
 # 【git source】operator はまだ Helm repo 公開しておらず、GitHub の charts/garage-operator/
-# を直接引く。targetRevision は release tag (v0.3.8 = 2026-04-18) に固定してアップデートは
-# manual bump とする。
+# を直接引く。targetRevision は release tag に固定 (Renovate が自動 PR を作る)。
 #
-# 【image.tag override】v0.3.8 git tag 下の Chart.yaml は appVersion: "0.0.14" (stale、
-# 作者の OCI チャートは 0.3.8 に更新済みだが git repo 側は未 bump)。image tag は
-# GarageCluster の generateGarageConfig で [s3_api] セクションを常時出力するために
-# v0.3.8 image が必要で、明示 pin で追従漏れを防ぐ。operator bump 時は targetRevision と
-# image.tag を揃えて更新する。
+# 【image.tag override】v0.4.1 以降は Chart.yaml の appVersion が release tag と
+# 揃って同期されているが、Renovate が targetRevision だけ bump して image.tag を
+# 更新し忘れるリスクを避けるため明示 pin を維持。operator bump 時は targetRevision と
+# image.tag を必ず揃えて更新する。
+#
+# 【v1alpha1 → v1beta1 移行】v0.4.0 で API が v1beta1 に昇格、v1alpha1 は served=false。
+# 本 chart bump (0.3.16 → 0.4.1) と同コミットで apps/garage/ 配下の manifest を
+# v1beta1 + 新フィールド形式に更新する (rajsinghtech/garage-operator MIGRATION.md
+# §"ArgoCD" の Step 1+2 を 1 PR にまとめた形)。Step 3 (v0.4.2+ または v0.5.x) は別 PR。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -33,15 +36,16 @@ spec:
   project: default
   source:
     repoURL: https://github.com/rajsinghtech/garage-operator.git
-    targetRevision: v0.3.16
+    targetRevision: v0.4.1
     path: charts/garage-operator
     helm:
       valuesObject:
         # leader election + 2 replica で operator 自身を HA 化 (minio-operator と同パターン)
         replicaCount: 2
         image:
-          # Chart.yaml の appVersion が 0.0.14 で stale なため、release tag と揃えて明示 pin
-          tag: "0.3.8"
+          # release tag と揃えて明示 pin (Renovate が chart targetRevision だけ bump して
+          # image を取り残す事故を防ぐため。詳細はファイル上部コメント参照)
+          tag: "0.4.1"
         crds:
           install: true
           keep: true

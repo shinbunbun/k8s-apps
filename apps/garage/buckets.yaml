@@ -11,7 +11,7 @@
 #
 # sync-wave 1: GarageCluster (wave 0) が Ready になってから apply させる。
 # (CR apply だけは operator reconcile のリトライで収束するが、余計な Error ログを減らすため明示)
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-chunks
@@ -21,7 +21,7 @@ spec:
   clusterRef:
     name: garage
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-ruler
@@ -31,7 +31,7 @@ spec:
   clusterRef:
     name: garage
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-admin
@@ -41,7 +41,7 @@ spec:
   clusterRef:
     name: garage
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: cnpg-backups
@@ -51,7 +51,7 @@ spec:
   clusterRef:
     name: garage
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: logs-archive

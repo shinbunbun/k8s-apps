@@ -23,7 +23,7 @@
 # Garage admin API に接続して layout / key 管理を行う。
 # /metrics は cluster 内限定 public (metricsTokenSecretRef 未指定)。VMAgent は別 NS で
 # cross-NS Secret 共有を避けるため、MinIO の PROMETHEUS_AUTH_TYPE=public と同等扱い。
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageCluster
 metadata:
   name: garage
@@ -68,7 +68,7 @@ spec:
     region: garage
 
   admin:
-    enabled: true
+    # v1beta1 では admin API が常時 enabled なので enabled フィールド削除 (MIGRATION.md 参照)
     adminTokenSecretRef:
       name: garage-admin-tokens
       key: admin-token
