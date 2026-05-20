@@ -32,7 +32,7 @@
 #   endpoint は includeEndpoint: false で出力しない (クライアント側で endpoint 明示設定)
 #
 # sync-wave 1: GarageCluster (wave 0) と GarageBucket (wave 1) と同時 apply で operator reconcile 任せ
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: loki
@@ -49,15 +49,18 @@ spec:
     accessKeyIdKey: LOKI_KEY_ID
     secretAccessKeyKey: LOKI_SECRET
   bucketPermissions:
-    - bucketRef: loki-chunks
+    - bucketRef:
+        name: loki-chunks
       read: true
       write: true
       owner: true
-    - bucketRef: loki-ruler
+    - bucketRef:
+        name: loki-ruler
       read: true
       write: true
       owner: true
-    - bucketRef: loki-admin
+    - bucketRef:
+        name: loki-admin
       read: true
       write: true
       owner: true
@@ -70,7 +73,7 @@ spec:
     includeEndpoint: false
     includeRegion: true
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: cnpg
@@ -87,7 +90,8 @@ spec:
     accessKeyIdKey: CNPG_KEY_ID
     secretAccessKeyKey: CNPG_SECRET
   bucketPermissions:
-    - bucketRef: cnpg-backups
+    - bucketRef:
+        name: cnpg-backups
       read: true
       write: true
       owner: true
@@ -101,7 +105,7 @@ spec:
     includeEndpoint: false
     includeRegion: true
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: cnpg-authentik
@@ -118,7 +122,8 @@ spec:
     accessKeyIdKey: CNPG_AUTHENTIK_KEY_ID
     secretAccessKeyKey: CNPG_AUTHENTIK_SECRET
   bucketPermissions:
-    - bucketRef: cnpg-backups
+    - bucketRef:
+        name: cnpg-backups
       read: true
       write: true
       owner: true
@@ -131,7 +136,7 @@ spec:
     includeEndpoint: false
     includeRegion: true
 ---
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: vector
@@ -148,7 +153,8 @@ spec:
     accessKeyIdKey: VECTOR_KEY_ID
     secretAccessKeyKey: VECTOR_SECRET
   bucketPermissions:
-    - bucketRef: logs-archive
+    - bucketRef:
+        name: logs-archive
       read: true
       write: true
       owner: true
@@ -165,7 +171,7 @@ spec:
 # raw/ NDJSON.zst の read と daily-struct/ Parquet の write を担う。
 # logs-typed-dbt と同じ logs-archive bucket に対する read+write 権限だが、
 # 独立したアクセスキーで権限を分離 (Phase 4 で旧 dbt 廃止後も独立運用するため)。
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: logs-rust-pipeline
@@ -182,7 +188,8 @@ spec:
     accessKeyIdKey: LOGS_RUST_PIPELINE_KEY_ID
     secretAccessKeyKey: LOGS_RUST_PIPELINE_SECRET
   bucketPermissions:
-    - bucketRef: logs-archive
+    - bucketRef:
+        name: logs-archive
       read: true
       write: true
   secretTemplate:
@@ -201,7 +208,7 @@ spec:
 # DELETE 等を実行しても AccessDenied で弾かれる (Grafana の権限分離は
 # UI/team レベルでは効くが、DuckDB datasource は SQL 任意実行を許す
 # ため、Garage 側の最小権限でガードする)。
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: grafana-duckdb
@@ -218,7 +225,8 @@ spec:
     accessKeyIdKey: GRAFANA_DUCKDB_KEY_ID
     secretAccessKeyKey: GRAFANA_DUCKDB_SECRET
   bucketPermissions:
-    - bucketRef: logs-archive
+    - bucketRef:
+        name: logs-archive
       read: true
   secretTemplate:
     name: grafana-duckdb-credentials
@@ -236,7 +244,7 @@ spec:
 # 旧 grafana-duckdb キーは MCP (motherduck) 用途で残置、本キーは Grafana 経路専用。
 # write/owner なしで最小権限 (Grafana の Explore から任意 SQL を実行されても
 # Garage 側で書込/削除を弾く)。
-apiVersion: garage.rajsingh.info/v1alpha1
+apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageKey
 metadata:
   name: clickhouse
@@ -253,7 +261,8 @@ spec:
     accessKeyIdKey: CLICKHOUSE_KEY_ID
     secretAccessKeyKey: CLICKHOUSE_SECRET
   bucketPermissions:
-    - bucketRef: logs-archive
+    - bucketRef:
+        name: logs-archive
       read: true
   secretTemplate:
     name: clickhouse-garage-credentials
