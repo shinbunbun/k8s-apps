@@ -1,4 +1,4 @@
-# Garage アクセスキー定義 (operator が garage-s3-keys Secret から import してバケット権限を付与)
+# Garage アクセスキー定義 (operator がバケット権限を付与して Secret を生成)
 #
 # 【設計 — v1beta1 cross-namespace 配置】
 # v1alpha1 では GarageKey を garage ns に集約し `secretTemplate.namespace` で
@@ -7,10 +7,18 @@
 #   - GarageKey 自体を消費側 ns に配置 (Secret は同 ns に作られる)
 #   - `clusterRef.namespace: garage` で garage ns の GarageCluster を cross-ns 参照
 #   - `bucketPermissions[].bucketRef.namespace: garage` で GarageBucket を cross-ns 参照
-#   - `importKey.secretRef.namespace: garage` で SOPS Secret を cross-ns 参照
-#     (operator ClusterRole は secrets を cluster-wide で list/get、Grant 不要)
 #   - `garage` ns 側で GarageReferenceGrant (apps/garage/reference-grants.yaml) が
 #     これらの cross-ns reference を明示的に許可
+#
+# 【importKey 不採用の経緯 (2026-05-20 復旧時の決定)】
+# 当初は `importKey.secretRef` で SOPS 暗号化された固定 access_key_id/secret を Garage に
+# import する設計だったが、移行時に operator が old GarageKey 削除に伴って Garage 側の
+# S3 access key を消し、新 GarageKey での再 import が Garage 側 tombstone 制約
+# (同じ ID の再作成不可) で失敗する事故が発生 (Issue 後追い)。
+# 復旧として importKey を撤去し、operator にランダムな新 access_key_id を auto-generate
+# させる方式に切り替えた。SOPS Secret (garage-s3-keys / -authentik) は本設計では未使用
+# (operator が consumer-ns Secret を直接生成・更新する)。secret-generator.yaml の
+# 整理は別 PR で実施予定。
 #
 # 【権限マッピング】
 #   loki                → loki-chunks / loki-ruler / loki-admin を owner
@@ -44,12 +52,6 @@ spec:
     name: garage
     namespace: garage
   name: loki
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: LOKI_KEY_ID
-    secretAccessKeyKey: LOKI_SECRET
   bucketPermissions:
     - bucketRef:
         name: loki-chunks
@@ -90,12 +92,6 @@ spec:
     name: garage
     namespace: garage
   name: cnpg
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: CNPG_KEY_ID
-    secretAccessKeyKey: CNPG_SECRET
   bucketPermissions:
     - bucketRef:
         name: cnpg-backups
@@ -123,12 +119,6 @@ spec:
     name: garage
     namespace: garage
   name: cnpg-authentik
-  importKey:
-    secretRef:
-      name: garage-s3-keys-authentik
-      namespace: garage
-    accessKeyIdKey: CNPG_AUTHENTIK_KEY_ID
-    secretAccessKeyKey: CNPG_AUTHENTIK_SECRET
   bucketPermissions:
     - bucketRef:
         name: cnpg-backups
@@ -156,12 +146,6 @@ spec:
     name: garage
     namespace: garage
   name: vector
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: VECTOR_KEY_ID
-    secretAccessKeyKey: VECTOR_SECRET
   bucketPermissions:
     - bucketRef:
         name: logs-archive
@@ -193,12 +177,6 @@ spec:
     name: garage
     namespace: garage
   name: logs-rust-pipeline
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: LOGS_RUST_PIPELINE_KEY_ID
-    secretAccessKeyKey: LOGS_RUST_PIPELINE_SECRET
   bucketPermissions:
     - bucketRef:
         name: logs-archive
@@ -232,12 +210,6 @@ spec:
     name: garage
     namespace: garage
   name: grafana-duckdb
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: GRAFANA_DUCKDB_KEY_ID
-    secretAccessKeyKey: GRAFANA_DUCKDB_SECRET
   bucketPermissions:
     - bucketRef:
         name: logs-archive
@@ -270,12 +242,6 @@ spec:
     name: garage
     namespace: garage
   name: clickhouse
-  importKey:
-    secretRef:
-      name: garage-s3-keys
-      namespace: garage
-    accessKeyIdKey: CLICKHOUSE_KEY_ID
-    secretAccessKeyKey: CLICKHOUSE_SECRET
   bucketPermissions:
     - bucketRef:
         name: logs-archive
