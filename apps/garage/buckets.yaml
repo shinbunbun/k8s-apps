@@ -15,6 +15,7 @@ apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-chunks
+  namespace: garage
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
@@ -25,6 +26,7 @@ apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-ruler
+  namespace: garage
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
@@ -35,6 +37,7 @@ apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: loki-admin
+  namespace: garage
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
@@ -45,6 +48,7 @@ apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: cnpg-backups
+  namespace: garage
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
@@ -55,6 +59,7 @@ apiVersion: garage.rajsingh.info/v1beta1
 kind: GarageBucket
 metadata:
   name: logs-archive
+  namespace: garage
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:

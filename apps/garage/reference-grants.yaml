@@ -1,0 +1,44 @@
+# GarageReferenceGrant: 消費側 namespace の GarageKey から garage ns の
+# GarageCluster / GarageBucket を cross-ns reference することを許可する。
+#
+# v1beta1 (garage-operator v0.4.0+) 以降、cross-namespace の reference は
+# **destination namespace** (= garage) 側に Grant を置くことで明示的に許可する
+# 必要がある。Grant が無いと operator の admission webhook が GarageKey を
+# 拒否する設計 (Kubernetes Gateway API ReferenceGrant と同じパターン)。
+#
+# from に列挙する各 namespace は、それぞれ実際に GarageKey を保持するもの:
+#   loki                — Loki SimpleScalable (chunks/ruler/admin)
+#   grafana             — cnpg (grafana-db Barman) + grafana-duckdb (DuckDB datasource)
+#   authentik           — cnpg-authentik (authentik-db Barman)
+#   log-archiver-vector — vector (logs-archive owner、lifecycle 設定権限あり)
+#   logs-rust-pipeline  — Rust + Polars pipeline (raw read / daily-struct write)
+#   clickhouse          — ClickHouse Grafana datasource (s3() table function、read-only)
+#
+# to は GarageCluster と GarageBucket の両方を許可 (apps/garage/keys.yaml の
+# 各 GarageKey が clusterRef + bucketPermissions[].bucketRef の 2 経路で
+# garage ns を参照するため)。name を絞らず garage ns 内の全リソースに開放
+# (この単一 cluster で運用しており tenant 分離不要)。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageReferenceGrant
+metadata:
+  name: allow-consumer-namespaces
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  from:
+    - kind: GarageKey
+      namespace: loki
+    - kind: GarageKey
+      namespace: grafana
+    - kind: GarageKey
+      namespace: authentik
+    - kind: GarageKey
+      namespace: log-archiver-vector
+    - kind: GarageKey
+      namespace: logs-rust-pipeline
+    - kind: GarageKey
+      namespace: clickhouse
+  to:
+    - kind: GarageCluster
+    - kind: GarageBucket
