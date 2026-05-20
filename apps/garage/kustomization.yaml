@@ -1,16 +1,24 @@
 # Garage CR 一式 (operator は infrastructure/garage-operator/ で別管理)
 #
 # ApplicationSet (applicationsets/apps-appset.yaml) が apps/garage を自動検出して
-# ArgoCD Application を生成。すべてのリソースを garage namespace へ。
+# ArgoCD Application を生成。
+#
+# 【namespace 配置】
+# v1alpha1 では `secretTemplate.namespace` で operator が cross-ns Secret を生成
+# できたが v1beta1 で廃止 (garage-operator v0.4.0+)。代わりに GarageKey 自体を
+# 消費側 namespace に配置し、`GarageReferenceGrant` で `garage` ns の
+# GarageCluster/GarageBucket を cross-ns reference する設計に移行。
+# このため kustomization 全体には `namespace:` を設定せず、各リソースに
+# metadata.namespace を明示する。
 #
 # sync-wave:
-#   0  GarageCluster (cluster.yaml、annotations で指定)
-#   1  GarageBucket × 5 / GarageKey × 5 (buckets.yaml, keys.yaml、同上)
+#   0  GarageCluster (cluster.yaml)
+#   1  GarageBucket × 5、GarageReferenceGrant (buckets.yaml, reference-grants.yaml)
+#   2  GarageKey × 7 (keys.yaml、cross-ns)。Grant 適用後に validate を通す
 # Secret 3 種 (admin-tokens / s3-keys / s3-keys-authentik) は sync-wave 未指定だが、
 # ArgoCD の Kind 順序 (Secret は CR より先) で GarageCluster 到達前に作られるため問題なし。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: garage
 
 commonAnnotations:
   argocd.argoproj.io/sync-options: ServerSideApply=true
@@ -18,6 +26,7 @@ commonAnnotations:
 resources:
   - cluster.yaml
   - buckets.yaml
+  - reference-grants.yaml
   - keys.yaml
   - lan-service.yaml
 
