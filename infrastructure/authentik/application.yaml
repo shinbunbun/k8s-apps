@@ -57,7 +57,7 @@ spec:
         server:
           replicas: 2
           ingress:
-            enabled: false  # Traefik IngressRoute を apps/authentik-config/ で定義
+            enabled: false  # 外部公開は Cloudflare Tunnel が authentik-server Service (ClusterIP) に直結 (apps/cloudflared-k3s/configmap.yaml)
           pdb:
             enabled: true
             minAvailable: 1
