@@ -17,8 +17,9 @@
 # read-only キーを使うことで、LAN 上のクライアントから誤って COPY/DELETE を
 # 実行しても AccessDenied で弾かれる (apps/garage/keys.yaml 参照)。
 #
-# 既存 LAN VIP 一覧 (.10 Traefik / .11 grafana / .12 vmselect / .13 vmalertmanager
-# / .14 loki / .15 hubble-ui / .16 scanopy / .17-.19 log-archiver-vector)。
+# 既存 LAN VIP 一覧 (.10 空 (旧 Traefik、撤去済み) / .11 grafana / .12 vmselect
+# / .13 vmalertmanager / .14 loki / .15 hubble-ui / .16 scanopy
+# / .17-.19 log-archiver-vector / .21 argocd-server)。
 # 次に利用可能な VIP は 192.168.128.20。
 apiVersion: v1
 kind: Service

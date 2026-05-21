@@ -1,14 +1,12 @@
 # Grafana LAN 内アクセス用 LoadBalancer Service
 #
-# 既存の grafana Service (ClusterIP) は Traefik IngressRoute 経由でのみ
-# アクセスされ、Host ヘッダ `grafana.shinbunbun.com` に依存する。
-# Cloudflare Tunnel 配下ではそのままで動くが、LAN 内のクライアント
-# (MCP サーバ等) からは Host ヘッダを付けられないため route がマッチせず 404 になる。
+# 既存の grafana Service (ClusterIP) は外部 (Cloudflare Tunnel) からの
+# アクセス専用で、cluster-internal にしか到達できない。LAN 内のクライアント
+# (MCP サーバ等) は ClusterIP に直接届かないため、別途 LoadBalancer Service が必要。
 #
-# 本 Service は Cilium LB IPAM から Traefik VIP (192.168.128.10) とは別の
-# 固定 VIP を割り当て、Host ヘッダなしで直接 grafana pod に到達させる。
-# Cilium BGP が 192.168.128.0/24 を RouterOS に広告しているため、同 LAN 上の
-# クライアントからルーター経由でアクセスできる。
+# 本 Service は Cilium LB IPAM から固定 VIP を割り当て、直接 grafana pod に
+# 到達させる。Cilium BGP が 192.168.128.0/24 を RouterOS に広告しているため、
+# 同 LAN 上のクライアントからルーター経由でアクセスできる。
 apiVersion: v1
 kind: Service
 metadata:

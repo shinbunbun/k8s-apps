@@ -30,8 +30,6 @@ spec:
       kind: "*"
     - group: networking.k8s.io
       kind: "*"
-    - group: traefik.io
-      kind: "*"
     - group: batch
       kind: "*"
     # CloudNativePG (CNPG) の Cluster / Backup / Pooler 等を apps/ 配下で使えるようにする

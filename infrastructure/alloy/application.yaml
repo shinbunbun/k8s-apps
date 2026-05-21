@@ -227,7 +227,7 @@ spec:
                 }
 
                 // (7.5) authentik asyncio CancelledError downgrade
-                // Cloudflare Tunnel → Traefik → authentik Go router → Python ASGI の
+                // Cloudflare Tunnel → authentik Go router → Python ASGI の
                 // 経路でクライアント切断が起きると、authentik upstream の
                 // `asyncio.shield()` でラップされた future が CancelledError を
                 // error level で記録する (直前に Go router が `failed to proxy to
