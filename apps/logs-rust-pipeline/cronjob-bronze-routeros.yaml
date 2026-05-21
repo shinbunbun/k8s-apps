@@ -55,7 +55,11 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 8Gi
+                  # 2026-05-20 logs-pipeline PR #25 (sink+Engine::Streaming、dotfiles-private#242
+                  # Phase 2) で routeros の peak_mib_after_collect 増幅率が collect 経路の
+                  # ~2.2x から ~1.4x に明確に低下、5.1M rows / 1.6GB NDJSON でも peak ~2.2GB
+                  # 予測 → 8Gi → 6Gi (2.7x headroom) に縮小 (Phase 3)。
+                  memory: 6Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

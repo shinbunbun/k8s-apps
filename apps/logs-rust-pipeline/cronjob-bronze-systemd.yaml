@@ -52,17 +52,18 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  # Polars dynamic NDJSON inference + concat(diagonal=true) で全 hour
-                  # を in-memory に乗せるため、systemd 25K 行でも余裕を持って 4Gi。
-                  # 実測 (peak_mib log) 後に縮小可。
                   # 2026-05-15/16 OOM-killed 発生 (anon-rss 4.1GB で limit 突破、
                   # systemd silver 量増加で 449MB NDJSON / 338K records に到達):
                   # bronze-k8s-pods と同じ +50% 6Gi に bump (dotfiles-private#242 系)。
                   # 2026-05-17 NDJSON 1.64GiB / 1.2M records (5/15 の 3.6x) に再急増、
                   # 6Gi は 19s で OOM、12Gi も parsing 段階で OOM、24Gi で完走 (k8s-apps#363
-                  # で /tmp sizeLimit、本 PR で memory を 6→24Gi)。Polars NDJSON inference
-                  # の memory 増幅 (~7-8x NDJSON size) が根本原因 (dotfiles-private#242)。
-                  memory: 24Gi
+                  # で /tmp sizeLimit、当時 memory を 6→24Gi)。
+                  # 2026-05-20 logs-pipeline PR #25 で Polars new streaming engine 経由の
+                  # sink+collect_with_engine(Engine::Streaming) に置換 (dotfiles-private#242
+                  # Phase 2)。peak_mib_after_collect の NDJSON 増幅率が collect 経路の
+                  # ~7-8x から ~5x に低下、systemd 5/17 type の 1.6GB NDJSON でも peak
+                  # ~8GB 予測 → 24Gi → 12Gi (1.5x headroom) に縮小 (Phase 3)。
+                  memory: 12Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

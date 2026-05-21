@@ -64,7 +64,11 @@ spec:
                   cpu: 100m
                   memory: 256Mi
                 limits:
-                  memory: 12Gi
+                  # 2026-05-20 logs-pipeline PR #25 (sink+Engine::Streaming、dotfiles-private#242
+                  # Phase 2) で macos-unified の peak_mib_after_collect ~375MB を観測、
+                  # NDJSON 126MB × ~3x amplification → 12Gi は overkill (32x headroom)
+                  # で 6Gi に縮小 (16x headroom 維持、Phase 3)。
+                  memory: 6Gi
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
