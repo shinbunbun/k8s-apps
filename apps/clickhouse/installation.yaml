@@ -73,7 +73,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: clickhouse/clickhouse-server:25.3
+              image: clickhouse/clickhouse-server:25.12
               # Garage operator が生成した read-only credentials を env 注入。
               # named_collections.xml の from_env が AWS_ACCESS_KEY_ID/SECRET を拾う。
               envFrom:
