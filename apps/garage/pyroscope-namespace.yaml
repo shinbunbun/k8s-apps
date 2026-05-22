@@ -1,0 +1,19 @@
+# pyroscope namespace
+#
+# apps/garage/keys.yaml の GarageKey `pyroscope` を `pyroscope` namespace に配置
+# するため、ns 自体を garage app で先行作成しておく必要がある。
+#
+# 本来は infrastructure/pyroscope の Application が CreateNamespace=true で作る
+# 想定だったが、garage app (sync-wave 2 の GarageKey) が pyroscope app より先に
+# 動くため `namespaces "pyroscope" not found` で失敗していた。
+#
+# Namespace は idempotent なので、infrastructure/pyroscope 側の
+# CreateNamespace=true と二重作成しても問題なし (先勝ち)。
+#
+# sync-wave 0: GarageCluster と同階層。GarageKey (wave 2) より確実に先に作る。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pyroscope
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
