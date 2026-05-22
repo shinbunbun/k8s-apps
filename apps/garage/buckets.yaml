@@ -65,3 +65,18 @@ metadata:
 spec:
   clusterRef:
     name: garage
+---
+# Pyroscope 2.0 (monolithic) の object storage backend (Pyroscope 2.0 で mandatory)。
+# profile blocks + symbol metadata を格納。retention は server 側 30d 設定で
+# compactor が GC する (lifecycle rule は未設定、Pyroscope 内蔵 retention に委譲)。
+# Issue: shinbunbun/dotfiles#699
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: pyroscope-blocks
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage
