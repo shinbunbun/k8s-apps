@@ -123,12 +123,17 @@ spec:
               - name: symb-cache
                 mountPath: /tmp/symb-cache
 
+          # eBPF profiler は Go ヒープ外の native memory (symbol unwinding cache,
+          # JIT 解析データ等) を大きく使うため、当初の 512Mi では起動直後に
+          # OOMKilled が頻発した (g3pro 1回 / nixos-desktop 2回)。
+          # GOMEMLIMIT は limit の 90% に自動設定されるが native 領域には効かないため、
+          # limit 自体を 1Gi に引き上げる。
           resources:
             requests:
               cpu: 200m
-              memory: 256Mi
-            limits:
               memory: 512Mi
+            limits:
+              memory: 1Gi
 
           configMap:
             create: true
@@ -157,11 +162,23 @@ spec:
 
               // ===== eBPF Profiler =====
               // perf_event_open + BPF stack maps で kernel + userspace stack を採取。
-              // 公式デフォルト (sample_rate=19, collect_kernel_profile=true,
-              // collect_user_profile=true, *_enabled=true) のまま使用。
+              // sample_rate=19, collect_kernel_profile=true, collect_user_profile=true は
+              // default のまま使用。HLL tracer のうち homelab で使わない / 不安定なものは
+              // disable して native memory フットプリントを削減 (OOM 対策):
+              //   - python_enabled=false: Python 3.15 が pyroscope 未対応で symbol load
+              //     ERROR を発生させる + そもそも k8s 上に Python ワークロード未稼働
+              //   - perl_enabled / php_enabled / v8_enabled / dotnet_enabled = false:
+              //     対象ワークロードなし。tracer ロードコストだけ無駄
+              //   - hotspot_enabled / ruby_enabled は残す: Loki/Grafana の周辺で JVM 系を
+              //     入れる可能性あり、Ruby も将来用に保持 (実害なし)
               pyroscope.ebpf "instance" {
-                forward_to = [pyroscope.write.local.receiver]
-                targets    = discovery.relabel.profile_targets.output
+                forward_to            = [pyroscope.write.local.receiver]
+                targets               = discovery.relabel.profile_targets.output
+                python_enabled        = false
+                perl_enabled          = false
+                php_enabled           = false
+                v8_enabled            = false
+                dotnet_enabled        = false
               }
 
               // ===== Pyroscope server へ送信 =====
