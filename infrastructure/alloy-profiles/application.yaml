@@ -1,0 +1,199 @@
+# Grafana Alloy (profiles) - eBPF Continuous Profiler DaemonSet
+#
+# 設計判断:
+#
+# 【目的】Linux kernel + userspace の CPU stack を eBPF (perf_event_open + BPF stack maps)
+# で全 k3s ノードから採取し、Pyroscope 2.0 server に push する。
+# Issue: shinbunbun/dotfiles#699。
+#
+# 【既存 alloy との分離理由】
+# 既存 infrastructure/alloy (DaemonSet) はログ収集 (loki.source.kubernetes) 専用で
+# 通常権限で動作する。`pyroscope.ebpf` component は:
+#   - privileged: true + hostPID: true が必要 (Grafana 公式推奨)
+#   - /sys/kernel/tracing と host /proc の hostPath マウントが必要
+# これらを既存 alloy に背負わせると、ログ収集 pod まで「kernel root を握る権限」を
+# 持つことになり blast radius が拡大する。profile 用は別 DaemonSet (`alloy-profiles`
+# ns) に閉じ込めて権限を局所化、ログパイプラインの再起動巻き込みも防ぐ。
+# 詳細トレードオフ評価: dotfiles Issue #699 の PR 議論を参照。
+#
+# 【chart】grafana/alloy 1.8.1 (Alloy v1.16.0)、既存 alloy と同じ chart の別 release。
+#
+# 【セキュリティ】
+#   - alloy.securityContext.privileged: true (eBPF program load + kernel mount アクセス)
+#   - alloy.securityContext.runAsUser/runAsGroup: 0 (root 必須、公式記載)
+#   - controller.hostPID: true (target process の /proc/PID/maps 読取)
+#   - /sys/kernel/tracing (ro) を hostPath mount (BPF tracepoint attach 用、Linux 6.x で
+#     `/sys/kernel/debug` の代替経路として標準化)
+#   - host /proc を mount (process build-id / cmdline / maps の解決用)
+#
+# 【kernel symbol 解決】dotfiles 側 (k3s.nix) で kernel.kptr_restrict=0 を設定済み
+# (Pyroscope eBPF 用前提条件、shinbunbun/dotfiles#710)。これにより /proc/kallsyms
+# が実アドレスを返し、flame graph に entry_SYSCALL_64 等の kernel frame が出る。
+#
+# 【自ノードフィルタ】discovery.kubernetes の selectors で spec.nodeName=NODE_NAME に
+# 絞り、3 重採取を防ぐ (DaemonSet ベストプラクティス、既存 alloy と同方針)。
+# NODE_NAME は extraEnv で fieldRef: spec.nodeName から取得。
+#
+# 【除外 namespace】kube-system / kube-public / kube-node-lease (k8s 標準) +
+# loki / victoriametrics / monitoring / alloy / alloy-profiles / log-archiver-vector
+# / pyroscope (観測スタック自身の self-profile はノイズ、必要時のみ on)。
+#
+# 【Pyroscope 送信先】pyroscope.pyroscope.svc.cluster.local:4040 (ClusterIP)。
+# 同クラスタ内なので認証なし。external_labels に cluster=homelab + host=<node>
+# を付与し、Grafana 側で per-node 切り替えできるようにする。
+#
+# 【pyroscope.ebpf デフォルト】
+#   - sample_rate: 19 (Hz)、collect_kernel_profile: true、collect_user_profile: true
+#   - python_enabled/ruby_enabled/php_enabled/hotspot_enabled/v8_enabled/dotnet_enabled/
+#     perl_enabled: true (HLL も自動対応)
+#   - 自前のチューニングは行わず公式デフォルト採用
+#
+# 【リソース】requests cpu: 200m / memory: 256Mi、limits memory: 512Mi。
+# eBPF profiler + symbolization 用に既存 alloy (128Mi/256Mi) より太め。
+# g3pro (Intel N150) でも問題ない範囲。
+#
+# 【symbol cache】Alloy が /tmp/symb-cache に symbol 情報をキャッシュする。
+# emptyDir で確保 (ノード再起動で消えても再構築されるため永続化不要)。
+#
+# 【sync-wave】15: pyroscope server (wave 10) の後にデプロイ。
+# server 未起動でも push 失敗 → retry で吸収するので厳密順序は不要だが、
+# ログのノイズ削減のため。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy-profiles
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: "1.8.1"
+    helm:
+      valuesObject:
+        # === Controller (DaemonSet) ===
+        controller:
+          type: daemonset
+          # eBPF profiler が target PID を見るために必須
+          hostPID: true
+          # /sys/kernel/tracing + host /proc + symbol cache を hostPath で追加
+          volumes:
+            extra:
+              - name: sys-kernel-tracing
+                hostPath:
+                  path: /sys/kernel/tracing
+                  type: Directory
+              - name: host-proc
+                hostPath:
+                  path: /proc
+                  type: Directory
+              - name: symb-cache
+                emptyDir: {}
+
+        # === Alloy 本体 ===
+        alloy:
+          # eBPF program load + kernel mount アクセスに privileged + root が必要
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: true
+
+          # NODE_NAME env を全 Pod に注入 (自ノード Pod のみ採取に絞るため)
+          extraEnv:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # ホスト OS のログは収集しないので chart のデフォルト mount は無効化
+          mounts:
+            varlog: false
+            dockercontainers: false
+            # 追加 hostPath を container にマウント (controller.volumes.extra と対応)
+            extra:
+              - name: sys-kernel-tracing
+                mountPath: /sys/kernel/tracing
+                readOnly: true
+              - name: host-proc
+                mountPath: /host/proc
+                readOnly: true
+              - name: symb-cache
+                mountPath: /tmp/symb-cache
+
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+
+          configMap:
+            create: true
+            content: |
+              // ===== Service Discovery =====
+              // 自ノード上の Pod のみを採取対象に (3 重採取防止)。
+              // spec.nodeName field selector で API server 側でフィルタ。
+              discovery.kubernetes "local_pods" {
+                selectors {
+                  field = "spec.nodeName=" + sys.env("NODE_NAME")
+                  role  = "pod"
+                }
+                role = "pod"
+              }
+
+              // 観測スタック自身 + k8s system ns を除外 (self-profile のノイズ削減)
+              discovery.relabel "profile_targets" {
+                targets = discovery.kubernetes.local_pods.targets
+
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  regex         = "kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|alloy-profiles|log-archiver-vector|pyroscope"
+                  action        = "drop"
+                }
+              }
+
+              // ===== eBPF Profiler =====
+              // perf_event_open + BPF stack maps で kernel + userspace stack を採取。
+              // 公式デフォルト (sample_rate=19, collect_kernel_profile=true,
+              // collect_user_profile=true, *_enabled=true) のまま使用。
+              pyroscope.ebpf "instance" {
+                forward_to = [pyroscope.write.local.receiver]
+                targets    = discovery.relabel.profile_targets.output
+              }
+
+              // ===== Pyroscope server へ送信 =====
+              // ClusterIP service へ直接 push。external_labels で cluster + host を付与し、
+              // Grafana Explore タブから per-node に flame graph を絞り込めるようにする。
+              pyroscope.write "local" {
+                endpoint {
+                  url = "http://pyroscope.pyroscope.svc.cluster.local:4040"
+                }
+                external_labels = {
+                  cluster = "homelab",
+                  host    = sys.env("NODE_NAME"),
+                }
+              }
+
+        # === RBAC ===
+        # discovery.kubernetes 用の pods list/watch 権限を auto-create
+        serviceAccount:
+          create: true
+        rbac:
+          create: true
+
+        # === 自身のメトリクス公開 ===
+        service:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: alloy-profiles
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
