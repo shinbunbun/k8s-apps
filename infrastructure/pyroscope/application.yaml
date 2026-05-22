@@ -1,0 +1,137 @@
+# Pyroscope - Continuous Profiling Server (monolithic, Pyroscope 2.0)
+#
+# 設計判断:
+#
+# 【目的】Grafana Alloy `pyroscope.ebpf` component (infrastructure/alloy-profiles)
+# が採取する kernel + userspace CPU プロファイルを受信・保管し、Grafana datasource
+# 経由で flame graph として可視化する。Issue: shinbunbun/dotfiles#699。
+#
+# 【chart】grafana/pyroscope 2.0.1 (Pyroscope v2.0.1)。
+# https://github.com/grafana/pyroscope/releases
+# Pyroscope 2.0 (2026-04-21 GA) は完全リアーキ:
+#   - 3x replication 廃止 → object storage を単一 source of truth に
+#   - profile co-location でシンボル重複削減 (公式実績で 95% 削減)
+#   - read path stateless 化
+# 新規導入なので v1 を選ぶ理由なし。
+#
+# 【deployment mode】monolithic (microservices.enabled: false)。
+# Pyroscope 公式は「small cluster は monolithic 推奨」。home-lab 3 ノード規模で
+# distributor / querier / ingester / compactor を分離する意味は薄く、運用負荷増。
+# 単一 StatefulSet 内で全ターゲットが動く。
+#
+# 【ストレージ】architecture.storage.v2 を採用 (v1 は disable)。
+# Pyroscope 2.0 の新しい block format + co-location 前提のレイアウト。
+# object storage backend は Garage S3 (apps/garage の pyroscope-blocks bucket、
+# pyroscope-garage-credentials Secret で認証)。Loki / vector / cnpg と同じ
+# Garage クラスタで運用統一。
+#
+# 【認証情報】pyroscope-garage-credentials Secret を extraEnvFrom で AWS SDK 標準
+# キー (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION) として注入。
+# この Secret は Garage Operator が GarageKey CR の secretTemplate で pyroscope ns
+# に直接生成する (apps/garage/keys.yaml の pyroscope GarageKey)。
+#
+# 【retention】30 日。Pyroscope 内蔵 compactor が古い block を物理削除する。
+# Garage bucket lifecycle rule は未設定 (Pyroscope に retention 制御を一元化)。
+#
+# 【レプリカ】monolithic で replicas: 1。ノード障害時は再起動で復旧、profile
+# データは Garage S3 に永続化済みなので block の再読込で継続。HA は必要に
+# なってから microservices モード移行で対応 (homelab 規模では不要)。
+#
+# 【ネットワーク】
+# - alloy-profiles からの push 先: pyroscope.pyroscope.svc.cluster.local:4040
+#   (ClusterIP、cluster 内のみ)
+# - Grafana datasource: 同 ClusterIP 経由で読み取り
+# - 外部公開なし (Cloudflare Tunnel にも載せない、LAN 限定)。Loki と同方針。
+# - LAN VIP も初期は割り当てない (必要になったら apps/pyroscope-config/lan-service.yaml で追加)
+#
+# 【リソース】requests cpu: 200m / memory: 512Mi、limits memory: 2Gi。
+# homelab 規模 (~3 ノードからの CPU profile、19Hz sampling) では十分。
+#
+# 【sync-wave】10: loki / alloy と同階層。
+# apps/garage の Bucket/Key (wave 1-2) が先に立っている必要があるが、
+# ArgoCD の retry で吸収できる (Secret 不在なら pod CrashLoopBackOff → 再 sync で復旧)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pyroscope
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: pyroscope
+    # Chart 2.0.1 = Pyroscope 2.0.1 (https://github.com/grafana/pyroscope/blob/main/operations/pyroscope/helm/pyroscope/Chart.yaml)
+    targetRevision: "2.0.1"
+    helm:
+      valuesObject:
+        # === デプロイモード ===
+        # microservices=false で単一 StatefulSet (all-in-one) 起動
+        microservices:
+          enabled: false
+
+        # === ストレージアーキテクチャ ===
+        # Pyroscope 2.0 の新 block format + 単一 object storage backend
+        architecture:
+          storage:
+            v1: false
+            v2: true
+
+        # chart 同梱の MinIO subchart は使わず、外部 Garage (apps/garage) を参照
+        minio:
+          enabled: false
+
+        # === Pyroscope server 本体設定 ===
+        pyroscope:
+          # Garage credentials を AWS SDK 標準 env として注入
+          # (Secret は apps/garage の pyroscope GarageKey が auto-generate)
+          extraEnvFrom:
+            - secretRef:
+                name: pyroscope-garage-credentials
+
+          # 単一 StatefulSet (monolithic)
+          replicaCount: 1
+
+          # object storage backend + retention 設定
+          structuredConfig:
+            storage:
+              backend: s3
+              s3:
+                endpoint: garage.garage.svc.cluster.local:3900
+                bucket_name: pyroscope-blocks
+                region: garage
+                insecure: true
+                # path-style: Garage 互換のため明示
+                force_path_style: true
+                # access_key_id / secret_access_key は env 経由 (pyroscope-garage-credentials)
+            # 30 日 retention (compactor が古い block を delete)
+            pyroscopedb:
+              max_block_duration: 30m
+            # compactor は monolithic では all-in-one 内で動作
+            compactor:
+              retention_period: 720h
+
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+
+        # === Service 設定 ===
+        # ClusterIP のみ (外部公開なし)。Grafana datasource / alloy-profiles から
+        # `http://pyroscope.pyroscope.svc.cluster.local:4040` で参照。
+        service:
+          type: ClusterIP
+          port: 4040
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pyroscope
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
