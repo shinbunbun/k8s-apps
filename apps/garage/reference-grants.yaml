@@ -13,6 +13,7 @@
 #   log-archiver-vector — vector (logs-archive owner、lifecycle 設定権限あり)
 #   logs-rust-pipeline  — Rust + Polars pipeline (raw read / daily-struct write)
 #   clickhouse          — ClickHouse Grafana datasource (s3() table function、read-only)
+#   pyroscope           — Pyroscope 2.0 monolithic (pyroscope-blocks owner、Issue dotfiles#699)
 #
 # to は GarageCluster と GarageBucket の両方を許可 (apps/garage/keys.yaml の
 # 各 GarageKey が clusterRef + bucketPermissions[].bucketRef の 2 経路で
@@ -39,6 +40,8 @@ spec:
       namespace: logs-rust-pipeline
     - kind: GarageKey
       namespace: clickhouse
+    - kind: GarageKey
+      namespace: pyroscope
   to:
     - kind: GarageCluster
     - kind: GarageBucket
