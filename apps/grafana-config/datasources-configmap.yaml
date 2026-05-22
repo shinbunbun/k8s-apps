@@ -98,3 +98,16 @@ data:
           protocol: http
           secure: false
           username: default
+      # Pyroscope datasource (Grafana 公式同梱 grafana-pyroscope-datasource)
+      # 用途: Alloy pyroscope.ebpf (infrastructure/alloy-profiles) が採取した
+      # kernel + userspace の CPU profile を flame graph として Explore タブで
+      # 可視化。Issue dotfiles#699 で導入。Pyroscope 2.0 monolithic server は
+      # infrastructure/pyroscope で稼働、Garage S3 (pyroscope-blocks) を backend
+      # に retention 30d。external_labels の cluster=homelab + host=<node-name>
+      # で per-node 絞り込み可能。
+      - name: Pyroscope
+        type: grafana-pyroscope-datasource
+        uid: Pyroscope0001
+        access: proxy
+        editable: false
+        url: http://pyroscope.pyroscope.svc.cluster.local:4040
