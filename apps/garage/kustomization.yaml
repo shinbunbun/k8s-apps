@@ -25,6 +25,7 @@ commonAnnotations:
 
 resources:
   - cluster.yaml
+  - pyroscope-namespace.yaml
   - buckets.yaml
   - reference-grants.yaml
   - keys.yaml
