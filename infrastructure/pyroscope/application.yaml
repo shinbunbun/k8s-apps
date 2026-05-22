@@ -105,12 +105,14 @@ spec:
                 # path-style: Garage 互換のため明示
                 force_path_style: true
                 # access_key_id / secret_access_key は env 経由 (pyroscope-garage-credentials)
-            # 30 日 retention (compactor が古い block を delete)
-            pyroscopedb:
-              max_block_duration: 30m
-            # compactor は monolithic では all-in-one 内で動作
-            compactor:
-              retention_period: 720h
+            # 30 日 retention (compactor が古い block を delete)。
+            # Pyroscope 2.0 では `limits.compactor_blocks_retention_period` に書く
+            # (CLI flag -compactor.blocks-retention-period 相当)。旧 1.x の
+            # `compactor.retention_period` は v2 の compactor.Config に存在しない。
+            limits:
+              compactor_blocks_retention_period: 720h
+            # pyroscopedb.max_block_duration は default (1h) のまま使用 (homelab 3 ノード
+            # 規模では短縮しても compaction 頻度が上がるだけでメリット薄)
 
           resources:
             requests:
