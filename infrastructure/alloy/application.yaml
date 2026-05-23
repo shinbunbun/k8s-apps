@@ -252,7 +252,7 @@ spec:
                 // データ消失リスクなし。本物の compaction エラー (segment-writer 不在等) は
                 // 別 caller なので影響しない。詳細: unified-dotfiles#17。
                 stage.match {
-                  selector = "{namespace=\"pyroscope\", container=\"pyroscope\"} |~ \"caller=worker\\.go:(494|499).*(Key not found|version is deleted)\""
+                  selector = "{namespace=\"pyroscope\", container=\"pyroscope\"} |~ \"caller=worker\\\\.go:(494|499).*(Key not found|version is deleted)\""
 
                   stage.template {
                     source   = "level"
