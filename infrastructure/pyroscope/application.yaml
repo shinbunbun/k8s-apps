@@ -127,6 +127,23 @@ spec:
             metastore:
               compaction_max_failures: 1
 
+            # segment-writer の S3 upload timeout (default 2s) を 10s に延長。
+            # Pyroscope compactor が全シャード同時 L0→L1 compaction を実行すると
+            # 短時間に大量 PUT が発生し、Garage の write quorum 完了 latency tail
+            # が 2s を超えるケースで segment-writer flush timeout (context deadline
+            # exceeded) が発生していた。Garage 側メトリクスは健全
+            # (block_resync_errored_blocks=0, rpc_timeout_counter=0,
+            # api_s3_request_duration 平均 17-50ms / tail 200-540ms) で根本問題は
+            # default timeout が短すぎたこと。10s に延ばせば compaction burst 中の
+            # tail も大半が収まる。
+            # 参考: pkg/segmentwriter/service.go segmentwriter.Config.UploadTimeout
+            # (yaml tag "upload-timeout,omitempty", default 2*time.Second)。
+            # トップキーはアンダースコア (`segment_writer`)、サブキーはハイフン
+            # (`upload-timeout`) という Pyroscope の混在規則に注意 (strict YAML
+            # decode のため間違えると CrashLoopBackOff)。
+            segment_writer:
+              upload-timeout: 10s
+
           resources:
             requests:
               cpu: 200m
