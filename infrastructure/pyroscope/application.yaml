@@ -114,6 +114,19 @@ spec:
             # pyroscopedb.max_block_duration は default (1h) のまま使用 (homelab 3 ノード
             # 規模では短縮しても compaction 頻度が上がるだけでメリット薄)
 
+            # Compactor リトライ抑制 (Garage v2 transient race 対策)。
+            # Garage は object_table と version_table の CRDT 伝播 race 時に HTTP 500
+            # "conflict/inconsistency between object and version state, version is deleted"
+            # を返す (transient error 設計、client retry 想定: src/api/s3/get.rs check_version_not_deleted)。
+            # 一方 Pyroscope の objstore.IsObjNotFoundErr は NoSuchKey しか認識せずこの 500 を
+            # NotFound 扱いできないため、毎回 3 回フルリトライ → MaxFailures (default 3) 到達で
+            # abandon → 新 segment 到着で再 attempt の永久ループになり log noise の主因。
+            # MaxFailures=1 でリトライを 1 回に抑制、abandon された block は次サイクルで
+            # 再 attempt (race は ephemeral なので次回成功する想定)。
+            # 参考: pkg/objstore/not_found.go (NoSuchKey のみ判定), pkg/metastore/compaction/scheduler/scheduler.go
+            metastore:
+              compaction_max_failures: 1
+
           resources:
             requests:
               cpu: 200m
