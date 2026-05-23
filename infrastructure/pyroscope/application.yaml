@@ -136,9 +136,13 @@ spec:
             # api_s3_request_duration 平均 17-50ms / tail 200-540ms) で根本問題は
             # default timeout が短すぎたこと。10s に延ばせば compaction burst 中の
             # tail も大半が収まる。
-            # 参考: pkg/segmentwriter/config.go UploadTimeout (2*time.Second default)
+            # 参考: pkg/segmentwriter/service.go segmentwriter.Config.UploadTimeout
+            # (yaml tag "upload-timeout,omitempty", default 2*time.Second)。
+            # トップキーはアンダースコア (`segment_writer`)、サブキーはハイフン
+            # (`upload-timeout`) という Pyroscope の混在規則に注意 (strict YAML
+            # decode のため間違えると CrashLoopBackOff)。
             segment_writer:
-              upload_timeout: 10s
+              upload-timeout: 10s
 
           resources:
             requests:
