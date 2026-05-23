@@ -244,6 +244,22 @@ spec:
                   }
                 }
 
+                // (7.6) pyroscope compaction-worker Garage race を warn にダウングレード
+                // worker.go:494 "failed to find blocks" / worker.go:499 "failed to compact blocks"
+                // は Garage S3 の object_table / version_table CRDT 伝播 race の skip 経路。
+                // Pyroscope は transient な NotFound を error level で記録するが、metastore 側
+                // で index 更新は発生せず (compaction_raft_handler.go L200 で early-return)、
+                // データ消失リスクなし。本物の compaction エラー (segment-writer 不在等) は
+                // 別 caller なので影響しない。詳細: unified-dotfiles#17。
+                stage.match {
+                  selector = "{namespace=\"pyroscope\", container=\"pyroscope\"} |~ \"caller=worker\\.go:(494|499).*(Key not found|version is deleted)\""
+
+                  stage.template {
+                    source   = "level"
+                    template = "warn"
+                  }
+                }
+
                 // (8) ラベル化 (extracted.level が空文字列のときラベル不付与の挙動を期待)
                 stage.labels {
                   values = { level = "" }
