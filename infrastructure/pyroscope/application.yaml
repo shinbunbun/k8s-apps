@@ -141,8 +141,24 @@ spec:
             # トップキーはアンダースコア (`segment_writer`)、サブキーはハイフン
             # (`upload-timeout`) という Pyroscope の混在規則に注意 (strict YAML
             # decode のため間違えると CrashLoopBackOff)。
+            # hedged upload を事実上無効化 (default 500ms → 30s)。
+            # Pyroscope の uploadBlock は retry.Hedged で primary PUT が
+            # `upload-hedge-after` 経過時点で未完了の場合、同じ key に対し
+            # 2 本目の PUT を並行発射する (pkg/segmentwriter/segment.go
+            # L400-436 + pkg/util/retry/hedged.go)。一方が成功した瞬間
+            # context cancel するが、既にネット上にある 2 本目の HTTP request
+            # は Garage に到達して Aborted=true の object version として
+            # 記録される (= 全 upload で 1 completed + 1 aborted の 2 version
+            # が生成される)。多くは GC で清掃されるが、Garage 側の GC backlog
+            # と race して一部が「object exists, version=deleted」の dangling
+            # 状態に固着し、Pyroscope querier が永久に Garage 500 を受け取る
+            # 真因となっていた (unified-dotfiles#17、約 200 block dangling 化)。
+            # HedgeAfter > UploadTimeout なら hedged は事実上発火しないため、
+            # 30s に延ばして aborted version 生成元を断つ。homelab 規模では
+            # テールレイテンシ削減の恩恵より dangling block 抑止の方が重要。
             segment_writer:
               upload-timeout: 10s
+              upload-hedge-after: 30s
 
           resources:
             requests:
