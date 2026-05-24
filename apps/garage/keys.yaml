@@ -288,3 +288,37 @@ spec:
     regionKey: AWS_REGION
     includeEndpoint: false
     includeRegion: true
+---
+# Tempo monolithic 用 GarageKey。
+# tempo-traces に read+write+owner を付与:
+#   - owner は compactor の ListBucket + DeleteObject に必須
+#   - Tempo 内蔵 retention (14d) で古い block を物理削除
+# 生成 Secret は tempo ns の `tempo-garage-credentials` (AWS SDK 標準形式)。
+# infrastructure/tempo の Helm values から extraEnvFrom で注入する。
+# Issue: shinbunbun/unified-dotfiles#16
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: tempo
+  namespace: tempo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage
+    namespace: garage
+  name: tempo
+  bucketPermissions:
+    - bucketRef:
+        name: tempo-traces
+        namespace: garage
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: tempo-garage-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true

@@ -80,3 +80,19 @@ metadata:
 spec:
   clusterRef:
     name: garage
+---
+# Tempo monolithic の object storage backend。trace block + WAL flush を格納。
+# retention は Tempo 側 14d 設定で compactor が GC する (Pyroscope と同方針、
+# lifecycle rule 未設定)。
+# 14d は Garage 容量制約 (garage-2 残 24GB) を踏まえた初期値、後で延長判断。
+# Issue: shinbunbun/unified-dotfiles#16
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: tempo-traces
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage

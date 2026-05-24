@@ -13,8 +13,8 @@
 #
 # sync-wave:
 #   0  GarageCluster (cluster.yaml)
-#   1  GarageBucket × 5、GarageReferenceGrant (buckets.yaml, reference-grants.yaml)
-#   2  GarageKey × 7 (keys.yaml、cross-ns)。Grant 適用後に validate を通す
+#   1  GarageBucket × 6、GarageReferenceGrant (buckets.yaml, reference-grants.yaml)
+#   2  GarageKey × 8 (keys.yaml、cross-ns)。Grant 適用後に validate を通す
 # Secret 3 種 (admin-tokens / s3-keys / s3-keys-authentik) は sync-wave 未指定だが、
 # ArgoCD の Kind 順序 (Secret は CR より先) で GarageCluster 到達前に作られるため問題なし。
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -26,6 +26,7 @@ commonAnnotations:
 resources:
   - cluster.yaml
   - pyroscope-namespace.yaml
+  - tempo-namespace.yaml
   - buckets.yaml
   - reference-grants.yaml
   - keys.yaml

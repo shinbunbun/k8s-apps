@@ -111,3 +111,40 @@ data:
         access: proxy
         editable: false
         url: http://pyroscope.pyroscope.svc.cluster.local:4040
+      # Tempo datasource (Grafana 公式同梱 tempo plugin)
+      # 用途: Beyla (infrastructure/beyla) が eBPF auto-instrument した
+      # HTTP/gRPC/SQL span を distributed trace として Traces Drilldown +
+      # Explore タブで可視化。Tempo 2.10 monolithic server は infrastructure/tempo
+      # で稼働、Garage S3 (tempo-traces) backend に retention 14d。
+      # cross-link:
+      #   - tracesToLogsV2: trace_id 由来で Loki に飛ぶ (service.name + k8s.namespace.name)
+      #   - tracesToProfiles: span から Pyroscope の CPU profile に飛ぶ (service_name 一致)
+      # Issue: shinbunbun/unified-dotfiles#16
+      - name: Tempo
+        type: tempo
+        uid: Ptempo0001
+        access: proxy
+        editable: false
+        url: http://tempo.tempo.svc.cluster.local:3200
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: P8E80F9AEF21F6940
+            spanStartTimeShift: '-1h'
+            spanEndTimeShift: '1h'
+            tags:
+              - key: 'service.name'
+                value: 'service'
+              - key: 'k8s.namespace.name'
+                value: 'namespace'
+            filterByTraceID: true
+            filterBySpanID: false
+          tracesToProfiles:
+            datasourceUid: Pyroscope0001
+            tags:
+              - key: 'service.name'
+                value: 'service_name'
+            profileTypeId: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'
+          nodeGraph:
+            enabled: true
+          streamingEnabled:
+            search: true
