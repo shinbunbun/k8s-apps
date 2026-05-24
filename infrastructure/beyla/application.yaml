@@ -72,6 +72,17 @@ spec:
           OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://tempo.tempo.svc.cluster.local:4317"
           OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "grpc"
 
+        # === context propagation 無効化 ===
+        # chart default で contextPropagation.enabled: true、これが true だと
+        # daemonset template が hostNetwork: true を Pod に付与する (Beyla の
+        # eBPF sock_ops フックで HTTP header に traceparent を注入するため)。
+        # Phase 1 では単純な HTTP/gRPC observability が目的で Go アプリ間の
+        # trace 連結は不要。hostNetwork はノードのネットワーク namespace に
+        # 直結する強権限なので、Phase 1 では明示的に off にして抑止する。
+        # Phase 2 以降で trace propagation を活用するときに enable に切り替え。
+        contextPropagation:
+          enabled: false
+
         # === Beyla 内部 config ===
         config:
           data:

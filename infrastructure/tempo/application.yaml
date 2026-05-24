@@ -127,16 +127,18 @@ spec:
               wal:
                 path: /var/tempo/wal
 
+          # metrics-generator は Phase 2 で有効化 (VictoriaMetrics remoteWrite 連携)。
+          # chart の key は `tempo.metricsGenerator` (トップレベルではない) であり
+          # ここに書かないと値が ignore される silent bug 化に注意。
+          metricsGenerator:
+            enabled: false
+
         # Service: ClusterIP のみ (Pyroscope/Loki と同方針、外部公開なし)
         service:
           type: ClusterIP
 
         # persistence: 無効 (WAL は emptyDir、永続データは全て S3)
         persistence:
-          enabled: false
-
-        # metrics-generator は Phase 2 で有効化 (VictoriaMetrics remoteWrite 連携)
-        metricsGenerator:
           enabled: false
   destination:
     server: https://kubernetes.default.svc
