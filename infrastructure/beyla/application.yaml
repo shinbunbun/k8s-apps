@@ -39,8 +39,13 @@
 # cluster 内 plain HTTP の経路は完全可視化される。Java は HTTPS 未対応だが
 # 現状の homelab に Java 製アプリはないので影響なし。
 #
-# 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 512Mi。
-# Alloy profiler と同程度の見積もり。allowlist 拡大に伴い必要なら引き上げ。
+# 【リソース】requests cpu: 100m / memory: 256Mi、limits memory: 1Gi。
+# 初回 rollout (memory 128Mi/512Mi) で 3 ノード中 2 ノードが OOMKilled →
+# 生存中 pod の実測値が ~427MB だったため、limit 512Mi では target process が
+# 多いノードで容易に超える。Beyla は BPF map + target process 数 (argocd の
+# Application 多数 + grafana コンテナ内 process) で Alloy profiler より
+# メモリ食う。実測 427MB に十分なマージンを取って 1Gi に引き上げ。
+# (Phase 1 rollout hotfix、Issue: shinbunbun/unified-dotfiles#16)
 #
 # 【sync-wave】15: alloy-profiles と同階層。Tempo (wave 10) が立ち上がった後
 # に push を開始する想定。Tempo 未起動の状態でも Beyla は OTLP push をリトライ
@@ -125,12 +130,16 @@ spec:
           privileged: true
 
         # === リソース ===
+        # 初回 rollout で memory 128Mi/512Mi では 3 ノード中 2 ノードが OOMKill。
+        # 生存中 pod の実測 ~427MB に十分なマージンで 256Mi/1Gi。
+        # CPU limit は意図的に未設定 (eBPF probe の throttling 回避、
+        # alloy-profiles と同方針)。
         resources:
           requests:
             cpu: 100m
-            memory: 128Mi
+            memory: 256Mi
           limits:
-            memory: 512Mi
+            memory: 1Gi
 
   destination:
     server: https://kubernetes.default.svc
