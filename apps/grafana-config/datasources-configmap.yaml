@@ -119,6 +119,8 @@ data:
       # cross-link:
       #   - tracesToLogsV2: trace_id 由来で Loki に飛ぶ (service.name + k8s.namespace.name)
       #   - tracesToProfiles: span から Pyroscope の CPU profile に飛ぶ (service_name 一致)
+      #   - tracesToMetrics: span から VictoriaMetrics (Prometheus) の span_metrics に飛ぶ
+      #   - serviceMap: Service Graph を Prometheus datasource 経由で描画 (Phase 2)
       # Issue: shinbunbun/unified-dotfiles#16
       - name: Tempo
         type: tempo
@@ -144,6 +146,28 @@ data:
               - key: 'service.name'
                 value: 'service_name'
             profileTypeId: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'
+          # Phase 2: span_metrics (traces_spanmetrics_*) を VictoriaMetrics 経由で参照。
+          # Tempo metrics-generator が remoteWrite した RED metrics を span から飛ばす。
+          tracesToMetrics:
+            datasourceUid: PBFA97CFB590B2093  # Prometheus (VictoriaMetrics) uid
+            spanStartTimeShift: '-2m'
+            spanEndTimeShift: '2m'
+            tags:
+              - key: 'service.name'
+                value: 'service'
+              - key: 'k8s.namespace.name'
+                value: 'namespace'
+            queries:
+              - name: 'Request rate'
+                query: 'sum(rate(traces_spanmetrics_calls_total{$$__tags}[5m])) by (span_name)'
+              - name: 'Latency p95'
+                query: 'histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m])) by (le, span_name))'
+              - name: 'Error rate'
+                query: 'sum(rate(traces_spanmetrics_calls_total{$$__tags, status_code="STATUS_CODE_ERROR"}[5m])) by (span_name)'
+          # Phase 2: Service Graph (traces_service_graph_request_*) を可視化。
+          # Tempo metrics-generator の service_graphs processor が出力するエッジから描画。
+          serviceMap:
+            datasourceUid: PBFA97CFB590B2093  # Prometheus (VictoriaMetrics) uid
           nodeGraph:
             enabled: true
           streamingEnabled:
