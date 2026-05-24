@@ -127,11 +127,41 @@ spec:
               wal:
                 path: /var/tempo/wal
 
-          # metrics-generator は Phase 2 で有効化 (VictoriaMetrics remoteWrite 連携)。
+          # === metrics-generator (Phase 2 で有効化) ===
+          # Beyla からの span を集計し、以下を VictoriaMetrics に remoteWrite する:
+          #   - service_graphs: traces_service_graph_request_total 等 (Service Graph)
+          #   - span_metrics: traces_spanmetrics_calls_total, latency_bucket 等 (RED metrics)
+          # これにより Grafana の Traces Drilldown と Service Map (datasource jsonData
+          # の serviceMap / tracesToMetrics) が動作する。
+          # remoteWriteUrl は VictoriaMetrics vminsert を直接指す (vmagent.yaml の
+          # remoteWrite と同じ pattern)。
           # chart の key は `tempo.metricsGenerator` (トップレベルではない) であり
           # ここに書かないと値が ignore される silent bug 化に注意。
           metricsGenerator:
-            enabled: false
+            enabled: true
+            remoteWriteUrl: "http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
+            # processor 設定: 両方とも default 値、明示することで意図を表す
+            processor:
+              service_graphs:
+                wait: 10s
+                max_items: 10000
+              span_metrics:
+                # target_info は service.name / k8s.namespace.name 等の
+                # resource attribute を traces_target_info 系列に書き出す。
+                # Grafana datasource jsonData の tracesToMetrics で参照するラベルなので必須。
+                enable_target_info: true
+
+          # === per-tenant override ===
+          # metrics-generator component を起動しただけでは processor は実行されない。
+          # tempo は per-tenant の override (overrides.defaults.metrics_generator.processors)
+          # で明示的に有効化する必要がある (Tempo 2.x の設計、single-tenant でも必要)。
+          # 公式: https://grafana.com/docs/tempo/latest/metrics-generator/#enable-metrics-generator
+          overrides:
+            defaults:
+              metrics_generator:
+                processors:
+                  - service-graphs
+                  - span-metrics
 
         # Service: ClusterIP のみ (Pyroscope/Loki と同方針、外部公開なし)
         service:
