@@ -29,10 +29,15 @@
 # Pyroscope Alloy と同パターン。capabilities 絞りによる unprivileged 化は
 # Phase 3 (運用) で検討。
 #
-# 【discovery scope - Phase 1 は狭く開始】
+# 【discovery scope】
 # 初期 allowlist: argocd, grafana, authentik (内部 HTTP/gRPC 多い、観察しやすい)
+# 追加 allowlist:
+#   - logs-rust-pipeline: Rust + Polars logs archive pipeline。CronJob 群で
+#     Garage S3 (logs-archive) との通信が主。長時間 Job (drain-apply, 数百〜
+#     1000+ 秒) は Beyla discovery polling で attach 間に合う、短時間 Job
+#     (bronze/silver の 0-15 秒) は polling 周期で取りこぼし許容。
 # denylist: 自己再帰 (beyla, tempo) + インフラ系 (再帰や計装不要な ns) で網羅。
-# Phase 1 で挙動安定後、application 系 namespace を段階的に allowlist 追加。
+# 安定後、application 系 namespace を段階的に allowlist 追加。
 #
 # 【TLS HTTPS 計装の制約】
 # Cloudflare Tunnel 経由 (外部入り) は片側のみ計装で trace 断片化、利点薄い。
@@ -98,6 +103,9 @@ spec:
                 - k8s_namespace: argocd
                 - k8s_namespace: grafana
                 - k8s_namespace: authentik
+                # logs-rust-pipeline: 長時間 Job (drain-apply) の Garage S3 通信を観察。
+                # 短時間 Job (bronze/silver) は discovery polling 間に合わず取りこぼす想定。
+                - k8s_namespace: logs-rust-pipeline
               # 自己再帰 + インフラ系を除外 (allowlist で絞っているので二重防御だが
               # 将来 instrument を広げた時の保険として残す)
               exclude_instrument:
