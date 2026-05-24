@@ -140,7 +140,8 @@ spec:
           metricsGenerator:
             enabled: true
             remoteWriteUrl: "http://vminsert-vmcluster.victoriametrics.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
-            # processor 設定: 両方とも default 値、明示することで意図を表す
+            # processor 設定: service_graphs / span_metrics は default 値、
+            # local_blocks は履歴クエリ対応のため flush_to_storage: true 必須。
             processor:
               service_graphs:
                 wait: 10s
@@ -150,6 +151,15 @@ spec:
                 # resource attribute を traces_target_info 系列に書き出す。
                 # Grafana datasource jsonData の tracesToMetrics で参照するラベルなので必須。
                 enable_target_info: true
+              local_blocks:
+                # local-blocks processor は TraceQL Metrics (Traces Drilldown の
+                # `rate() by(...)` / `quantile_over_time()` 等) のために必須。
+                # flush_to_storage: true で metrics block を S3 (tempo-traces bucket)
+                # に永続化し、過去データに対するクエリも可能にする。
+                # filter_server_spans: false でクライアント side span も対象にする
+                # (Beyla の片側計装でも metrics が拾えるように)。
+                flush_to_storage: true
+                filter_server_spans: false
 
           # === per-tenant override ===
           # metrics-generator component を起動しただけでは processor は実行されない。
@@ -162,6 +172,10 @@ spec:
                 processors:
                   - service-graphs
                   - span-metrics
+                  # local-blocks は Phase 2 初回 PR で書き忘れ、Grafana Traces
+                  # Drilldown が "localblocks processor not found" エラーで動かず追加。
+                  # 公式: https://grafana.com/docs/tempo/latest/operations/traceql-metrics/
+                  - local-blocks
 
         # Service: ClusterIP のみ (Pyroscope/Loki と同方針、外部公開なし)
         service:
