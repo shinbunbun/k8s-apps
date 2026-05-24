@@ -1,0 +1,150 @@
+# Tempo - Distributed Tracing Server (monolithic, Tempo 2.10)
+#
+# 設計判断:
+#
+# 【目的】Grafana Beyla (infrastructure/beyla) が eBPF auto-instrument した
+# HTTP/gRPC/SQL span を受信・保管し、Grafana Tempo datasource 経由で
+# Traces Drilldown / Explore タブで distributed trace として可視化する。
+# Issue: shinbunbun/unified-dotfiles#16
+#
+# 【chart】grafana-community/tempo 2.1.2 (Tempo v2.10.5)。
+# https://github.com/grafana-community/helm-charts/tree/main/charts/tempo
+# 2026-01-30 で grafana/helm-charts が更新停止、tempo は grafana-community 側のみ
+# active。新規追加なので最初から grafana-community を使用。
+# (旧 repo 利用中の pyroscope/alloy/alloy-profiles の migration は
+#  shinbunbun/unified-dotfiles#18 で別途対応)
+#
+# 【deployment mode】monolithic (single-binary)。
+# Tempo 公式は「small cluster は monolithic 推奨」。homelab 3 ノード規模で
+# distributor / ingester / querier / compactor を分離する意味は薄く、運用負荷増。
+# 単一 Deployment 内で全コンポーネントが動く。
+#
+# 【ストレージ】object storage backend は Garage S3 (apps/garage の tempo-traces
+# bucket、tempo-garage-credentials Secret で認証)。Loki / Pyroscope と同じ
+# Garage クラスタで運用統一。
+# - endpoint: cluster 内 DNS 経由 (garage.garage.svc:3900)
+# - insecure: true (HTTP)
+# - forcepathstyle: true (Garage は virtual-hosted-style 非対応)
+# - WAL は emptyDir (persistence: false)。再起動で 1-2 分の loss 許容
+#
+# 【認証情報】tempo-garage-credentials Secret を extraEnvFrom で AWS SDK 標準
+# キー (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION) として注入。
+# この Secret は Garage Operator が GarageKey CR の secretTemplate で tempo ns
+# に直接生成する (apps/garage/keys.yaml の tempo GarageKey)。
+#
+# 【retention】14日。Tempo 内蔵 compactor が古い block を物理削除する。
+# Garage bucket lifecycle rule は未設定 (Tempo に retention 制御を一元化)。
+# 14d 選定理由: Garage cluster の最弱ノード (garage-2) が DataAvail 24GB
+# 残のため、retention 30d (推定 +15GB) で枯渇リスクあり。14d なら +7GB で安全。
+# 後で延長判断 (compactor の次サイクルで block_retention 変更が effective)。
+#
+# 【レプリカ】monolithic で replicas: 1。ノード障害時は再起動で復旧、trace
+# データは Garage S3 に永続化済みなので block の再読込で継続。HA は必要に
+# なってから microservices モード移行で対応 (homelab 規模では不要)。
+#
+# 【ネットワーク】
+# - Beyla からの push 先: tempo.tempo.svc.cluster.local:4317 (OTLP gRPC、cluster 内のみ)
+# - Grafana datasource: tempo.tempo.svc.cluster.local:3200 (HTTP)
+# - 外部公開なし (Cloudflare Tunnel にも載せない、LAN 限定)。Loki/Pyroscope と同方針。
+# - LAN VIP も初期は割り当てない (必要になったら apps/tempo-config/lan-service.yaml で追加)
+#
+# 【receiver】OTLP gRPC (4317) + HTTP (4318) のみ有効化。
+# Beyla からの push 用には gRPC のみで十分。Jaeger / OpenCensus / Zipkin は
+# chart default で有効だが本構成では使わないため明示的に絞る。
+#
+# 【metrics-generator】Phase 1 では無効。Phase 2 で有効化 + VictoriaMetrics
+# remoteWrite (vminsert-vmcluster:8480/insert/0/prometheus/api/v1/write) 連携、
+# Service Graph を Grafana datasource jsonData.serviceMap で活性化予定。
+#
+# 【Pyroscope 運用で発覚した Garage v2 transient race の教訓】
+# Pyroscope では segment-writer upload timeout (default 2s) と
+# compactor リトライ (default 3) で永久ループが発生し、
+# 10s 延長 + max_failures=1 で抑制した。Tempo の compactor / ingester でも
+# 同等の問題が出る可能性があるが、Tempo 2.10 では S3 client timeout 系の
+# 個別 key が Pyroscope と異なるため、Phase 1 ローリングアウト中に
+# Garage 500 / "context deadline exceeded" が頻発したらその時点で
+# storage.trace.s3.* の tuning を追加する方針。
+# 参考: infrastructure/pyroscope/application.yaml の structuredConfig コメント
+#
+# 【sync-wave】10: loki / alloy / pyroscope と同階層。
+# apps/garage の Bucket/Key (wave 1-2) が先に立っている必要があるが、
+# ArgoCD の retry で吸収できる (Secret 不在なら pod CrashLoopBackOff → 再 sync で復旧)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana-community.github.io/helm-charts
+    chart: tempo
+    # Chart 2.1.2 = Tempo v2.10.5
+    # https://github.com/grafana-community/helm-charts/blob/main/charts/tempo/Chart.yaml
+    targetRevision: "2.1.2"
+    helm:
+      valuesObject:
+        # === Tempo server 本体 ===
+        tempo:
+          # retention 14日 (compactor が古い block を delete)
+          retention: 336h
+
+          # 匿名テレメトリ無効化 (homelab では不要)
+          reportingEnabled: false
+
+          # Garage credentials を AWS SDK 標準 env として注入
+          # (Secret は apps/garage の tempo GarageKey が auto-generate)
+          extraEnvFrom:
+            - secretRef:
+                name: tempo-garage-credentials
+
+          # OTLP gRPC/HTTP のみ有効化 (Jaeger/OpenCensus/Zipkin 不要)
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+
+          # === storage backend (Garage S3) ===
+          storage:
+            trace:
+              backend: s3
+              s3:
+                bucket: tempo-traces
+                endpoint: garage.garage.svc.cluster.local:3900
+                region: garage
+                insecure: true
+                # path-style: Garage / MinIO 互換のため明示
+                forcepathstyle: true
+                # access_key / secret_key は env 経由 (AWS SDK 自動拾い)
+              # WAL は emptyDir (persistence.enabled: false)、再起動で全 WAL 失う。
+              # Tempo は WAL flush 完了前の re-ingestion 想定なし → block 化済みは
+              # S3 にあるため 1-2 分の loss は許容
+              wal:
+                path: /var/tempo/wal
+
+        # Service: ClusterIP のみ (Pyroscope/Loki と同方針、外部公開なし)
+        service:
+          type: ClusterIP
+
+        # persistence: 無効 (WAL は emptyDir、永続データは全て S3)
+        persistence:
+          enabled: false
+
+        # metrics-generator は Phase 2 で有効化 (VictoriaMetrics remoteWrite 連携)
+        metricsGenerator:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tempo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

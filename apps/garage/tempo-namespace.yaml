@@ -1,0 +1,13 @@
+# tempo namespace
+#
+# apps/garage/keys.yaml の GarageKey `tempo` を `tempo` namespace に配置するため、
+# ns 自体を garage app で先行作成しておく必要がある。
+# (pyroscope-namespace.yaml と同パターン。理由は同 file 参照)
+#
+# sync-wave 0: GarageCluster と同階層。GarageKey (wave 2) より確実に先に作る。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tempo
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"

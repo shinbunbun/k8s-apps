@@ -1,0 +1,133 @@
+# Beyla - eBPF Auto-Instrumentation Agent (DaemonSet)
+#
+# 設計判断:
+#
+# 【目的】各ノード上で動く Pod の HTTP/gRPC/SQL 通信を eBPF で auto-instrument
+# し、OTLP gRPC で Tempo (tempo.tempo.svc:4317) に push する。アプリ側の
+# コード変更ゼロで distributed trace が見えるようになる。
+# Issue: shinbunbun/unified-dotfiles#16
+#
+# 【chart】oci://ghcr.io/grafana/helm-charts/beyla 1.16.7 (Beyla v3.14.0)。
+# https://github.com/grafana/beyla/tree/main/charts/beyla
+# Beyla chart は grafana-community/helm-charts に同期されておらず OCI 配布のみ。
+# ArgoCD は repoURL を `oci://...` 形式 (`https://` を付けない) で参照する。
+# (公式 docs: https://argo-cd.readthedocs.io/en/stable/user-guide/helm/#helm-oci-support)
+#
+# 【preset】application (HTTP/gRPC/SQL の auto-instrument)。
+# 他に network preset (cilium hubble 相当の L4 flow metrics) もあるが Phase 1
+# では distributed tracing に集中。
+#
+# 【Pyroscope Alloy (alloy-profiles) との競合】
+# kernel subsystem が異なる (Alloy = perf_event_open / Beyla = uprobe + sock filter)
+# ため perf ring buffer や uprobe slot の競合は発生しない。Grafana 公式参照
+# アーキテクチャでも Alloy + Beyla 併設は標準パターン。
+# BPF map memlock は cgroup v2 で実質無制限化されているため OOM リスクも低い。
+# 初回 rollout 時は dmesg と OOMKilled を観察する想定。
+#
+# 【security context】privileged: true + hostPID: true は Beyla の必須要件
+# (eBPF program load + ノード全プロセスの /proc アクセス用)。
+# Pyroscope Alloy と同パターン。capabilities 絞りによる unprivileged 化は
+# Phase 3 (運用) で検討。
+#
+# 【discovery scope - Phase 1 は狭く開始】
+# 初期 allowlist: argocd, grafana, authentik (内部 HTTP/gRPC 多い、観察しやすい)
+# denylist: 自己再帰 (beyla, tempo) + インフラ系 (再帰や計装不要な ns) で網羅。
+# Phase 1 で挙動安定後、application 系 namespace を段階的に allowlist 追加。
+#
+# 【TLS HTTPS 計装の制約】
+# Cloudflare Tunnel 経由 (外部入り) は片側のみ計装で trace 断片化、利点薄い。
+# cluster 内 plain HTTP の経路は完全可視化される。Java は HTTPS 未対応だが
+# 現状の homelab に Java 製アプリはないので影響なし。
+#
+# 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 512Mi。
+# Alloy profiler と同程度の見積もり。allowlist 拡大に伴い必要なら引き上げ。
+#
+# 【sync-wave】15: alloy-profiles と同階層。Tempo (wave 10) が立ち上がった後
+# に push を開始する想定。Tempo 未起動の状態でも Beyla は OTLP push をリトライ
+# し続けるので、wave 順序の依存はソフト (起動順の preference のみ)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beyla
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: default
+  source:
+    # OCI Helm chart: repoURL は schema を付けず host/path のみ
+    # (ArgoCD が `oci://` を内部で prepend する)
+    repoURL: ghcr.io/grafana/helm-charts
+    chart: beyla
+    # Chart 1.16.7 = Beyla v3.14.0
+    # https://github.com/grafana/beyla/blob/main/charts/beyla/Chart.yaml
+    targetRevision: "1.16.7"
+    helm:
+      valuesObject:
+        # === preset: application (HTTP/gRPC/SQL auto-instrument) ===
+        preset: application
+
+        # === OTLP export → Tempo ===
+        env:
+          OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://tempo.tempo.svc.cluster.local:4317"
+          OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "grpc"
+
+        # === Beyla 内部 config ===
+        config:
+          data:
+            # 計装対象 namespace (Phase 1: 狭く開始)
+            # 安定後に PR で application 系 ns を順次 allowlist 追加
+            discovery:
+              instrument:
+                - k8s_namespace: argocd
+                - k8s_namespace: grafana
+                - k8s_namespace: authentik
+              # 自己再帰 + インフラ系を除外 (allowlist で絞っているので二重防御だが
+              # 将来 instrument を広げた時の保険として残す)
+              exclude_instrument:
+                - k8s_namespace: kube-system
+                - k8s_namespace: kube-node-lease
+                - k8s_namespace: kube-public
+                - k8s_namespace: garage
+                - k8s_namespace: garage-operator
+                - k8s_namespace: cilium-secrets
+                - k8s_namespace: cnpg-system
+                - k8s_namespace: cert-manager
+                - k8s_namespace: clickhouse-operator
+                - k8s_namespace: piraeus-datastore
+                - k8s_namespace: victoriametrics
+                - k8s_namespace: loki
+                - k8s_namespace: alloy
+                - k8s_namespace: alloy-profiles
+                - k8s_namespace: pyroscope
+                - k8s_namespace: tempo
+                - k8s_namespace: beyla
+            # Kubernetes metadata 注入 (service.namespace, k8s.pod.name 等)
+            attributes:
+              kubernetes:
+                enable: true
+
+        # === DaemonSet 必須設定 ===
+        # privileged + hostPID は Beyla の必須要件 (eBPF + /proc アクセス)。
+        # Alloy profiler と同パターン。capabilities 絞りは Phase 3 で検討。
+        securityContext:
+          privileged: true
+
+        # === リソース ===
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: beyla
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
