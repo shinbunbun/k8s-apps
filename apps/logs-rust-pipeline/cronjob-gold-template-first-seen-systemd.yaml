@@ -1,0 +1,80 @@
+# Rust + Polars: gold/template_first_seen (新規 template だけ抽出) for systemd
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand、PR #26)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6
+#
+# 当日 templates の DISTINCT template_id から、過去 gold/template_first_seen を全
+# download した anti-join で「初出」だけを抽出。落ち着いた状態では 0-5 row/day、
+# 新サービスデプロイ・新 incident で増える。
+#
+# **重要**: build は date 順直列必須 (過去 gold を参照する累積差分)。daily cron は
+# 常に最新 date のみなので問題なし。backfill のみ同一 source 内 day 並列禁止。
+#
+# Schedule: 05:55 JST。CronJob 間は独立 (silver + templates + 過去 gold/first-seen のみ
+# 参照、template_rate には依存しない)、05:30 系との時間 stagger は同時起動による瞬間
+# memory spike 回避のため。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-gold-template-first-seen-systemd
+spec:
+  schedule: "55 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # 過去 gold/template_first_seen 200+ file の S3 list + download (各 ~KB 級) +
+      # silver/templates JOIN。1h 上限。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: template-first-seen
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - template-first-seen
+                - --source
+                - systemd
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # silver + templates + past gold の 3 入力、past は累計 ~数 KB なので軽い。
+                  # template_rate と同等 4Gi で安全側。
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                # silver + templates + past 200 file (各 KB 級)。
+                sizeLimit: 4Gi

@@ -1,0 +1,75 @@
+# Rust + Polars: gold/volume (silver -> count by host/service/level) for routeros
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand、PR #26)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6
+#
+# routeros silver は host="MikroTik" 99.97% + wreckage 2 値 + service 列 2M cardinality
+# (#201 closing comment §2、bronze.ident 汚染由来) のため group cardinality が他 source
+# より高い。alert 設計時は host 単一・service NULL filter で吸収する想定。
+#
+# Schedule: 05:05 JST (gold-volume-systemd の 5 分後、stagger)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-gold-volume-routeros
+spec:
+  schedule: "5 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # routeros silver は 1 日 ~5M 行 + service cardinality 2M で group 数が膨らむ可能性、
+      # 余裕を持って 1h 上限。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: volume
+            source: routeros
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - volume
+                - --source
+                - routeros
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # routeros silver 5M 行 × 4 cols (~50 bytes/row) ≒ 1GB scan、GROUP BY
+                  # の hash table は cardinality 依存で大きい可能性。silver-routeros と
+                  # 同じ 4Gi で安全側、観測後に縮小可。
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi

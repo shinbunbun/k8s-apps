@@ -28,8 +28,18 @@ resources:
   - cronjob-drain-apply-routeros.yaml
   - cronjob-drain-apply-k8s-pods.yaml
   - cronjob-drain-apply-macos-unified.yaml
+  - cronjob-gold-volume-systemd.yaml
+  - cronjob-gold-volume-routeros.yaml
+  - cronjob-gold-volume-k8s-pods.yaml
+  - cronjob-gold-volume-macos-unified.yaml
+  - cronjob-gold-template-rate-systemd.yaml
+  - cronjob-gold-template-rate-k8s-pods.yaml
+  - cronjob-gold-template-rate-macos-unified.yaml
+  - cronjob-gold-template-first-seen-systemd.yaml
+  - cronjob-gold-template-first-seen-k8s-pods.yaml
+  - cronjob-gold-template-first-seen-macos-unified.yaml
 
-# Image SHA pin (Issue #191 Phase 4 + #197 Phase 5)
+# Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
 #
 # 各 image の `:latest` を固定 SHA tag に書き換える (build workflow が `type=sha,format=short`
 # で push する 7-char SHA)。CronJob YAML の `image:` は `:latest` のまま残し、ここで一元管理。
@@ -38,6 +48,6 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "fd9b712"  # logs-pipeline main HEAD: fd9b712 (2026-05-20, PR #25 bronze collect+ParquetWriter -> sink+Engine::Streaming、shinbunbun/dotfiles-private#242 Step 2 Phase 2)
+    newTag: "15fc97f"  # logs-pipeline main HEAD: 15fc97f (2026-05-24, PR #26 gold-build subcommand 追加、shinbunbun/dotfiles-private#201 Phase 6)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
     newTag: "98bf621"  # logs-pipeline-drain main HEAD: 98bf621 (2026-05-15, PR #3 apply --workers N read-only 並列モード、shinbunbun/dotfiles-private#207 Step 3 backfill 高速化)

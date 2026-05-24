@@ -1,0 +1,73 @@
+# Rust + Polars: gold/volume (silver -> count by host/service/level) for systemd
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand、PR #26)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6
+#
+# gold/volume は silver の (host, service, level) で GROUP BY、count として出力する
+# 集計層。alert / dashboard の主役 (時系列波形・level distribution drift・host 別急変・
+# silver date 欠落検知)。silver と同じ immutable policy で `--force` 以外 skip。
+#
+# Schedule: 05:00 JST (drain-apply-routeros 最大 02:40 + 2h = 04:40 + margin)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-gold-volume-systemd
+spec:
+  schedule: "0 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # gold/volume は silver 1 file の集計のみ、軽量。30 分上限。
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: volume
+            source: systemd
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - volume
+                - --source
+                - systemd
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # silver 1 file scan + GROUP BY 3 列。silver-systemd 1 日 ~7万行で 1Gi
+                  # 余裕、安全に 2Gi。observation 後に縮小余地あり。
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi
