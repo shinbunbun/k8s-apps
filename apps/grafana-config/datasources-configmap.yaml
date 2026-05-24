@@ -170,5 +170,17 @@ data:
             datasourceUid: PBFA97CFB590B2093  # Prometheus (VictoriaMetrics) uid
           nodeGraph:
             enabled: true
+          # streaming は明示的に無効化。
+          # 有効時 (default true) Grafana Tempo plugin は gRPC streaming で
+          # search / metrics クエリを発行するが、URL `http://tempo:3200` は
+          # HTTP/1.1 専用 port のため "frame too large, frame header looked like
+          # an HTTP/1.1 header" エラーが Explore / Drilldown の全クエリで発生する。
+          # Tempo 2.2+ の `stream_over_http_enabled: true` で HTTP/1.1 上 streaming を
+          # 有効化する代替策があるが、chart 2.1.2 にこのフィールドを流す自由記述
+          # スロットが無いため (chart fork or extraArgs 検証が必要)、Phase 2 では
+          # streaming を諦めて非 streaming HTTP fallback で確実に動作させる。
+          # UX 差分: 検索結果の progressive 表示が無くなる (バッチ取得は変わらず)。
+          # 復活策: 別 PR で chart 拡張 or LAN VIP 経由 gRPC port 9095 expose を検討。
           streamingEnabled:
-            search: true
+            search: false
+            metrics: false
