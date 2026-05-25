@@ -35,9 +35,12 @@ resources:
   - cronjob-gold-template-rate-systemd.yaml
   - cronjob-gold-template-rate-k8s-pods.yaml
   - cronjob-gold-template-rate-macos-unified.yaml
-  - cronjob-gold-template-first-seen-systemd.yaml
-  - cronjob-gold-template-first-seen-k8s-pods.yaml
-  - cronjob-gold-template-first-seen-macos-unified.yaml
+  # gold-first-seen-* は元 `gold-template-first-seen-*`、CronJob 52-char 制限で macos-unified が
+  # apply 失敗したため metadata.name のみ短縮。filename も name と合わせて変更。
+  # clap arg `--table template-first-seen` と s3 prefix `gold/template_first_seen/` は維持。
+  - cronjob-gold-first-seen-systemd.yaml
+  - cronjob-gold-first-seen-k8s-pods.yaml
+  - cronjob-gold-first-seen-macos-unified.yaml
 
 # Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
 #
