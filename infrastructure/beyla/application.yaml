@@ -117,7 +117,6 @@ spec:
                 - k8s_namespace: cilium-secrets
                 - k8s_namespace: cnpg-system
                 - k8s_namespace: cert-manager
-                - k8s_namespace: clickhouse-operator
                 - k8s_namespace: piraeus-datastore
                 - k8s_namespace: victoriametrics
                 - k8s_namespace: loki

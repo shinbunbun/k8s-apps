@@ -29,12 +29,14 @@ data:
     # PR #66 で追加した VMAlert datasource を PR #67 (vmauth 統合) で廃止した際、
     # editable: false で provisioning 管理下にあったため Grafana DB に orphan として
     # 残った。provisioning の deleteDatasources で明示削除する。
-    # 旧 DuckDB datasource は motherduck plugin 撤去 (#212) で同様に orphan 化したため
-    # 引き続き清掃対象に残置 (後継の ClickHouse datasource は別 uid なので衝突しない)。
+    # 旧 DuckDB datasource は motherduck plugin 撤去 (#212) で同様に orphan 化。
+    # ClickHouse datasource は dotfiles-private #262 リストラで撤去 (gold layer で代替)。
     deleteDatasources:
       - name: VMAlert
         orgId: 1
       - name: DuckDB
+        orgId: 1
+      - name: ClickHouse
         orgId: 1
     datasources:
       - name: Prometheus
@@ -67,37 +69,6 @@ data:
         jsonData:
           implementation: prometheus
           handleGrafanaManagedAlerts: false
-      # ClickHouse datasource (公式署名済 grafana-clickhouse-datasource)
-      # 用途: Garage logs-archive bucket 上の長期 Parquet (daily-struct/source=*/date=*)
-      # を ClickHouse の s3() table function 経由で SQL 集計し、archive 系
-      # ダッシュボード (systemd / routeros / k8s-pods / macos-unified) を駆動する。
-      # 旧 DuckDB datasource (#212) の後継 (dotfiles-private #215)。
-      #
-      # 接続先: apps/clickhouse/installation.yaml の CHI (1 shard / 1 replica) の
-      # operator 生成 Service。Altinity operator は `clickhouse-{chi}` 命名規則で
-      # 全レプリカ用 Service と shard 単位 Service を作る (HTTP 8123, Native 9000)。
-      # cluster DNS の Service `clickhouse-clickhouse` を参照する。
-      #
-      # 認証: ClickHouse 側 default user (password なし)、CHI の users 定義で
-      # private CIDR からのみ accept する設定。ClusterIP 経由のみで cross-namespace
-      # アクセス可。任意 SQL 実行に対しては Garage 側 GarageKey clickhouse の
-      # bucket read-only 権限で COPY/DELETE 等を弾く。
-      #
-      # 接続テストは Grafana UI で Save & test、もしくは clickhouse-client で
-      # `SELECT count() FROM s3(garage, 'daily-struct/source=systemd/date=*/logs.parquet', 'Parquet')`
-      # が成功すれば OK。
-      - name: ClickHouse
-        type: grafana-clickhouse-datasource
-        uid: Pchlogs0001
-        access: proxy
-        editable: false
-        url: http://clickhouse-clickhouse.clickhouse.svc.cluster.local:8123
-        jsonData:
-          defaultDatabase: default
-          port: 8123
-          protocol: http
-          secure: false
-          username: default
       # Pyroscope datasource (Grafana 公式同梱 grafana-pyroscope-datasource)
       # 用途: Alloy pyroscope.ebpf (infrastructure/alloy-profiles) が採取した
       # kernel + userspace の CPU profile を flame graph として Explore タブで

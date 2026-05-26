@@ -28,8 +28,6 @@
 #   logs-rust-pipeline  → logs-archive を read + write (Rust + Polars pipeline で
 #                         raw/ → daily-struct/ 派生、Phase 4 本採用、旧 logs-typed-dbt の置換)
 #   grafana-duckdb      → logs-archive を read のみ (Grafana DuckDB datasource / MCP motherduck 用)
-#   clickhouse          → logs-archive を read のみ (Grafana ClickHouse datasource 専用、
-#                         s3() table function 経由で named_collection 'garage' に渡す)
 #
 # 【出力 Secret 構造】
 #   各 GarageKey は secretTemplate で AWS SDK 標準形式の Secret を同 namespace に生成:
@@ -217,38 +215,6 @@ spec:
       read: true
   secretTemplate:
     name: grafana-duckdb-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-# Grafana ClickHouse datasource 専用 read-only キー。
-# CHI (apps/clickhouse/installation.yaml) の podTemplate で envFrom により
-# AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY を注入し、ClickHouse の named_collection
-# 'garage' (s3() table function) から logs-archive bucket を読む。
-# 旧 grafana-duckdb キーは MCP (motherduck) 用途で残置、本キーは Grafana 経路専用。
-# write/owner なしで最小権限 (Grafana の Explore から任意 SQL を実行されても
-# Garage 側で書込/削除を弾く)。
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: clickhouse
-  namespace: clickhouse
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: clickhouse
-  bucketPermissions:
-    - bucketRef:
-        name: logs-archive
-        namespace: garage
-      read: true
-  secretTemplate:
-    name: clickhouse-garage-credentials
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION
