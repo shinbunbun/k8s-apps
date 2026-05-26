@@ -44,6 +44,18 @@ spec:
             requests:
               storage: 10Gi
     affinity:
+      # 2026-05-26: g3pro (Intel N150) の disk I/O 飽和を回避するため、
+      # データプレーン重要 Pod は preferred で g3pro を避ける。詳細は
+      # apps/garage/ と Pyroscope flush timeout 調査結果を参照。
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                    - g3pro
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
@@ -63,6 +75,16 @@ spec:
       replicationFactor: "2"
       search.skipSlowReplicas: "true"
     affinity:
+      # g3pro 退避 (上記 vmstorage 参照)
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                    - g3pro
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
@@ -78,6 +100,19 @@ spec:
     image:
       tag: v1.142.0-cluster
     affinity:
+      # g3pro 退避 (上記 vmstorage 参照)。
+      # 現状 vminsert 2 replica が podAntiAffinity preferred のみで g3pro に
+      # 両方 schedule されており、Garage S3 traffic が garage-1 (g3pro) に
+      # 偏ってる主因の 1 つ。
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                    - g3pro
       podAntiAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
