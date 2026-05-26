@@ -138,6 +138,18 @@ spec:
             - secretRef:
                 name: loki-garage-credentials
           affinity:
+            # 2026-05-26: g3pro (Intel N150) の disk I/O 飽和を回避するため、
+            # データプレーン重要 Pod は preferred で g3pro を避ける。詳細は
+            # apps/victoriametrics-config/vmcluster.yaml の同コメント参照。
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values:
+                          - g3pro
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
                 - weight: 100
@@ -154,6 +166,18 @@ spec:
             - secretRef:
                 name: loki-garage-credentials
           affinity:
+            # g3pro 退避 (read セクション参照)。
+            # write は replicas: 3 のため preferred では 3 つ目が g3pro に
+            # 残る可能性あり。replicas 削減や required 化は次フェーズで検討。
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values:
+                          - g3pro
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
                 - weight: 100
@@ -179,6 +203,17 @@ spec:
             - name: rules
               mountPath: /var/loki/rules/fake
           affinity:
+            # g3pro 退避 (read セクション参照)。
+            # backend は compactor (Garage S3 写入) を含むため退避効果が大きい。
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values:
+                          - g3pro
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
                 - weight: 100

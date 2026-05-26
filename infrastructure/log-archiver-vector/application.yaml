@@ -90,6 +90,21 @@ spec:
                 app.kubernetes.io/name: vector
                 app.kubernetes.io/instance: log-archiver-vector
 
+        # 2026-05-26: g3pro (Intel N150) の disk I/O 飽和を回避するため
+        # preferred で g3pro を避ける。Vector は Fluent Forward → Garage S3
+        # への直接書き込みで Garage 負荷の上流に位置するため退避効果大。
+        # 詳細は apps/victoriametrics-config/vmcluster.yaml の同コメント参照。
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: NotIn
+                      values:
+                        - g3pro
+
         # drain 時に 2 replica が同時に失われるのを防止
         podDisruptionBudget:
           enabled: true
