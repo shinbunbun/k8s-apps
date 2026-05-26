@@ -14,9 +14,10 @@
 #
 # NOTE: 旧 motherduck DuckDB datasource プラグインは chart 11.x で plugin install 機構
 # (GF_PLUGINS_PREINSTALL_SYNC) が Plugin Catalog ID 形式しか受けなくなり、unsigned
-# 配布の zip URL install で 404 → CrashLoopBackOff となったため一旦撤去 (#212)。
-# 後継として公式署名済 grafana-clickhouse-datasource を採用し、Garage Parquet 集計は
-# apps/clickhouse/ の ClickHouse server 経由に切替 (dotfiles-private #215)。
+# 配布の zip URL install で 404 → CrashLoopBackOff となったため撤去 (#212)。
+# 後継として grafana-clickhouse-datasource を採用したが (#215)、gold layer (#201 Phase 6)
+# 完成により ClickHouse 経由の archive 集計は不要となり完全撤去 (dotfiles-private #262)。
+# Garage Parquet 集計は DuckDB datasource + gold parquet で代替済。
 # MCP 経路 (motherduck-mcp) は依然 DuckDB を ad-hoc クエリ用途で継続使用。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -45,14 +46,6 @@ spec:
     helm:
       valuesObject:
         replicas: 2
-
-        # Grafana Labs 公式署名済み datasource プラグインを Plugin Catalog ID で install。
-        # chart 11.x 以降の GF_PLUGINS_PREINSTALL_SYNC は Catalog ID 形式しか受け付けないが、
-        # 公式署名済みプラグインは ID 単独で問題なく取得できる (#212 の URL;plugin-id 問題は再発しない)。
-        # 用途: apps/clickhouse/ の ClickHouse server に対する Garage Parquet archive 集計
-        # ダッシュボード経由でクエリ (dotfiles-private #215 で motherduck plugin を置換)。
-        plugins:
-          - grafana-clickhouse-datasource
 
         admin:
           existingSecret: grafana-secrets

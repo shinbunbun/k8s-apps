@@ -12,7 +12,6 @@
 #   authentik           — cnpg-authentik (authentik-db Barman)
 #   log-archiver-vector — vector (logs-archive owner、lifecycle 設定権限あり)
 #   logs-rust-pipeline  — Rust + Polars pipeline (raw read / daily-struct write)
-#   clickhouse          — ClickHouse Grafana datasource (s3() table function、read-only)
 #   pyroscope           — Pyroscope 2.0 monolithic (pyroscope-blocks owner、Issue dotfiles#699)
 #   tempo               — Tempo monolithic (tempo-traces owner、Issue unified-dotfiles#16)
 #
@@ -39,8 +38,6 @@ spec:
       namespace: log-archiver-vector
     - kind: GarageKey
       namespace: logs-rust-pipeline
-    - kind: GarageKey
-      namespace: clickhouse
     - kind: GarageKey
       namespace: pyroscope
     - kind: GarageKey
