@@ -1,0 +1,100 @@
+# gold/volume backfill Job テンプレ (1 partition = (source, date) ペア)
+#
+# 【用途】
+# silver から gold/volume/source=*/date=*/data.parquet を全期間 backfill 生成する。
+# 既存 daily cron (cronjob-gold-volume-*) が 5/25 以降を埋めてる、これは 5/24 以前を埋める。
+#
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6 backfill
+#
+# 【kustomize 外】手動 `kubectl create -f -` 専用。`{{SOURCE}}` / `{{DATE}}` を
+# sed で都度置換 (backfill-silver-job-template と同形式)。orchestrator script
+# `backfill-gold-orchestrator.sh` が xargs -P N でまとめて投入する想定。
+#
+# 【per-source 期間】
+#   systemd:        2025-10-15 〜 2026-05-24  (~222 day)
+#   routeros:       2025-10-18 〜 2026-05-24  (~219 day)
+#   macos-unified:  2026-02-22 〜 2026-05-21  (~89 day、silver Issue E で 5/22 以降欠落)
+#   k8s-pods:       2026-02-21 〜 2026-05-24  (~93 day、5/12 / 5/13 silver 欠落あり)
+#
+# 【1-day smoke test 例】
+#   sed -e "s/{{SOURCE}}/systemd/g" -e "s/{{DATE}}/2026-05-24/g" \
+#     apps/logs-rust-pipeline/backfill-gold-volume-job-template.yaml \
+#     | kubectl create -f -
+#
+# 【完了 verify】
+#   全 source × 全期間で gold/volume/source=X/date=Y/data.parquet 存在を S3 list で確認。
+#   実機 query:
+#     SELECT source, count(distinct gold_date) FROM glob('s3://logs-archive/gold/volume/**/*.parquet')
+#
+# 【CPU oversubscription 注意】
+# 2026-05-15 nixos-desktop ハング (drain backfill CPU 食い尽くし) を踏まえ、
+# gold backfill Job も CPU limit 必須。Polars 計算は POLARS_MAX_THREADS=2 で制限し、
+# 1 Job 2 core 上限。MAX_PARALLEL=10 (orchestrator) で全体 20 core (node 24 core の 83%)。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: logs-rust-pipeline-gold-volume-bf-{{SOURCE}}-{{DATE}}-
+  namespace: logs-rust-pipeline
+  labels:
+    app: logs-rust-pipeline
+    tier: gold-backfill
+    table: volume
+    source: "{{SOURCE}}"
+    date: "{{DATE}}"
+spec:
+  backoffLimit: 1
+  # silver 1 file scan + GROUP BY のみ、5M rows routeros でも 5 分未満想定。30 分上限。
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: logs-rust-pipeline
+        tier: gold-backfill
+        table: volume
+        source: "{{SOURCE}}"
+        date: "{{DATE}}"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pipeline
+          image: ghcr.io/shinbunbun/logs-pipeline:latest
+          args:
+            - gold-build
+            - --table
+            - volume
+            - --source
+            - "{{SOURCE}}"
+            - --date
+            - "{{DATE}}"
+            - --force  # 既存 partition も上書き (再 backfill 想定、idempotent)
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: "http://garage.garage.svc.cluster.local:3900"
+            - name: RUST_LOG
+              value: "info"
+            - name: POLARS_MAX_THREADS
+              value: "2"  # MAX_PARALLEL=10 想定で 20 core 上限を守る
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-credentials
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: 2000m  # POLARS_MAX_THREADS=2 と整合
+              memory: 4Gi  # silver-routeros と同等 (routeros 5M rows の GROUP BY peak 想定)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

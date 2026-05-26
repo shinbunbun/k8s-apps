@@ -1,0 +1,66 @@
+# gold/template_first_seen backfill (bulk mode) for k8s-pods
+# 詳細は backfill-gold-first-seen-bulk-systemd.yaml の comment 参照。
+# k8s-pods: 77 day × ~10 秒 = ~13 分想定。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: logs-rust-pipeline-gold-fs-bulk-k8s-pods-
+  namespace: logs-rust-pipeline
+  labels:
+    app: logs-rust-pipeline
+    tier: gold-backfill
+    table: template-first-seen
+    mode: bulk
+    source: k8s-pods
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 5400
+  ttlSecondsAfterFinished: 1200
+  template:
+    metadata:
+      labels:
+        app: logs-rust-pipeline
+        tier: gold-backfill
+        table: template-first-seen
+        mode: bulk
+        source: k8s-pods
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pipeline
+          image: ghcr.io/shinbunbun/logs-pipeline:latest
+          args:
+            - gold-backfill-bulk-first-seen
+            - --source
+            - k8s-pods
+            - --force
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: "http://garage.garage.svc.cluster.local:3900"
+            - name: RUST_LOG
+              value: "info"
+            - name: POLARS_MAX_THREADS
+              value: "2"
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-credentials
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
