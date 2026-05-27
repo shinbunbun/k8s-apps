@@ -76,8 +76,14 @@ spec:
             - secretRef:
                 name: myduck-poc-duckdb-credentials
           volumeMounts:
+            # ConfigMap mount は ..data atomic update のため symlink で
+            # materialize される (実体: 01-bootstrap.sql -> ..data/01-bootstrap.sql)。
+            # entrypoint.sh の execute_init_sqls 内 find -type f は symlink を
+            # 除外するため、ディレクトリ mount だと init.sql が 1 度も実行されない。
+            # subPath 指定で個別ファイルを regular file として materialize する。
             - name: init-sql
-              mountPath: /docker-entrypoint-initdb.d/postgres
+              mountPath: /docker-entrypoint-initdb.d/postgres/01-bootstrap.sql
+              subPath: 01-bootstrap.sql
               readOnly: true
             # data / log / .duckdb は entrypoint.sh が runtime に /home/admin
             # 配下に作成する。emptyDir は image に焼かれた entrypoint.sh を
