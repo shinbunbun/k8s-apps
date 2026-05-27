@@ -1,0 +1,22 @@
+# MyDuck Postgres wire endpoint (cluster-internal)
+#
+# Grafana Postgres datasource からは
+#   host: myduck.myduck-poc.svc.cluster.local
+#   port: 5432
+#   ssl_mode: disable
+# で接続する。LAN VIP は付与しない (PoC は cluster 内検証のみ)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: myduck
+  labels:
+    app: myduck
+spec:
+  type: ClusterIP
+  selector:
+    app: myduck
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
