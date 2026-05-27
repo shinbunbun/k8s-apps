@@ -54,6 +54,12 @@ spec:
 
         envFromSecret: grafana-secrets
 
+        # MyDuck Server PoC (Issue dotfiles-private#263) の Postgres datasource
+        # password を Pod 環境変数 MYDUCK_PASSWORD として注入し、provisioning
+        # の datasources.yaml で ${MYDUCK_PASSWORD} で展開する。
+        envFromSecrets:
+          - name: myduck-grafana-password
+
         grafana.ini:
           server:
             domain: grafana.shinbunbun.com
