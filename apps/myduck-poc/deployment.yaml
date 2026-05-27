@@ -70,8 +70,18 @@ spec:
             - name: init-sql
               mountPath: /docker-entrypoint-initdb.d/postgres
               readOnly: true
+            # data / log / .duckdb は entrypoint.sh が runtime に /home/admin
+            # 配下に作成する。emptyDir は image に焼かれた entrypoint.sh を
+            # 隠さないよう subPath で個別 mount する。
             - name: home
-              mountPath: /home/admin
+              mountPath: /home/admin/data
+              subPath: data
+            - name: home
+              mountPath: /home/admin/log
+              subPath: log
+            - name: home
+              mountPath: /home/admin/.duckdb
+              subPath: duckdb
           resources:
             requests:
               cpu: 200m
