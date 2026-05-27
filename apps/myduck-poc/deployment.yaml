@@ -24,6 +24,13 @@ metadata:
   name: myduck
   labels:
     app: myduck
+  annotations:
+    # GarageKey (default wave 0) → Garage operator が credentials Secret を生成
+    # → Deployment は wave 5 で Secret 存在確認後に起動。
+    # apps/garage と本 Application は別 Application なので sync-wave 間調整は
+    # 不可、本 Application 内 (myduck-poc) では GarageKey をデフォルト wave 0
+    # に置き Deployment を wave 5 にずらすことで起動順を保証する。
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   replicas: 1
   strategy:
