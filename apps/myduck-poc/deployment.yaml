@@ -43,6 +43,15 @@ spec:
       labels:
         app: myduck
     spec:
+      # apecloud/myduckserver の Dockerfile は USER admin (uid 1000、debian
+      # useradd デフォルト) で動く。emptyDir の subPath dir は kubelet が
+      # root:root で作成するため admin user (1000) が書込めない。
+      # fsGroup で volume の group ownership を 1000 に固定し、admin user が
+      # /home/admin/{data,log,.duckdb} に書込み可能にする。
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: myduck
           image: apecloud/myduckserver@sha256:417604972ee485b4f9729acd42613edfdb3693cc335c977154674cdf04c59eab
