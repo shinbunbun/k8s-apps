@@ -14,6 +14,7 @@
 #   logs-rust-pipeline  — Rust + Polars pipeline (raw read / daily-struct write)
 #   pyroscope           — Pyroscope 2.0 monolithic (pyroscope-blocks owner、Issue dotfiles#699)
 #   tempo               — Tempo monolithic (tempo-traces owner、Issue unified-dotfiles#16)
+#   myduck-poc          — MyDuck Server PoC (logs-archive read-only、Issue dotfiles-private#263)
 #
 # to は GarageCluster と GarageBucket の両方を許可 (apps/garage/keys.yaml の
 # 各 GarageKey が clusterRef + bucketPermissions[].bucketRef の 2 経路で
@@ -42,6 +43,8 @@ spec:
       namespace: pyroscope
     - kind: GarageKey
       namespace: tempo
+    - kind: GarageKey
+      namespace: myduck-poc
   to:
     - kind: GarageCluster
     - kind: GarageBucket

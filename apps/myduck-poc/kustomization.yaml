@@ -1,0 +1,34 @@
+# MyDuck Server PoC - Issue dotfiles-private#263
+#
+# ApplicationSet (applicationsets/apps-appset.yaml) が apps/myduck-poc を
+# 自動検出し ArgoCD Application を生成、myduck-poc namespace にデプロイ。
+#
+# 目的:
+#   Garage 上の gold parquet を Grafana から可視化する手段として、Postgres
+#   wire protocol を喋る MyDuck Server (apecloud/myduckserver, DuckDB engine)
+#   を中間サーバとして立て、Grafana 標準同梱の Postgres datasource (signed,
+#   bundled) から接続する経路の実用性を検証する。
+#
+# 評価軸:
+#   1. pgwire startup (SELECT version() / SHOW server_version)
+#   2. DuckDB extension load (httpfs auto-load)
+#   3. CREATE PERSISTENT SECRET の wire 経由実行
+#   4. hive partition 経由の s3:// parquet read
+#   5. Grafana Postgres datasource Save & test
+#   6. $__timeFilter / $__timeGroup macro 互換
+#   7. peak memory / latency 実測
+#
+# 撤退時はこのディレクトリを削除すれば ArgoCD prune で全リソース解体。
+# GarageKey 独立発行のため Garage 側影響もこの key 削除で完結。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: myduck-poc
+
+resources:
+  - garagekey.yaml
+  - init-sql-configmap.yaml
+  - deployment.yaml
+  - service.yaml
+
+generators:
+  - secret-generator.yaml

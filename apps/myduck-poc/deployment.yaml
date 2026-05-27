@@ -1,0 +1,98 @@
+# MyDuck Server PoC Deployment
+#
+# Postgres wire protocol (5432) で DuckDB SQL を受け、Garage S3 上の gold parquet
+# を read_parquet 経由でクエリする。Issue dotfiles-private#263 における DuckDB
+# datasource 再導入の代替案 (Route A: Postgres wire 中間サーバ) の PoC 用。
+#
+# 【image pin】
+# apecloud/myduckserver は version tag を切らず latest / main のみ運用なので
+# digest 固定で再現性を確保する (latest = 2025-01-17 push, DuckDB 1.1.3 同梱)。
+# PoC で動作 OK ならその時点の digest をそのまま production manifest にも転記。
+#
+# 【emptyDir 採用理由】
+# gold parquet は Garage が真の source of truth。MyDuck 側は in-memory query
+# engine として動き、永続化対象は ~/.duckdb/stored_secrets/ (再起動時 init.sql
+# で再生成) と /home/admin/data (本 PoC では使わない) のみ。PVC 不要。
+#
+# 【resource】
+# gold/volume は 219 partition × 数百 rows/partition 程度の集約済データなので
+# 90日 scan でも数 MB 範囲。peak memory は scan + group by で 1-2 GiB を想定し
+# limits 4 Gi に余裕を持たせる。PoC 結果見て本採用時に絞る。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myduck
+  labels:
+    app: myduck
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: myduck
+  template:
+    metadata:
+      labels:
+        app: myduck
+    spec:
+      containers:
+        - name: myduck
+          image: apecloud/myduckserver@sha256:417604972ee485b4f9729acd42613edfdb3693cc335c977154674cdf04c59eab
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: pg
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: DEFAULT_DB
+              value: logs
+            - name: SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: myduck-superuser
+                  key: password
+          envFrom:
+            # GarageKey operator が生成する S3 read-only credential
+            # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION)
+            # DuckDB の PROVIDER credential_chain CHAIN 'env' で自動拾い
+            - secretRef:
+                name: myduck-poc-duckdb-credentials
+          volumeMounts:
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d/postgres
+              readOnly: true
+            - name: home
+              mountPath: /home/admin
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: init-sql
+          configMap:
+            name: myduck-init-sql
+        - name: home
+          emptyDir:
+            sizeLimit: 4Gi
