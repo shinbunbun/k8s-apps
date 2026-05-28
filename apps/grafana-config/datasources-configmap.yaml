@@ -93,6 +93,30 @@ data:
       #   - tracesToMetrics: span から VictoriaMetrics (Prometheus) の span_metrics に飛ぶ
       #   - serviceMap: Service Graph を Prometheus datasource 経由で描画 (Phase 2)
       # Issue: shinbunbun/unified-dotfiles#16
+      # MyDuck Server (Issue dotfiles-private#263 PoC)
+      # Postgres wire protocol を喋る DuckDB middleware を経由して Garage
+      # logs-archive bucket 上の gold parquet を Grafana 標準同梱 Postgres
+      # datasource で query する。MyDuck Server は myduck-poc namespace で
+      # 稼働 (apps/myduck-poc 参照)、SUPERUSER_PASSWORD は
+      # grafana-config/secrets/myduck-grafana-password.enc.yaml から
+      # MYDUCK_PASSWORD として Grafana Pod に env 注入され、provisioning の
+      # secureJsonData.password で ${MYDUCK_PASSWORD} 展開される。
+      # postgresVersion 1601 は MyDuck の SHOW server_version = "16.1 (Homebrew)"
+      # に整合 (1601 = 16.01)。
+      - name: MyDuck
+        type: postgres
+        uid: PmyduckPoc0001
+        access: proxy
+        url: myduck.myduck-poc.svc.cluster.local:5432
+        user: postgres
+        editable: false
+        jsonData:
+          database: logs
+          sslmode: disable
+          postgresVersion: 1601
+          timescaledb: false
+        secureJsonData:
+          password: ${MYDUCK_PASSWORD}
       - name: Tempo
         type: tempo
         uid: Ptempo0001
