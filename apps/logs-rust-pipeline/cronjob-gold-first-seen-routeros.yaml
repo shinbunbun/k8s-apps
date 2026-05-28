@@ -1,0 +1,82 @@
+# Rust + Polars: gold/template_first_seen (新規 template だけ抽出) for routeros
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand、PR #26)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6、shinbunbun/dotfiles-private#264 で routeros 適用可否判定
+#
+# #264 motherduck 測定で routeros の first_seen anomaly signal が 4 source 中ベストと判明:
+#   - 直近 7 日 (5/14-5/20) で new template = 0
+#   - 直近 30 日 baseline は 2,279 件 (systemd 2,017 と同等規模)
+#   - つまり「いつもと違う log shape」が来た瞬間が綺麗に立つ S/N 比
+#
+# 当日 templates の DISTINCT template_id から、過去 gold/template_first_seen を全 download した
+# anti-join で「初出」だけを抽出。落ち着いた状態では 0-5 row/day、新サービスデプロイ・新 incident で増える。
+#
+# **重要**: build は date 順直列必須 (過去 gold を参照する累積差分)。daily cron は常に最新 date のみ
+# なので問題なし。backfill のみ同一 source 内 day 並列禁止。
+#
+# Schedule: 06:10 JST (gold-first-seen-{systemd 05:55, k8s-pods 06:00, macos-unified 06:05} の後、stagger)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  # NOTE: `gold-first-seen-` prefix は 52-char 制限のため短縮 (systemd ファイル参照)。
+  name: logs-rust-pipeline-gold-first-seen-routeros
+spec:
+  schedule: "10 6 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # 過去 gold/template_first_seen 204+ file の S3 list + download (各 ~KB 級) +
+      # silver/templates JOIN。1h 上限。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: template-first-seen
+            source: routeros
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - template-first-seen
+                - --source
+                - routeros
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # silver + templates + past gold の 3 入力、past は累計 ~数 KB なので軽い。
+                  # template_rate と同等 4Gi で安全側。
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi
