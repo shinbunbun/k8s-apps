@@ -1,0 +1,76 @@
+# Rust + Polars: gold/template_rate (silver + templates -> count by template_id/hour) for routeros
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand、PR #26)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6、shinbunbun/dotfiles-private#264 で routeros 適用可否判定
+#
+# #264 motherduck 測定で routeros の Drain template extraction が定量的に有効と判明:
+#   - unique templates: 3,627 (4 source 中 middle-ground、極端 collapse でない)
+#   - hourly rate CV (top11-100 bucket): median 0.13 (4 source 中 anomaly detection 最適ゾーン)
+#   - top100 で 99.5% covered (高い説明力)
+#
+# routeros silver は host="MikroTik" 99.97% + service 列 2M cardinality (bronze.ident 由来) のため
+# host/service は group key に混ぜない。template_rate は (template_id, hour) のみで集計。
+#
+# Schedule: 05:45 JST (gold-template-rate-{systemd 05:30, k8s-pods 05:35, macos-unified 05:40} の後、stagger)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-gold-template-rate-routeros
+spec:
+  schedule: "45 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # routeros silver 5M 行 + templates 6M 行 (1日分) の hash JOIN + GROUP BY、1h 上限。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: template-rate
+            source: routeros
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - template-rate
+                - --source
+                - routeros
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # silver + templates の hash JOIN が peak。silver-routeros と同じ 4Gi で安全側。
+                  memory: 4Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi
