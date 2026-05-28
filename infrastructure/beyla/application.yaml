@@ -44,13 +44,20 @@
 # cluster 内 plain HTTP の経路は完全可視化される。Java は HTTPS 未対応だが
 # 現状の homelab に Java 製アプリはないので影響なし。
 #
-# 【リソース】requests cpu: 100m / memory: 256Mi、limits memory: 1Gi。
+# 【リソース】requests cpu: 100m / memory: 256Mi、limits memory: 1.5Gi。
 # 初回 rollout (memory 128Mi/512Mi) で 3 ノード中 2 ノードが OOMKilled →
 # 生存中 pod の実測値が ~427MB だったため、limit 512Mi では target process が
 # 多いノードで容易に超える。Beyla は BPF map + target process 数 (argocd の
 # Application 多数 + grafana コンテナ内 process) で Alloy profiler より
 # メモリ食う。実測 427MB に十分なマージンを取って 1Gi に引き上げ。
 # (Phase 1 rollout hotfix、Issue: shinbunbun/unified-dotfiles#16)
+#
+# 2026-05-28 hotfix: nixos-desktop の beyla pod が peak 997MB (limit 1Gi の 97%)
+# で OOMKilled 発生。nixos-desktop 上の PostgreSQL (CNPG) の短命 worker fork に
+# Beyla traceAttacher が逐次 eBPF probe を attach する負荷スパイクが原因。
+# nixos / g3pro の peak は 877MB / 685MB と余裕ありだが、3 ノード共通で 1.5Gi
+# に統一して安全マージンを確保。中期的には discovery scope の見直し (PostgreSQL
+# 子プロセスの除外) を検討。
 #
 # 【sync-wave】15: alloy-profiles と同階層。Tempo (wave 10) が立ち上がった後
 # に push を開始する想定。Tempo 未起動の状態でも Beyla は OTLP push をリトライ
@@ -146,7 +153,7 @@ spec:
             cpu: 100m
             memory: 256Mi
           limits:
-            memory: 1Gi
+            memory: 1.5Gi
 
   destination:
     server: https://kubernetes.default.svc
