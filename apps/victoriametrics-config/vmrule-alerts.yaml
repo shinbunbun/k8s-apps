@@ -197,9 +197,13 @@ spec:
           description: "The systemd service {{ $labels.name }} has restarted more than 3 times in the last 15 minutes."
 
       # 高ディスクI/O使用率
+      # for: 15m に緩和 (元: 5m)。g3pro の sda 1 本構成では garage-1 が pyroscope-blocks
+      # 等への大量 PUT を捌くタイミングで 5-10 分の I/O time スパイクが発生するが、
+      # データ損失や service degradation には繋がっていない。15 分以上 sustained で
+      # 発火するように緩和し、本質的なディスク詰まり (故障 / 永続的負荷超過) のみ捕捉。
       - alert: HighDiskIOUtilization
         expr: "rate(node_disk_io_time_seconds_total[5m]) > 0.9"
-        for: 5m
+        for: 15m
         labels:
           severity: warning
         annotations:
