@@ -184,9 +184,20 @@ spec:
               // ===== Pyroscope server へ送信 =====
               // ClusterIP service へ直接 push。external_labels で cluster + host を付与し、
               // Grafana Explore タブから per-node に flame graph を絞り込めるようにする。
+              //
+              // remote_timeout = 20s: Alloy → Pyroscope の push deadline。default 10s。
+              // 2026-05-29 の K3sPodErrorLogDetected 連続発報調査 (dotfiles-private#266)
+              // で、pyroscope 側 upload-timeout を 20s に拡張 (k8s-apps#432) しても
+              // flush timeout が再発することが判明。原因は gRPC/Connect protocol で
+              // client context の deadline が server 側に伝搬する仕様。Alloy が 10s
+              // deadline で push する限り、pyroscope server-side では min(server, 10s)
+              // = 10s で打ち切られて upload-timeout=20s が活かされなかった。
+              // ここを 20s に揃えることで server-side の 20s が有効化される。
+              // 中期施策 (nixos の重 writer 退避) が効くまでの止血策。
               pyroscope.write "local" {
                 endpoint {
-                  url = "http://pyroscope.pyroscope.svc.cluster.local:4040"
+                  url            = "http://pyroscope.pyroscope.svc.cluster.local:4040"
+                  remote_timeout = "20s"
                 }
                 external_labels = {
                   cluster = "homelab",
