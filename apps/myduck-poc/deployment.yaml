@@ -17,7 +17,12 @@
 # 【resource】
 # gold/volume は 219 partition × 数百 rows/partition 程度の集約済データなので
 # 90日 scan でも数 MB 範囲。peak memory は scan + group by で 1-2 GiB を想定し
-# limits 4 Gi に余裕を持たせる。PoC 結果見て本採用時に絞る。
+# 当初 4 Gi で余裕を持たせていた。
+# 2026-05-29 に dashboard (Route A MyDuck Server 経路) の定常クエリで working set
+# が長時間 93% 以上で稼働し OOMKilled 発生 (限界到達まで ~3.5h 累積)。
+# DuckDB は読み込んだ Parquet を内部キャッシュに溜める挙動があり、PoC 規模でも
+# 累積で 4 Gi 限界を超えた。6 Gi に拡張して止血。本採用時に DuckDB の
+# memory_limit setting と cgroup limit の整合を取り直して再評価する。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,7 +108,7 @@ spec:
               memory: 512Mi
             limits:
               cpu: "2"
-              memory: 4Gi
+              memory: 6Gi
           readinessProbe:
             tcpSocket:
               port: 5432
