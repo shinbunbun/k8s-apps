@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/firecrawl/firecrawl@sha256:ee3074392fd920d11f595d2088aea8a09cef4001c3a81c47ba04b43cb379245c
+          image: ghcr.io/firecrawl/firecrawl@sha256:bf26733900d199e1fec4c869ab936109bb865684e122bd0f27752f0df77e767b
           command: ["node"]
           args:
             - "--max-old-space-size=768"
