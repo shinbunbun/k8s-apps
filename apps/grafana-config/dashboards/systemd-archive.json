@@ -75,7 +75,7 @@
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内で出現量 top-10 の template_id を抽出し、 日次 rate を描画。 anomaly detection は本 panel + 閾値が候補。 template_text は別 panel (templates dict 不在のため未実装、 shinbunbun/dotfiles-private#269 参照)。",
+      "description": "範囲内で出現量 top-10 の template_id を抽出し、 日次 rate を描画。 anomaly detection は本 panel + 閾値が候補。 凡例は gold/template_dict (shinbunbun/dotfiles-private#269) と LEFT JOIN して template_text を表示 (先頭 60 文字)、 dict なき template は `tid=NNN` で fallback。",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -102,7 +102,7 @@
           "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH top_ids AS (SELECT template_id FROM read_parquet('s3://logs-archive/gold/template_rate/source=systemd/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY template_id ORDER BY sum(count) DESC LIMIT 10) SELECT date AS time, ('tid=' || template_id)::TEXT AS metric, sum(count)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_rate/source=systemd/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) AND template_id IN (SELECT template_id FROM top_ids) GROUP BY date, template_id ORDER BY date, template_id",
+          "rawSql": "WITH dict AS (SELECT DISTINCT ON (template_id) template_id, template_text FROM read_parquet('s3://logs-archive/gold/template_dict/source=systemd/date=*/data.parquet', hive_partitioning=true) ORDER BY template_id, date DESC), top_ids AS (SELECT template_id FROM read_parquet('s3://logs-archive/gold/template_rate/source=systemd/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY template_id ORDER BY sum(count) DESC LIMIT 10) SELECT rate.date AS time, COALESCE(LEFT(dict.template_text, 60), 'tid=' || rate.template_id::TEXT)::TEXT AS metric, sum(rate.count)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_rate/source=systemd/date=*/data.parquet', hive_partitioning=true) AS rate LEFT JOIN dict ON dict.template_id = rate.template_id WHERE $__timeFilter(rate.date) AND rate.template_id IN (SELECT template_id FROM top_ids) GROUP BY rate.date, rate.template_id, dict.template_text ORDER BY rate.date, rate.template_id",
           "refId": "A"
         }
       ],
@@ -160,7 +160,7 @@
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内の新規 template 一覧 (新しい first_seen_ts 順)。 template_text は 'templates dict' 未実装のため非表示 (shinbunbun/dotfiles-private#269)。",
+      "description": "範囲内の新規 template 一覧 (新しい first_seen_ts 順)。 gold/template_dict (shinbunbun/dotfiles-private#269) と LEFT JOIN して template_text 列を表示 (先頭 100 文字)、 dict なき template は `(no dict)` で fallback。",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -178,7 +178,7 @@
           "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT template_id, first_seen_ts AT TIME ZONE 'Asia/Tokyo' AS first_seen_jst, date AS first_seen_date FROM read_parquet('s3://logs-archive/gold/template_first_seen/source=systemd/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) ORDER BY first_seen_ts DESC LIMIT 50",
+          "rawSql": "WITH dict AS (SELECT DISTINCT ON (template_id) template_id, template_text FROM read_parquet('s3://logs-archive/gold/template_dict/source=systemd/date=*/data.parquet', hive_partitioning=true) ORDER BY template_id, date DESC) SELECT fs.template_id, COALESCE(LEFT(dict.template_text, 100), '(no dict)') AS template_text, fs.first_seen_ts AT TIME ZONE 'Asia/Tokyo' AS first_seen_jst, fs.date AS first_seen_date FROM read_parquet('s3://logs-archive/gold/template_first_seen/source=systemd/date=*/data.parquet', hive_partitioning=true) AS fs LEFT JOIN dict ON dict.template_id = fs.template_id WHERE $__timeFilter(fs.date) ORDER BY fs.first_seen_ts DESC LIMIT 50",
           "refId": "A"
         }
       ],
