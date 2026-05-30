@@ -83,6 +83,17 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  # Logs Archive 系 (gold layer dashboard) - MyDuck (DuckDB over Garage S3) datasource 経由
+  # shinbunbun/dotfiles-private#263 Issue で作成、 source ごとに 1 dashboard
+  - name: grafana-dashboard-logs-archive-routeros
+    files:
+      - dashboards/routeros-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
   - name: grafana-dashboard-cilium
     files:
       - dashboards/cilium.json
