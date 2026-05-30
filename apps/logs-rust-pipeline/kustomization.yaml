@@ -43,6 +43,12 @@ resources:
   - cronjob-gold-first-seen-routeros.yaml
   - cronjob-gold-first-seen-k8s-pods.yaml
   - cronjob-gold-first-seen-macos-unified.yaml
+  # template-dict: drain snapshot を daily partition として copy する dim
+  # (shinbunbun/dotfiles-private#269、 shinbunbun/logs-pipeline#30 で gold-build subcommand 追加)
+  - cronjob-gold-template-dict-systemd.yaml
+  - cronjob-gold-template-dict-routeros.yaml
+  - cronjob-gold-template-dict-k8s-pods.yaml
+  - cronjob-gold-template-dict-macos-unified.yaml
 
 # Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
 #
@@ -53,6 +59,6 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "393104e"  # logs-pipeline main HEAD: 393104e (2026-05-30, PR #29 routeros の template_rate / first_seen 除外ガード削除、shinbunbun/dotfiles-private#264)
+    newTag: "7b85cb3"  # logs-pipeline main HEAD: 7b85cb3 (2026-05-30, PR #30 + #31 gold-build --table template-dict 追加、shinbunbun/dotfiles-private#269)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
     newTag: "98bf621"  # logs-pipeline-drain main HEAD: 98bf621 (2026-05-15, PR #3 apply --workers N read-only 並列モード、shinbunbun/dotfiles-private#207 Step 3 backfill 高速化)

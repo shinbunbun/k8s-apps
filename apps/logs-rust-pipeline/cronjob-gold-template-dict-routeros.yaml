@@ -1,0 +1,75 @@
+# Rust + Polars: gold/template_dict (drain snapshot -> template_id × template_text dim) for routeros
+#
+# Source repo: shinbunbun/logs-pipeline (gold-build subcommand --table template-dict、 PR #30)
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6 (gold tables 5 種計画) + #269 (実装 Issue)
+#
+# input は assignments daily partition でなく drain snapshot `templates/source=X/templates.parquet`
+# (drain.py が dump_templates で書く dim、 dump-templates / drain-apply --dump-templates で更新)。
+# 各 date partition は同 snapshot の point-in-time copy として書く。 dashboard で template_rate /
+# first_seen と join して template_id を template_text で人間可読化するために使う。
+#
+# Schedule: 05:20 JST (gold-template-rate 05:30 routeros の前に snapshot copy しておく stagger)。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: logs-rust-pipeline-gold-template-dict-routeros
+spec:
+  schedule: "22 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # snapshot 1 source ~10K row、 sort + write parquet。 数秒で完走見込み (verify 実測)。
+      # 余裕で 10 分上限。
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: logs-rust-pipeline
+            tier: gold
+            table: template-dict
+            source: routeros
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: ghcr.io/shinbunbun/logs-pipeline:latest
+              args:
+                - gold-build
+                - --table
+                - template-dict
+                - --source
+                - routeros
+              env:
+                - name: AWS_S3_ENDPOINT
+                  value: "http://garage.garage.svc.cluster.local:3900"
+                - name: RUST_LOG
+                  value: "info"
+              envFrom:
+                - secretRef:
+                    name: logs-rust-pipeline-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  # snapshot read + sort + parquet write、 数 MB のメモリで完結する見込み。
+                  # 1Gi で安全側。
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi
