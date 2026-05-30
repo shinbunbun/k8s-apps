@@ -2,8 +2,11 @@
 #
 # Phase 4: raw/ NDJSON.zst → daily-struct/ Parquet (bronze、faithful raw archive)
 # Phase 5: daily-struct/ → silver/ (immutable canonical schema、shinbunbun/dotfiles-private#197)
-#          drain (Python sidecar、別 image) → templates/source=*/date=*/assignments.parquet
-#          gold-build (Rust) → gold/* 集計テーブル群
+#          gold-build (Rust) → gold/* 集計テーブル群 (現状 volume のみ)
+#
+# Drain template 系 (drain-apply / gold-template-{dict,rate} / gold-first-seen) は
+# unified-dotfiles#XX で全廃止 (dashboard 上で `<*>` 多用テンプレが anomaly indicator
+# として機能していなかったため)。
 #
 # ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が自動検出
 # して ArgoCD Application を生成。namespace は basename と一致する `logs-rust-pipeline`
@@ -24,31 +27,10 @@ resources:
   - cronjob-silver-routeros.yaml
   - cronjob-silver-k8s-pods.yaml
   - cronjob-silver-macos-unified.yaml
-  - cronjob-drain-apply-systemd.yaml
-  - cronjob-drain-apply-routeros.yaml
-  - cronjob-drain-apply-k8s-pods.yaml
-  - cronjob-drain-apply-macos-unified.yaml
   - cronjob-gold-volume-systemd.yaml
   - cronjob-gold-volume-routeros.yaml
   - cronjob-gold-volume-k8s-pods.yaml
   - cronjob-gold-volume-macos-unified.yaml
-  - cronjob-gold-template-rate-systemd.yaml
-  - cronjob-gold-template-rate-routeros.yaml
-  - cronjob-gold-template-rate-k8s-pods.yaml
-  - cronjob-gold-template-rate-macos-unified.yaml
-  # gold-first-seen-* は元 `gold-template-first-seen-*`、CronJob 52-char 制限で macos-unified が
-  # apply 失敗したため metadata.name のみ短縮。filename も name と合わせて変更。
-  # clap arg `--table template-first-seen` と s3 prefix `gold/template_first_seen/` は維持。
-  - cronjob-gold-first-seen-systemd.yaml
-  - cronjob-gold-first-seen-routeros.yaml
-  - cronjob-gold-first-seen-k8s-pods.yaml
-  - cronjob-gold-first-seen-macos-unified.yaml
-  # template-dict: drain snapshot を daily partition として copy する dim
-  # (shinbunbun/dotfiles-private#269、 shinbunbun/logs-pipeline#30 で gold-build subcommand 追加)
-  - cronjob-gold-template-dict-systemd.yaml
-  - cronjob-gold-template-dict-routeros.yaml
-  - cronjob-gold-template-dict-k8s-pods.yaml
-  - cronjob-gold-template-dict-macos-unified.yaml
 
 # Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
 #
@@ -60,5 +42,3 @@ resources:
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
     newTag: "7b85cb3"  # logs-pipeline main HEAD: 7b85cb3 (2026-05-30, PR #30 + #31 gold-build --table template-dict 追加、shinbunbun/dotfiles-private#269)
-  - name: ghcr.io/shinbunbun/logs-pipeline-drain
-    newTag: "98bf621"  # logs-pipeline-drain main HEAD: 98bf621 (2026-05-15, PR #3 apply --workers N read-only 並列モード、shinbunbun/dotfiles-private#207 Step 3 backfill 高速化)
