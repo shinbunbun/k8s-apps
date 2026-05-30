@@ -7,11 +7,11 @@
 #
 # 【全体フロー】
 # 0. 前提チェック (kubectl 接続、image SHA pin)
-# 1. daily cron suspend (first-seen 3 source、bulk と race 防止)
+# 1. daily cron suspend (first-seen 4 source、bulk と race 防止)
 # 2. 3 phase で Job 投入:
-#    Phase A: bulk first_seen (3 source × 1 job、source 並列)
+#    Phase A: bulk first_seen (4 source × 1 job、source 並列)
 #    Phase B: volume (4 source × 全 day = ~625、xargs -P 10 で投入)
-#    Phase C: template_rate (3 source × 全 day = ~404、xargs -P 5)
+#    Phase C: template_rate (4 source × 全 day = ~404、xargs -P 5)
 # 3. 全 Job 完了 wait (kubectl wait --selector tier=gold-backfill)
 # 4. daily cron resume
 # 5. coverage verify
@@ -20,8 +20,8 @@
 # - 各 Job CPU limit 2000m (POLARS_MAX_THREADS=2)
 # - volume: MAX_PARALLEL=10 → 20 core peak
 # - rate:   MAX_PARALLEL=5  → 10 core peak
-# - bulk first_seen: 3 並列 → 6 core peak
-# - 同時実行で最大 36 core 但し limit、request ベースは 18 × 500m = 9 core
+# - bulk first_seen: 4 並列 → 8 core peak
+# - 同時実行で最大 38 core 但し limit、request ベースは 19 × 500m = 9.5 core
 # - 実 peak は CPU 専有時間が短い (S3 I/O + Polars 集計) ので衝突少ない見込み
 #
 # 【usage】
@@ -62,8 +62,10 @@ declare -A SOURCE_END=(
   [macos-unified]="2026-05-21"  # silver Issue E で 5/22 以降 silver 不在
 )
 
-# template_rate / template_first_seen 対象 source (#201 設計で routeros 除外)
-TEMPLATE_SOURCES=("systemd" "k8s-pods" "macos-unified")
+# template_rate / template_first_seen 対象 source。
+# 当初 routeros は #201 設計で除外していたが、 shinbunbun/dotfiles-private#264 の motherduck
+# 実測で逆 (S/N ベスト) と判明したため shinbunbun/logs-pipeline#29 でガード削除済 (2026-05-30)。
+TEMPLATE_SOURCES=("systemd" "routeros" "k8s-pods" "macos-unified")
 
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 do_or_print() {
