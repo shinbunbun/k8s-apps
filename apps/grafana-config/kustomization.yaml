@@ -94,6 +94,24 @@ configMapGenerator:
       annotations:
         grafana_folder: Logs Archive
       disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-archive-systemd
+    files:
+      - dashboards/systemd-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
+  - name: grafana-dashboard-logs-archive-k8s-pods
+    files:
+      - dashboards/k8s-pods-archive.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      annotations:
+        grafana_folder: Logs Archive
+      disableNameSuffixHash: false
   - name: grafana-dashboard-cilium
     files:
       - dashboards/cilium.json
