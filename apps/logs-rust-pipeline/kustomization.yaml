@@ -53,6 +53,6 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "15fc97f"  # logs-pipeline main HEAD: 15fc97f (2026-05-24, PR #26 gold-build subcommand 追加、shinbunbun/dotfiles-private#201 Phase 6)
+    newTag: "393104e"  # logs-pipeline main HEAD: 393104e (2026-05-30, PR #29 routeros の template_rate / first_seen 除外ガード削除、shinbunbun/dotfiles-private#264)
   - name: ghcr.io/shinbunbun/logs-pipeline-drain
     newTag: "98bf621"  # logs-pipeline-drain main HEAD: 98bf621 (2026-05-15, PR #3 apply --workers N read-only 並列モード、shinbunbun/dotfiles-private#207 Step 3 backfill 高速化)
