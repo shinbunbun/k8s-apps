@@ -3,7 +3,7 @@
 # Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #19)
 # 経緯: shinbunbun/dotfiles-private#197 Phase 5 (再起動)
 #
-# silver immutable layer。drain は templates/ sidecar に書く。
+# silver immutable layer。
 # macos-unified の `timestamp` は ISO 8601 ではなく `YYYY-MM-DD HH:MM:SS.fff+0900`、
 # silver subcommand が strptime("%Y-%m-%d %H:%M:%S%.f%z") で parse、ts は
 # Datetime[μs, UTC] 統一。

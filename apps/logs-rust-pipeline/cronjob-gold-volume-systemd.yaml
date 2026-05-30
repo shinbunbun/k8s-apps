@@ -7,7 +7,7 @@
 # 集計層。alert / dashboard の主役 (時系列波形・level distribution drift・host 別急変・
 # silver date 欠落検知)。silver と同じ immutable policy で `--force` 以外 skip。
 #
-# Schedule: 05:00 JST (drain-apply-routeros 最大 02:40 + 2h = 04:40 + margin)。
+# Schedule: 05:00 JST (silver は 01:35-02:10 頃完了する想定、margin 込みで 05:00)。
 apiVersion: batch/v1
 kind: CronJob
 metadata:

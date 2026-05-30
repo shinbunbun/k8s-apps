@@ -7,8 +7,8 @@
 # 経緯: shinbunbun/dotfiles-private#201 Phase 6 backfill
 #
 # 【kustomize 外】手動 `kubectl create -f -` 専用。`{{SOURCE}}` / `{{DATE}}` を
-# sed で都度置換 (backfill-silver-job-template と同形式)。orchestrator script
-# `backfill-gold-orchestrator.sh` が xargs -P N でまとめて投入する想定。
+# sed で都度置換 (backfill-silver-job-template と同形式)。大量投入時は xargs -P N
+# で並列度を制御する想定 (CPU 制約は後段参照)。
 #
 # 【per-source 期間】
 #   systemd:        2025-10-15 〜 2026-05-24  (~222 day)
@@ -27,9 +27,9 @@
 #     SELECT source, count(distinct gold_date) FROM glob('s3://logs-archive/gold/volume/**/*.parquet')
 #
 # 【CPU oversubscription 注意】
-# 2026-05-15 nixos-desktop ハング (drain backfill CPU 食い尽くし) を踏まえ、
+# 2026-05-15 nixos-desktop ハング (logs-pipeline backfill が CPU 食い尽くし) を踏まえ、
 # gold backfill Job も CPU limit 必須。Polars 計算は POLARS_MAX_THREADS=2 で制限し、
-# 1 Job 2 core 上限。MAX_PARALLEL=10 (orchestrator) で全体 20 core (node 24 core の 83%)。
+# 1 Job 2 core 上限。xargs -P 10 で全体 20 core (node 24 core の 83%) が目安。
 apiVersion: batch/v1
 kind: Job
 metadata:

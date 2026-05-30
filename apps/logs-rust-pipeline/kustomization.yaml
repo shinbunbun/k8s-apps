@@ -5,8 +5,7 @@
 #          gold-build (Rust) → gold/* 集計テーブル群 (現状 volume のみ)
 #
 # Drain template 系 (drain-apply / gold-template-{dict,rate} / gold-first-seen) は
-# unified-dotfiles#XX で全廃止 (dashboard 上で `<*>` 多用テンプレが anomaly indicator
-# として機能していなかったため)。
+# dashboard 上で `<*>` 多用テンプレが anomaly indicator として機能していなかったため廃止済み。
 #
 # ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が自動検出
 # して ArgoCD Application を生成。namespace は basename と一致する `logs-rust-pipeline`

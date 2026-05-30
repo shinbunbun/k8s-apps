@@ -54,7 +54,7 @@
 # - silver の row_count が bronze と一致 (filter は ts NULL drop のみ)
 # - service top10 が basename (`node_exporter` / `kernel` / 等) で path prefix が消えている
 # - row_id determinism: PR #22 修正は service 列のみで row_id sort key (ts, archived_at,
-#   xxh3(message)) には触れないため、templates の row_id 不変、drain re-apply 不要
+#   xxh3(message)) には触れないため、row_id は不変
 #
 # 【binary subcommand】
 # logs-pipeline silver --source <SOURCE> --date YYYY-MM-DD --force
@@ -109,8 +109,8 @@ spec:
               # silver は projection + sort のみで bronze より軽い。cron 側 macos-unified
               # は 8Gi で steady-state 動作中、backfill も同値で start (peak_mib log 観測後
               # に right-size 余地)。
-              # 2026-05-15 ハング根本原因調査 (dotfiles-private#233): drain-mine と並走時の
-              # 圧力で OOM kill 観測の可能性、安全側に 8Gi → 12Gi に引き上げ。
+              # 2026-05-15 ハング根本原因調査 (dotfiles-private#233): 他 Job との並走時の
+              # memory 圧力で OOM kill 観測の可能性、安全側に 8Gi → 12Gi に引き上げ。
               memory: 12Gi
           securityContext:
             allowPrivilegeEscalation: false
