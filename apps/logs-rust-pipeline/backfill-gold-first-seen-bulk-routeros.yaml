@@ -1,0 +1,94 @@
+# gold/template_first_seen backfill (bulk mode) for routeros
+#
+# 【用途】
+# silver + templates 全期間 (routeros: 213 day) を 1 Job 内で in-memory accumulator
+# により aggregate し、gold/template_first_seen/source=routeros/date=*/data.parquet を
+# 一気に生成する。per-day mode (1 K8s Job/partition) だと 5h、bulk で数分。
+#
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6 backfill 高速化 + shinbunbun/dotfiles-private#264
+#       (当初 #201 で routeros は除外していたが motherduck 実測で逆と判明し
+#        shinbunbun/logs-pipeline#29 でガード削除、shinbunbun/k8s-apps#429 で gold CronJob 追加)
+# 依存: shinbunbun/logs-pipeline#27 (gold-backfill-bulk-first-seen subcommand)
+#
+# 【run 方法】
+#   kubectl create -f apps/logs-rust-pipeline/backfill-gold-first-seen-bulk-routeros.yaml
+#
+# 【daily cron 衝突注意】
+# bulk mode 実行中に daily cron (cronjob-gold-first-seen-routeros) が走ると同じ
+# partition path に同時書き込み race。orchestrator script で daily cron を
+# `kubectl patch suspend=true` してから本 Job を投入する。
+#
+# 【完了 verify】
+#   SELECT count(*) FROM read_parquet(
+#     's3://logs-archive/gold/template_first_seen/source=routeros/date=*/data.parquet',
+#     hive_partitioning=true)
+#   GROUP BY date ORDER BY date;
+#   → 各 date partition で「初出」した template_id だけが書かれている (本日 2026-05-30
+#     実測で 211 days / 累積 15,118 first_seen events)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: logs-rust-pipeline-gold-fs-bulk-routeros-
+  namespace: logs-rust-pipeline
+  labels:
+    app: logs-rust-pipeline
+    tier: gold-backfill
+    table: template-first-seen
+    mode: bulk
+    source: routeros
+spec:
+  backoffLimit: 1
+  # routeros 213 day × ~1 秒/day = ~3 分実測。90 分上限 (margin)。
+  activeDeadlineSeconds: 5400
+  ttlSecondsAfterFinished: 1200
+  template:
+    metadata:
+      labels:
+        app: logs-rust-pipeline
+        tier: gold-backfill
+        table: template-first-seen
+        mode: bulk
+        source: routeros
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pipeline
+          image: ghcr.io/shinbunbun/logs-pipeline:latest
+          args:
+            - gold-backfill-bulk-first-seen
+            - --source
+            - routeros
+            - --force
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: "http://garage.garage.svc.cluster.local:3900"
+            - name: RUST_LOG
+              value: "info"
+            - name: POLARS_MAX_THREADS
+              value: "2"
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-credentials
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 512Mi
+            limits:
+              # in-memory HashMap (template_id × 数千) + per-day Polars compute
+              # peak ~1-2 GB 想定。4Gi で安全側。
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            # 1 day silver + templates + output parquet を順次保持 (sliding window)
+            sizeLimit: 4Gi

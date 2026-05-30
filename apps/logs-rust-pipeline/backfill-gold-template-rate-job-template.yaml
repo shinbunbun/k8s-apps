@@ -2,9 +2,11 @@
 #
 # 【用途】
 # silver + templates から gold/template_rate/source=*/date=*/data.parquet を全期間生成。
-# routeros は #201 設計で対象外 (facility=DAEMON 単一)。
+# 4 source (systemd / routeros / k8s-pods / macos-unified) 全てが対象。
+# 当初 routeros は #201 設計で除外していたが、 shinbunbun/dotfiles-private#264 の motherduck
+# 実測で逆 (S/N ベスト) と判明したため shinbunbun/logs-pipeline#29 でガード削除済。
 #
-# 経緯: shinbunbun/dotfiles-private#201 Phase 6 backfill
+# 経緯: shinbunbun/dotfiles-private#201 Phase 6 backfill + shinbunbun/dotfiles-private#264
 #
 # 【kustomize 外】手動 `kubectl create -f -` 専用。`{{SOURCE}}` / `{{DATE}}` を sed 置換。
 # orchestrator script (`backfill-gold-orchestrator.sh`) が xargs -P N で投入。
