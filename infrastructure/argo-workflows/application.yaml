@@ -19,6 +19,16 @@
 # 対象 ns。PR 1 では smoke test 用に argo のみ。Phase 2 で logs-rust-pipeline を
 # 追加する。
 #
+# 【workflow.serviceAccount.create】chart の default は false。一方
+# workflow.rbac.create=true (default) で Role/RoleBinding は subject=argo-workflow
+# SA で生成されるため、SA 自体を作らないと submit 時 RBAC エラー (workflowtaskresults
+# create 拒否) になる。chart 既定値の不整合を埋めるため明示的に true 指定。
+#
+# 【workflowDefaults.serviceAccountName】上記 argo-workflow SA を全 Workflow の
+# default に。argo submit / kubectl create 時に serviceAccountName 指定不要にする。
+# Phase 2 以降 logs-rust-pipeline ns で動かす Workflow は WorkflowTemplate 側で
+# 個別 SA を上書きする想定 (この default はあくまで argo ns smoke test 用)。
+#
 # 【workflowDefaults.ttlStrategy】完了 Workflow CR を 1 日後に GC。これがないと
 # ArgoCD の resource tree に大量の完了済み Workflow が累積する (CronJob の
 # successfulJobsHistoryLimit 相当)。
@@ -48,9 +58,14 @@ spec:
       valuesObject:
         singleNamespace: false
 
+        workflow:
+          serviceAccount:
+            create: true
+
         controller:
           workflowDefaults:
             spec:
+              serviceAccountName: argo-workflow
               ttlStrategy:
                 secondsAfterCompletion: 86400
 
