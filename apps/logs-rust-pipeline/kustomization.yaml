@@ -40,4 +40,4 @@ resources:
 # 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
 images:
   - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "7b85cb3"  # logs-pipeline main HEAD: 7b85cb3 (2026-05-30, PR #30 + #31 gold-build --table template-dict 追加、shinbunbun/dotfiles-private#269)
+    newTag: "7bd76bc"  # logs-pipeline main HEAD: 7bd76bc (2026-05-31, PR #32 template_{rate,first_seen,dict} subcommand 削除、unified-dotfiles 本 PR)
