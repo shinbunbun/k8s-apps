@@ -767,3 +767,23 @@ spec:
         annotations:
           summary: "Loki ingestion rate spike detected"
           description: "Loki ingestion is at {{ $value | humanize }}B/s, over 2x the hourly average. Check for runaway log sources."
+
+  # Argo Workflows: dotfiles#681 Phase 3 で旧 CronJob を WorkflowTemplate + CronWorkflow
+  # に切り替えたため、Workflow 失敗を検知する alert を追加。kube_cronjob_* / Pod phase
+  # 経由の旧 detection は CronJob suspend と共に sense を失うため明示 metric ベース化。
+  - name: argo-workflows
+    interval: 60s
+    rules:
+      # Argo Workflow 失敗検知
+      # argo_workflows_gauge{phase="Failed"|"Error"} は controller が全 ns 集計した
+      # current count gauge。workflowDefaults.ttlStrategy.secondsAfterCompletion=86400
+      # により失敗 CR は 1 日保持されるため、その間 alert は firing 継続する。
+      # namespace ラベルは controller の ns (argo) であり Workflow の ns ではない (chart 仕様)。
+      - alert: ArgoWorkflowFailed
+        expr: 'argo_workflows_gauge{phase=~"Failed|Error"} > 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Argo Workflow in {{ $labels.phase }} state ({{ $value }})"
+          description: "Argo Workflows controller reports {{ $value }} workflow(s) in {{ $labels.phase }} state. Run `kubectl get workflows -A` to identify."
