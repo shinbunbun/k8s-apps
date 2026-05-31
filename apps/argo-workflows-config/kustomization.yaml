@@ -1,0 +1,18 @@
+# argo-workflows-config: Argo Workflows server SSO 用 Secret 配布
+#
+# Authentik OIDC で argo-workflows server UI (https://argo-workflows.shinbunbun.com)
+# を外部公開するための clientID / clientSecret を `argo` ns に投入。
+#
+# ApplicationSet (apps/* git generator) が apps/argo-workflows-config/ を自動検出して
+# Application を生成、destination.namespace=argo-workflows-config になる。本
+# kustomization で `namespace: argo` を指定して Secret 自体は argo ns に作る
+# (apps/grafana-config と同じ cross-ns pattern)。
+#
+# 結果: argo-workflows-config ns は ArgoCD によって作られるが空 (リソースは
+# kustomize transformer で argo ns に配置)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argo
+
+generators:
+  - secret-generator.yaml

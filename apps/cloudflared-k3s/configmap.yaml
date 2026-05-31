@@ -37,6 +37,10 @@ data:
         service: http://argocd-server.argocd.svc.cluster.local:80
         originRequest:
           httpHostHeader: argocd.shinbunbun.com
+      - hostname: argo-workflows.shinbunbun.com
+        service: http://argo-workflows-server.argo.svc.cluster.local:2746
+        originRequest:
+          httpHostHeader: argo-workflows.shinbunbun.com
       - hostname: hubble.shinbunbun.com
         service: http://hubble-ui.kube-system.svc.cluster.local:80
         originRequest:

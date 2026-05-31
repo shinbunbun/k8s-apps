@@ -37,9 +37,16 @@
 # Prometheus Operator の ServiceMonitor は使わず VictoriaMetrics の VMServiceScrape
 # (apps/victoriametrics-config/vmservicescrape-argo-workflows.yaml) で scrape する。
 #
-# 【server (UI)】Phase 1 では port-forward で smoke test する想定。SSO 連携
-# (Cloudflare Tunnel + Authentik OIDC) は将来別 issue。authModes: server で
-# argo-server 自身の SA token で API 認可する単一ユーザー homelab 想定モード。
+# 【server (UI)】Authentik OIDC SSO 経由で `https://argo-workflows.shinbunbun.com`
+# として外部公開 (apps/cloudflared-k3s/configmap.yaml で Tunnel ingress 追加)。
+# - server.secure: false で argo-server を HTTP listen に切替 (Cloudflare Tunnel が
+#   TLS 終端する設計、argocd と同 pattern)
+# - authModes: [sso] (server mode は外部公開時に無認証パスになるため削除)
+# - sso.enabled: true + sso.* で Authentik OIDC client 設定
+# - sso.rbac.enabled: false でホームラボ単一ユーザー想定: SSO 認証通った全 user を admin 扱い
+# - clientId / clientSecret は apps/argo-workflows-config/ の KSOPS Secret から参照
+# - Authentik OIDC Provider 自体は Authentik UI で手動作成 (slug: argo-workflows)。
+#   issuer URL の末尾 path が provider slug と一致する必要あり。
 #
 # 【sync-wave】依存先なし (CRD は chart 同梱)、default 0。
 apiVersion: argoproj.io/v1alpha1
@@ -82,8 +89,27 @@ spec:
 
         server:
           enabled: true
+          # Cloudflare Tunnel が TLS 終端する。argo-server は HTTP で listen。
+          secure: false
           authModes:
-            - server
+            - sso
+          sso:
+            enabled: true
+            issuer: https://auth.shinbunbun.com/application/o/argo-workflows/
+            clientId:
+              name: argo-server-sso
+              key: client-id
+            clientSecret:
+              name: argo-server-sso
+              key: client-secret
+            redirectUrl: https://argo-workflows.shinbunbun.com/oauth2/callback
+            rbac:
+              enabled: false
+            scopes:
+              - openid
+              - email
+              - profile
+              - groups
   destination:
     server: https://kubernetes.default.svc
     namespace: argo
