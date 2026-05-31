@@ -1,0 +1,36 @@
+# Argo Workflows controller メトリクス scrape 設定
+#
+# infrastructure/argo-workflows/ で chart "argo-workflows" 1.0.14 を導入しており、
+# controller.metricsConfig.enabled=true で argo ns に metrics Service が作成される。
+#
+# Service 名と port:
+# - argo-workflows-workflow-controller (:8080, port name: metrics)
+#   (Helm release 名は ArgoCD Application 名と同じ "argo-workflows")
+#
+# selector: chart テンプレートが付与するラベル
+#   app.kubernetes.io/name: argo-workflows-workflow-controller
+#   app.kubernetes.io/component: workflow-controller
+#
+# kustomization の namespace: victoriametrics が効いて VMServiceScrape 自体は
+# victoriametrics ns に配置される。namespaceSelector で argo ns の Service を拾う。
+#
+# job ラベルを relabel で統一 (Argo Workflows 公式ダッシュボード / mixin が
+# job=workflow-controller を想定)。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: argo-workflows-controller
+spec:
+  namespaceSelector:
+    matchNames: [argo]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argo-workflows-workflow-controller
+      app.kubernetes.io/component: workflow-controller
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: argo-workflows-controller
