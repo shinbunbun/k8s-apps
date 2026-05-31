@@ -76,6 +76,9 @@ spec:
 
           workflowNamespaces:
             - argo
+            # Phase 2 (dotfiles#681) で logs-rust-pipeline ns に Workflow を submit する。
+            # chart が argo-workflow SA / Role / RoleBinding をこの ns にも自動生成する。
+            - logs-rust-pipeline
 
         server:
           enabled: true

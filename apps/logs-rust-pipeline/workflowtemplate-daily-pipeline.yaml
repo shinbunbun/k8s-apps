@@ -1,0 +1,252 @@
+# Argo Workflows WorkflowTemplate: logs-pipeline daily DAG
+#
+# dotfiles#681 Phase 2 PoC: systemd 1 source × 3 stage (bronze → silver → gold/volume)
+# の真の DAG。旧 CronJob 12 本の壁時計オフセット依存を真の dependencies に置き換える
+# 検証目的。
+#
+# 構造:
+#   daily-pipeline (steps, withItems で source 並列展開) -> 現在は [systemd] のみ
+#       source-pipeline (DAG, source ごとに bronze→silver→gold-volume を直列)
+#           bronze        -> logs-pipeline bronze --source <s>
+#           silver        -> logs-pipeline silver --source <s>     (depends: bronze)
+#           gold-volume   -> logs-pipeline gold-build --table volume --source <s> (depends: silver)
+#
+# Phase 3 で withItems を [systemd, routeros, k8s-pods, macos-unified] に拡張、
+# source 別 memory は同じ {{item}} object pattern で吸収する想定。
+#
+# 設計判断:
+#
+# 【image SHA pin】WorkflowTemplate の container.image は直書き SHA。kustomization.yaml
+# の images transformer は CRD path を default 知らないため WorkflowTemplate には適用
+# されない。Phase 2-3 中は旧 CronJob (transformer 経由) と本 file (直書き) の 2 箇所
+# 更新が必要。Phase 4 で旧 CronJob 削除と同時に transformer も外す。
+#
+# 【date 引数】Workflow 起動時 date 未指定なら binary 内で yesterday-jst (= 旧 CronJob と
+# 同じ default) を解釈。明示 date 指定での backfill は Phase 4 の backfill WorkflowTemplate
+# に分離する (本 template は daily 用に純化)。
+#
+# 【SA】workflowDefaults.serviceAccountName=argo-workflow が infrastructure/argo-workflows
+# 側で設定済。chart の workflowNamespaces に logs-rust-pipeline を追加することで
+# argo-workflow SA + Role + RoleBinding がこの ns に自動生成される。
+#
+# 【g3pro 退避】データプレーン重 Pod は preferred で g3pro を避ける既存 pattern (loki 参照)
+# を全 stage template に踏襲。
+#
+# 【resources】旧 CronJob と同値: bronze 12Gi / silver 6Gi / gold-volume 2Gi limits。
+# /tmp emptyDir sizeLimit も同値: 4Gi / 4Gi / 2Gi。
+#
+# 【shared boilerplate】3 stage template で env / envFrom / securityContext / volumeMounts /
+# affinity は全て同じだが、Argo の templateDefaults を CRD field merge で使うと挙動が
+# 微妙なため Phase 2 は inline duplicate。Phase 4 cleanup 時に必要なら DRY 化検討。
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: logs-pipeline-daily
+spec:
+  entrypoint: daily-pipeline
+  ttlStrategy:
+    secondsAfterCompletion: 86400  # 完了 Workflow CR を 1 日後に GC
+  arguments:
+    parameters: []
+
+  templates:
+    # Top level: source ごとに source-pipeline DAG を並列起動
+    - name: daily-pipeline
+      steps:
+        - - name: per-source
+            template: source-pipeline
+            arguments:
+              parameters:
+                - {name: source, value: "{{item}}"}
+            withItems:
+              - systemd
+
+    # 1 source 分の bronze -> silver -> gold-volume を直列実行
+    - name: source-pipeline
+      inputs:
+        parameters:
+          - name: source
+      dag:
+        tasks:
+          - name: bronze
+            template: bronze
+            arguments:
+              parameters:
+                - {name: source, value: "{{inputs.parameters.source}}"}
+          - name: silver
+            dependencies: [bronze]
+            template: silver
+            arguments:
+              parameters:
+                - {name: source, value: "{{inputs.parameters.source}}"}
+          - name: gold-volume
+            dependencies: [silver]
+            template: gold-volume
+            arguments:
+              parameters:
+                - {name: source, value: "{{inputs.parameters.source}}"}
+
+    # Stage: bronze (raw/ NDJSON.zst -> daily-struct/ Parquet)
+    - name: bronze
+      inputs:
+        parameters:
+          - name: source
+      activeDeadlineSeconds: 3600
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: bronze
+          source: "{{inputs.parameters.source}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - bronze
+          - --source
+          - "{{inputs.parameters.source}}"
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 12Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+
+    # Stage: silver (daily-struct/ -> silver/ immutable canonical schema)
+    - name: silver
+      inputs:
+        parameters:
+          - name: source
+      activeDeadlineSeconds: 3600
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: silver
+          source: "{{inputs.parameters.source}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - silver
+          - --source
+          - "{{inputs.parameters.source}}"
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 6Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+
+    # Stage: gold-volume (silver -> gold/volume/ host+service+level GROUP BY count)
+    - name: gold-volume
+      inputs:
+        parameters:
+          - name: source
+      activeDeadlineSeconds: 1800
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: gold
+          table: volume
+          source: "{{inputs.parameters.source}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - gold-build
+          - --table
+          - volume
+          - --source
+          - "{{inputs.parameters.source}}"
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
