@@ -1,0 +1,78 @@
+# Argo Workflows - DAG ベース workflow engine
+#
+# 導入背景 (dotfiles#681): logs-rust-pipeline の 12 CronJob (4 source × 3 stage)
+# を bronze→silver→gold の真の DAG に置き換えるための基盤。現状は壁時計オフセットで
+# stage 依存を表現しているため bronze 失敗時に silver/gold が空回りする。
+#
+# このマニフェストは Phase 1 (Issue #681 plan) の範囲: controller / argo-server /
+# CRD / RBAC をクラスタに導入するのみ。logs-rust-pipeline 側の WorkflowTemplate /
+# CronWorkflow 追加は別 PR (Phase 2 以降)。
+#
+# 設計判断:
+#
+# 【install scope】singleNamespace: false で cluster install。controller は argo ns
+# に配置し全 ns の Workflow を監視する。将来 ML step を別 ns に置く拡張余地を残す
+# (Kubeflow は不要、KFP v2 が必要になれば本 Argo Workflows をバックエンドとして
+# 乗る設計)。
+#
+# 【workflowNamespaces】RBAC (workflow SA / Role / RoleBinding) を pre-create する
+# 対象 ns。PR 1 では smoke test 用に argo のみ。Phase 2 で logs-rust-pipeline を
+# 追加する。
+#
+# 【workflowDefaults.ttlStrategy】完了 Workflow CR を 1 日後に GC。これがないと
+# ArgoCD の resource tree に大量の完了済み Workflow が累積する (CronJob の
+# successfulJobsHistoryLimit 相当)。
+#
+# 【metrics】controller の Prometheus metrics endpoint を Service expose。
+# Prometheus Operator の ServiceMonitor は使わず VictoriaMetrics の VMServiceScrape
+# (apps/victoriametrics-config/vmservicescrape-argo-workflows.yaml) で scrape する。
+#
+# 【server (UI)】Phase 1 では port-forward で smoke test する想定。SSO 連携
+# (Cloudflare Tunnel + Authentik OIDC) は将来別 issue。authModes: server で
+# argo-server 自身の SA token で API 認可する単一ユーザー homelab 想定モード。
+#
+# 【sync-wave】依存先なし (CRD は chart 同梱)、default 0。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-workflows
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-workflows
+    # Chart 1.0.14 = Argo Workflows v4.0.5 (2026-04-23 release)
+    targetRevision: "1.0.14"
+    helm:
+      valuesObject:
+        singleNamespace: false
+
+        controller:
+          workflowDefaults:
+            spec:
+              ttlStrategy:
+                secondsAfterCompletion: 86400
+
+          metricsConfig:
+            enabled: true
+          serviceMonitor:
+            enabled: false
+
+          workflowNamespaces:
+            - argo
+
+        server:
+          enabled: true
+          authModes:
+            - server
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
