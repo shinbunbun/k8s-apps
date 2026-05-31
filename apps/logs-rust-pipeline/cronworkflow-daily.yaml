@@ -24,7 +24,10 @@ kind: CronWorkflow
 metadata:
   name: logs-pipeline-daily
 spec:
-  schedule: "35 0 * * *"
+  # Argo Workflows v4 で spec.schedule (singular string) は廃止、spec.schedules
+  # (list) に変更されている。
+  schedules:
+    - "35 0 * * *"
   timezone: "Asia/Tokyo"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
