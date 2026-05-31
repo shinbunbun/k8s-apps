@@ -1,47 +1,29 @@
 # logs-rust-pipeline: Rust + Polars 版 logs archive pipeline
 #
-# Phase 4: raw/ NDJSON.zst → daily-struct/ Parquet (bronze、faithful raw archive)
-# Phase 5: daily-struct/ → silver/ (immutable canonical schema、shinbunbun/dotfiles-private#197)
-#          gold-build (Rust) → gold/* 集計テーブル群 (現状 volume のみ)
+# 構成 (dotfiles#681 Phase 4 で旧 CronJob 12 本 + Job template 4 本を削除し、
+# Argo Workflows ベースに完全移行):
 #
-# Drain template 系 (drain-apply / gold-template-{dict,rate} / gold-first-seen) は
-# dashboard 上で `<*>` 多用テンプレが anomaly indicator として機能していなかったため廃止済み。
+#   workflowtemplate-daily-pipeline.yaml  日次 DAG (4 source × 3 stage)
+#   cronworkflow-daily.yaml                00:35 JST 起動 schedule
+#   workflowtemplate-backfill.yaml         migrate / silver-backfill /
+#                                          gold-backfill / verify の 4 entrypoint
+#   README.md                              運用手順 (daily / backfill / rollback)
+#
+# 旧層 (Phase 4 で削除):
+#   - cronjob-{bronze,silver,gold-volume}-{4 sources}.yaml (12 本)
+#   - {migrate,backfill-silver,backfill-gold-volume,verify}-job-template.yaml (4 本)
+#   - images transformer (newTag による latest → SHA pin): 旧 CronJob 専用、
+#     WorkflowTemplate は直書き SHA を採用するため Phase 4 で transformer 廃止
 #
 # ApplicationSet (apps/* git generator、applicationsets/apps-appset.yaml) が自動検出
 # して ArgoCD Application を生成。namespace は basename と一致する `logs-rust-pipeline`
 # に CreateNamespace=true で作られる。credentials Secret は apps/garage/keys.yaml の
 # `logs-rust-pipeline` GarageKey から secretTemplate で `logs-rust-pipeline-credentials`
 # として cross-namespace 配布。
-#
-# verify-job-template.yaml は手動 `kubectl create -f` 専用なので resources には含めない。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: logs-rust-pipeline
 resources:
-  - cronjob-bronze-systemd.yaml
-  - cronjob-bronze-routeros.yaml
-  - cronjob-bronze-k8s-pods.yaml
-  - cronjob-bronze-macos-unified.yaml
-  - cronjob-silver-systemd.yaml
-  - cronjob-silver-routeros.yaml
-  - cronjob-silver-k8s-pods.yaml
-  - cronjob-silver-macos-unified.yaml
-  - cronjob-gold-volume-systemd.yaml
-  - cronjob-gold-volume-routeros.yaml
-  - cronjob-gold-volume-k8s-pods.yaml
-  - cronjob-gold-volume-macos-unified.yaml
-  # dotfiles#681 Phase 3: 4 source × 3 stage の DAG WorkflowTemplate (本番化)
-  # 旧 CronJob 12 本は本ファイル内で suspend: true、CR 自体は Phase 4 で削除予定
   - workflowtemplate-daily-pipeline.yaml
   - cronworkflow-daily.yaml
-
-# Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
-#
-# 各 image の `:latest` を固定 SHA tag に書き換える (build workflow が `type=sha,format=short`
-# で push する 7-char SHA)。CronJob YAML の `image:` は `:latest` のまま残し、ここで一元管理。
-#
-# 運用: 各 repo で feature branch -> PR -> main merge (workflow が SHA tag push) ->
-# 本ファイルの newTag を更新する PR を切る -> ArgoCD sync。
-images:
-  - name: ghcr.io/shinbunbun/logs-pipeline
-    newTag: "7bd76bc"  # logs-pipeline main HEAD: 7bd76bc (2026-05-31, PR #32 template_{rate,first_seen,dict} subcommand 削除、unified-dotfiles 本 PR)
+  - workflowtemplate-backfill.yaml
