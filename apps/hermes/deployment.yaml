@@ -169,6 +169,14 @@ spec:
               valueFrom: {secretKeyRef: {name: hermes-credentials, key: GRAFANA_URL}}
             - name: GRAFANA_SERVICE_ACCOUNT_TOKEN
               valueFrom: {secretKeyRef: {name: hermes-credentials, key: GRAFANA_SERVICE_ACCOUNT_TOKEN}}
+            # GitHub App credentials for renovate-pr-review skill (installation token は skill 内で取得、1h rotate)
+            # private key は PEM の multi-line をそのまま env value に入れる (Python os.environ で multi-line 取得可)
+            - name: GITHUB_APP_ID
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GITHUB_APP_ID}}
+            - name: GITHUB_APP_INSTALLATION_ID
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GITHUB_APP_INSTALLATION_ID}}
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: GITHUB_APP_PRIVATE_KEY}}
           volumeMounts:
             - name: state
               mountPath: /opt/data
