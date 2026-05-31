@@ -48,3 +48,8 @@ spec:
     # (apps/hermes/ で host network への egress 制御に必要、標準 ipBlock は Cilium 環境で host/LB-VIP に効かない)
     - group: cilium.io
       kind: "*"
+    # Argo Workflows の WorkflowTemplate / Workflow / CronWorkflow / ClusterWorkflowTemplate を
+    # apps/ 配下で使えるようにする (dotfiles#681 Phase 2: apps/logs-rust-pipeline/ で
+    # WorkflowTemplate を導入)。
+    - group: argoproj.io
+      kind: "*"
