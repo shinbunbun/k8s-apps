@@ -30,6 +30,9 @@ resources:
   - cronjob-gold-volume-routeros.yaml
   - cronjob-gold-volume-k8s-pods.yaml
   - cronjob-gold-volume-macos-unified.yaml
+  # dotfiles#681 Phase 2 PoC: systemd 1 source × 3 stage の DAG WorkflowTemplate
+  # 旧 CronJob と並行配置 (運用切替は smoke test 後の手動 suspend で行う)
+  - workflowtemplate-daily-pipeline.yaml
 
 # Image SHA pin (Issue #191 Phase 4 + #197 Phase 5 + #201 Phase 6)
 #
