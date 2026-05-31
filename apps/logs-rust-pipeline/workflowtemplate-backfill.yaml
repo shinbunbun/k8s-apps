@@ -1,0 +1,325 @@
+# Argo Workflows WorkflowTemplate: logs-pipeline backfill / verify / migrate
+#
+# dotfiles#681 Phase 4: 旧 Job template (migrate / backfill-silver /
+# backfill-gold-volume / verify) を WorkflowTemplate の 4 entrypoint に統合。
+# 旧 sed 置換 + kubectl create -f - パターンを argo submit 一発に置き換える。
+#
+# 【使い方】
+#
+# 1-day backfill (1 source × 1 date):
+#   argo submit -n logs-rust-pipeline \
+#     --from workflowtemplate/logs-pipeline-backfill \
+#     --entrypoint silver-backfill \
+#     -p source=macos-unified -p date=2026-04-01
+#
+# 同 syntax で entrypoint を切替:
+#   - migrate         旧 daily/ → 新 daily-struct/ 再パース (idempotent skip default)
+#   - silver-backfill silver --force (immutable layer の強制再書き)
+#   - gold-backfill   gold-build volume --force
+#   - verify          row_count 比較 (旧 daily/ vs 新 daily-struct/)
+#
+# 【bulk backfill】WorkflowTemplate には bake せず、shell loop で argo submit を回す:
+#
+#   for src in systemd routeros k8s-pods macos-unified; do
+#     for d in $(seq 0 199 | xargs -I{} date -d "2025-10-14 +{} days" +%Y-%m-%d); do
+#       argo submit -n logs-rust-pipeline \
+#         --from workflowtemplate/logs-pipeline-backfill \
+#         --entrypoint migrate \
+#         -p source=${src} -p date=${d} \
+#         --wait  # serial 実行する場合
+#     done
+#   done
+#
+#   並列なら --wait を外し、cluster の Pod 並列度 (homemachine 64GB) と
+#   各 entrypoint の memory limit (migrate 32Gi / silver 12Gi / gold 4Gi) を踏まえて
+#   parallelism を調整。
+#
+# 【image SHA】WorkflowTemplate 内に直書き (kustomize images transformer は CRD 標準
+# 対応外)。Phase 4 で旧 CronJob 削除と同時に transformer 廃止済、本 file の SHA が
+# 唯一の source of truth。logs-pipeline 側を bump したら本 file も bump する。
+#
+# 【default entrypoint】verify (read-only、副作用なし) を default にして --entrypoint
+# 指定漏れによる意図しない backfill 実行を防ぐ。
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: logs-pipeline-backfill
+spec:
+  entrypoint: verify
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+  arguments:
+    parameters:
+      - name: source
+      - name: date
+
+  templates:
+    # migrate: 旧 daily/ → 新 daily-struct/ 再パース
+    #
+    # logs-pipeline binary の `migrate` subcommand は次の 2 形式を自動判定:
+    #   - 1 列 json:VARCHAR (Vector → 旧 dbt-duckdb 出力)
+    #   - multi-column typed (Phase Z 移行 Job、k8s-apps#169)
+    #
+    # idempotent: dst (daily-struct/...) が既存なら skip。再 migrate したい場合は
+    # 本 template を編集して --force を args に追加して再 apply。
+    #
+    # memory 32Gi: 実機 batch run3 で systemd 一部日付 (2026-03-03 等) で 16Gi OOM 発生、
+    # 32Gi で完走 (homemachine 64GB に 1 件分なら問題なし)。
+    - name: migrate
+      inputs:
+        parameters:
+          - name: source
+          - name: date
+      activeDeadlineSeconds: 1800
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: migrate
+          source: "{{inputs.parameters.source}}"
+          date: "{{inputs.parameters.date}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - migrate
+          - --source
+          - "{{inputs.parameters.source}}"
+          - --date
+          - "{{inputs.parameters.date}}"
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 32Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 8Gi
+
+    # silver-backfill: silver --force で immutable layer を強制再書き
+    #
+    # 用途: silver の projection mapping rule にバグ/設計漏れが見つかった場合の全期間
+    # 再生成 (例: dotfiles-private#202 macos-unified service 列 basename 化)。
+    # 直近 fire 事例の memory peak と整合して 12Gi (daily の 8Gi + 余裕)。
+    - name: silver-backfill
+      inputs:
+        parameters:
+          - name: source
+          - name: date
+      activeDeadlineSeconds: 900
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: silver-backfill
+          source: "{{inputs.parameters.source}}"
+          date: "{{inputs.parameters.date}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - silver
+          - --source
+          - "{{inputs.parameters.source}}"
+          - --date
+          - "{{inputs.parameters.date}}"
+          - --force
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 12Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 8Gi
+
+    # gold-backfill: gold-build volume --force
+    #
+    # 用途: silver から gold/volume/ を再生成。daily に対する遡及生成 or
+    # silver 再生成後の連鎖再構築 (silver-backfill → gold-backfill の順)。
+    #
+    # CPU oversubscription 防止のため POLARS_MAX_THREADS=2、CPU limits 2000m で揃える
+    # (dotfiles-private#235 - 2026-05-15 nixos-desktop ハング再発防止)。
+    - name: gold-backfill
+      inputs:
+        parameters:
+          - name: source
+          - name: date
+      activeDeadlineSeconds: 1800
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: gold-backfill
+          table: volume
+          source: "{{inputs.parameters.source}}"
+          date: "{{inputs.parameters.date}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - gold-build
+          - --table
+          - volume
+          - --source
+          - "{{inputs.parameters.source}}"
+          - --date
+          - "{{inputs.parameters.date}}"
+          - --force
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+          - name: POLARS_MAX_THREADS
+            value: "2"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+
+    # verify: 旧 daily/ と新 daily-struct/ の row_count 比較
+    #
+    # ライフサイクル: 旧 daily/ at-rest データの lifecycle expire 完了時に消滅予定
+    # (Issue #191 タスク B-3)。それまで Phase 4 の backfill 検証用に保持。
+    #
+    # binary subcommand:
+    #   logs-pipeline verify --source X --date Y --old-prefix daily --new-prefix daily-struct
+    - name: verify
+      inputs:
+        parameters:
+          - name: source
+          - name: date
+      activeDeadlineSeconds: 600
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: verify
+          source: "{{inputs.parameters.source}}"
+          date: "{{inputs.parameters.date}}"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
+        args:
+          - verify
+          - --source
+          - "{{inputs.parameters.source}}"
+          - --date
+          - "{{inputs.parameters.date}}"
+          - --old-prefix
+          - daily
+          - --new-prefix
+          - daily-struct
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-credentials
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 4Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
