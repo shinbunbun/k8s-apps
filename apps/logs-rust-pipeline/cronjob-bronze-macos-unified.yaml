@@ -25,6 +25,9 @@ kind: CronJob
 metadata:
   name: logs-rust-pipeline-bronze-macos-unified
 spec:
+  # dotfiles#681 Phase 3: WorkflowTemplate + CronWorkflow に切替済、本 CR は
+  # Phase 4 で削除予定。それまで suspend で停止 (ロールバック窓を保つため manifest 残置)。
+  suspend: true
   schedule: "5 1 * * *"
   timeZone: Asia/Tokyo
   concurrencyPolicy: Forbid

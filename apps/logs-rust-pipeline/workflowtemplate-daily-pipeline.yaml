@@ -1,43 +1,39 @@
 # Argo Workflows WorkflowTemplate: logs-pipeline daily DAG
 #
-# dotfiles#681 Phase 2 PoC: systemd 1 source × 3 stage (bronze → silver → gold/volume)
-# の真の DAG。旧 CronJob 12 本の壁時計オフセット依存を真の dependencies に置き換える
-# 検証目的。
+# dotfiles#681 Phase 3: 4 source × 3 stage の真の DAG。旧 CronJob 12 本を
+# 置き換える本番化版。Phase 2 PoC (systemd 1 source) から拡張。
 #
 # 構造:
-#   daily-pipeline (steps, withItems で source 並列展開) -> 現在は [systemd] のみ
-#       source-pipeline (DAG, source ごとに bronze→silver→gold-volume を直列)
+#   daily-pipeline (steps, withItems で 4 source 並列展開)
+#       source-pipeline (DAG, source ごとに bronze→silver→gold-volume 直列)
 #           bronze        -> logs-pipeline bronze --source <s>
 #           silver        -> logs-pipeline silver --source <s>     (depends: bronze)
 #           gold-volume   -> logs-pipeline gold-build --table volume --source <s> (depends: silver)
 #
-# Phase 3 で withItems を [systemd, routeros, k8s-pods, macos-unified] に拡張、
-# source 別 memory は同じ {{item}} object pattern で吸収する想定。
+# Phase 3 拡張ポイント:
 #
-# 設計判断:
+# 【4 source 並列】withItems を object list に拡張、memory / tmp_size を source 毎に
+# 指定。systemd だけ bronze 12Gi (大量 NDJSON)、macos-unified だけ tmp 16Gi
+# (large raw archive)、routeros gold は 4Gi (集計 host 数多い) など、旧 CronJob と
+# 同値を踏襲。
 #
-# 【image SHA pin】WorkflowTemplate の container.image は直書き SHA。kustomization.yaml
-# の images transformer は CRD path を default 知らないため WorkflowTemplate には適用
-# されない。Phase 2-3 中は旧 CronJob (transformer 経由) と本 file (直書き) の 2 箇所
-# 更新が必要。Phase 4 で旧 CronJob 削除と同時に transformer も外す。
+# 【全並列実行】user choice (Phase 3 計画時の決定): parallelism 制限なし。peak で
+# bronze 4 並列 (12+6+6+6=30Gi) + silver/gold は段階的に追随。homemachine 64GB
+# クラスタの安全圏内。
 #
-# 【date 引数】Workflow 起動時 date 未指定なら binary 内で yesterday-jst (= 旧 CronJob と
-# 同じ default) を解釈。明示 date 指定での backfill は Phase 4 の backfill WorkflowTemplate
-# に分離する (本 template は daily 用に純化)。
+# 【image SHA 直書き】kustomization.yaml images transformer は CRD path 標準対応外
+# のため WorkflowTemplate には適用されない。Phase 2-3 中は旧 CronJob (transformer 経由)
+# と本 file (直書き) の 2 箇所更新が必要。Phase 4 で旧 CronJob 削除と同時に transformer
+# も外す。
 #
-# 【SA】workflowDefaults.serviceAccountName=argo-workflow が infrastructure/argo-workflows
-# 側で設定済。chart の workflowNamespaces に logs-rust-pipeline を追加することで
-# argo-workflow SA + Role + RoleBinding がこの ns に自動生成される。
+# 【date 引数】Workflow 起動時 date 未指定なら binary 内で yesterday-jst を解釈
+# (旧 CronJob と同じ default)。backfill は Phase 4 の別 WorkflowTemplate に分離。
 #
-# 【g3pro 退避】データプレーン重 Pod は preferred で g3pro を避ける既存 pattern (loki 参照)
-# を全 stage template に踏襲。
+# 【SA】workflowDefaults.serviceAccountName=argo-workflow が infrastructure 側で設定済。
+# workflowNamespaces=[argo, logs-rust-pipeline] で chart が argo-workflow SA / Role /
+# RoleBinding を logs-rust-pipeline ns にも生成済。
 #
-# 【resources】旧 CronJob と同値: bronze 12Gi / silver 6Gi / gold-volume 2Gi limits。
-# /tmp emptyDir sizeLimit も同値: 4Gi / 4Gi / 2Gi。
-#
-# 【shared boilerplate】3 stage template で env / envFrom / securityContext / volumeMounts /
-# affinity は全て同じだが、Argo の templateDefaults を CRD field merge で使うと挙動が
-# 微妙なため Phase 2 は inline duplicate。Phase 4 cleanup 時に必要なら DRY 化検討。
+# 【g3pro 退避】データプレーン重 Pod は preferred で g3pro を避ける既存 pattern (loki)。
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
@@ -50,47 +46,72 @@ spec:
     parameters: []
 
   templates:
-    # Top level: source ごとに source-pipeline DAG を並列起動
+    # Top level: 4 source の source-pipeline DAG を並列起動。
+    # source 毎の memory / tmp_size は旧 CronJob 値を踏襲 (apps/logs-rust-pipeline/
+    # cronjob-{bronze,silver,gold-volume}-{systemd,routeros,k8s-pods,macos-unified}.yaml)。
     - name: daily-pipeline
       steps:
         - - name: per-source
             template: source-pipeline
             arguments:
               parameters:
-                - {name: source, value: "{{item}}"}
+                - {name: source,      value: "{{item.source}}"}
+                - {name: bronze_mem,  value: "{{item.bronze_mem}}"}
+                - {name: bronze_tmp,  value: "{{item.bronze_tmp}}"}
+                - {name: silver_mem,  value: "{{item.silver_mem}}"}
+                - {name: silver_tmp,  value: "{{item.silver_tmp}}"}
+                - {name: gold_mem,    value: "{{item.gold_mem}}"}
+                - {name: gold_tmp,    value: "{{item.gold_tmp}}"}
             withItems:
-              - systemd
+              - {source: systemd,        bronze_mem: 12Gi, bronze_tmp:  4Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp:  4Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
+              - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 8Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
 
     # 1 source 分の bronze -> silver -> gold-volume を直列実行
     - name: source-pipeline
       inputs:
         parameters:
           - name: source
+          - name: bronze_mem
+          - name: bronze_tmp
+          - name: silver_mem
+          - name: silver_tmp
+          - name: gold_mem
+          - name: gold_tmp
       dag:
         tasks:
           - name: bronze
             template: bronze
             arguments:
               parameters:
-                - {name: source, value: "{{inputs.parameters.source}}"}
+                - {name: source,    value: "{{inputs.parameters.source}}"}
+                - {name: memory,    value: "{{inputs.parameters.bronze_mem}}"}
+                - {name: tmp_size,  value: "{{inputs.parameters.bronze_tmp}}"}
           - name: silver
             dependencies: [bronze]
             template: silver
             arguments:
               parameters:
-                - {name: source, value: "{{inputs.parameters.source}}"}
+                - {name: source,    value: "{{inputs.parameters.source}}"}
+                - {name: memory,    value: "{{inputs.parameters.silver_mem}}"}
+                - {name: tmp_size,  value: "{{inputs.parameters.silver_tmp}}"}
           - name: gold-volume
             dependencies: [silver]
             template: gold-volume
             arguments:
               parameters:
-                - {name: source, value: "{{inputs.parameters.source}}"}
+                - {name: source,    value: "{{inputs.parameters.source}}"}
+                - {name: memory,    value: "{{inputs.parameters.gold_mem}}"}
+                - {name: tmp_size,  value: "{{inputs.parameters.gold_tmp}}"}
 
     # Stage: bronze (raw/ NDJSON.zst -> daily-struct/ Parquet)
     - name: bronze
       inputs:
         parameters:
           - name: source
+          - name: memory
+          - name: tmp_size
       activeDeadlineSeconds: 3600
       metadata:
         labels:
@@ -125,7 +146,7 @@ spec:
             cpu: 100m
             memory: 256Mi
           limits:
-            memory: 12Gi
+            memory: "{{inputs.parameters.memory}}"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -138,13 +159,15 @@ spec:
       volumes:
         - name: tmp
           emptyDir:
-            sizeLimit: 4Gi
+            sizeLimit: "{{inputs.parameters.tmp_size}}"
 
     # Stage: silver (daily-struct/ -> silver/ immutable canonical schema)
     - name: silver
       inputs:
         parameters:
           - name: source
+          - name: memory
+          - name: tmp_size
       activeDeadlineSeconds: 3600
       metadata:
         labels:
@@ -179,7 +202,7 @@ spec:
             cpu: 100m
             memory: 256Mi
           limits:
-            memory: 6Gi
+            memory: "{{inputs.parameters.memory}}"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -192,13 +215,15 @@ spec:
       volumes:
         - name: tmp
           emptyDir:
-            sizeLimit: 4Gi
+            sizeLimit: "{{inputs.parameters.tmp_size}}"
 
     # Stage: gold-volume (silver -> gold/volume/ host+service+level GROUP BY count)
     - name: gold-volume
       inputs:
         parameters:
           - name: source
+          - name: memory
+          - name: tmp_size
       activeDeadlineSeconds: 1800
       metadata:
         labels:
@@ -236,7 +261,7 @@ spec:
             cpu: 100m
             memory: 256Mi
           limits:
-            memory: 2Gi
+            memory: "{{inputs.parameters.memory}}"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -249,4 +274,4 @@ spec:
       volumes:
         - name: tmp
           emptyDir:
-            sizeLimit: 2Gi
+            sizeLimit: "{{inputs.parameters.tmp_size}}"

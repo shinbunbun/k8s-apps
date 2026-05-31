@@ -1,0 +1,35 @@
+# Argo CronWorkflow: logs-pipeline daily 本番スケジュール
+#
+# dotfiles#681 Phase 3: 旧 12 CronJob を真の DAG に置き換える本番スケジューラ。
+# logs-pipeline-daily WorkflowTemplate を 00:35 JST に起動。
+#
+# 旧 CronJob schedule 設計との対応:
+#   旧: bronze 00:35-01:05 (10 min stagger 4 source) -> silver 01:35 -> gold 05:00
+#   新: 00:35 JST に Workflow 起動、DAG が 4 source × 3 stage を自律的に直列実行
+#
+# 全並列 (user choice): 4 source の bronze が同時起動、peak ~30Gi memory request。
+# homemachine 64GB クラスタの安全圏内 (Phase 3 計画時の決定)。
+#
+# concurrencyPolicy: Forbid - 前回 Workflow が走行中なら次の trigger を skip
+# (旧 CronJob と同じ semantics)。
+#
+# startingDeadlineSeconds: 3600 - 起動遅延が 1h 超なら skip
+# (controller down 等で遅延した場合に古い Workflow を起動しない)。
+#
+# successfulJobsHistoryLimit / failedJobsHistoryLimit は旧 CronJob と同じ 3。
+# 完了 Workflow CR 自体は workflowDefaults.ttlStrategy で 86400s 後に GC される
+# ため CR 累積はないが、CronWorkflow status の Active workflow 履歴 limit。
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: logs-pipeline-daily
+spec:
+  schedule: "35 0 * * *"
+  timezone: "Asia/Tokyo"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    workflowTemplateRef:
+      name: logs-pipeline-daily
