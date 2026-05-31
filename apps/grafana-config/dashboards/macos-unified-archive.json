@@ -70,12 +70,12 @@
     {
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 10},
       "id": 20,
-      "title": "Template rate top-10",
+      "title": "Top-10 service by volume",
       "type": "row"
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内で出現量 top-10 の template_id を抽出し、 日次 rate を描画。 anomaly detection は本 panel + 閾値が候補。 凡例は gold/template_dict (shinbunbun/dotfiles-private#269) と LEFT JOIN して template_text を表示 (先頭 60 文字)、 dict なき template は `tid=NNN` で fallback。",
+      "description": "範囲内で出現量 top-10 の service (macOS process 名、 例: node_exporter / kernel / opendirectoryd) を抽出し、 日次 rate を描画。 NULL service は \"(no service)\" として表示。",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -102,88 +102,54 @@
           "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH dict AS (SELECT DISTINCT ON (template_id) template_id, template_text FROM read_parquet('s3://logs-archive/gold/template_dict/source=macos-unified/date=*/data.parquet', hive_partitioning=true) ORDER BY template_id, date DESC), top_ids AS (SELECT template_id FROM read_parquet('s3://logs-archive/gold/template_rate/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY template_id ORDER BY sum(count) DESC LIMIT 10) SELECT rate.date AS time, COALESCE(LEFT(dict.template_text, 60), 'tid=' || rate.template_id::TEXT)::TEXT AS metric, sum(rate.count)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_rate/source=macos-unified/date=*/data.parquet', hive_partitioning=true) AS rate LEFT JOIN dict ON dict.template_id = rate.template_id WHERE $__timeFilter(rate.date) AND rate.template_id IN (SELECT template_id FROM top_ids) GROUP BY rate.date, rate.template_id, dict.template_text ORDER BY rate.date, rate.template_id",
+          "rawSql": "WITH top_services AS (SELECT COALESCE(service, '(no service)') AS svc, sum(count) AS c FROM read_parquet('s3://logs-archive/gold/volume/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY svc ORDER BY c DESC LIMIT 10) SELECT date AS time, COALESCE(service, '(no service)') AS metric, sum(count)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/volume/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) AND COALESCE(service, '(no service)') IN (SELECT svc FROM top_services) GROUP BY date, service ORDER BY date, service",
           "refId": "A"
         }
       ],
-      "title": "Top-10 template_id daily rate",
+      "title": "Top-10 service by volume (日次)",
       "type": "timeseries"
     },
     {
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 21},
       "id": 30,
-      "title": "Template first seen (new template anomaly)",
+      "title": "Top-10 host by volume",
       "type": "row"
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "日次で新規出現した template の件数。 macOS Unified Log は #264 motherduck 実測で「直近 7 日新規 11 件 / 30 日 105 件」 と 4 source 中で最も静か (= S/N は routeros 並みに高い、 macmini 用途固定のため)。 急増は新 app install / OS update のサイン。",
+      "description": "範囲内で出現量 top-10 の host (Mac ホスト、 macmini / mx-macbook 等)。 Apple ハード別の負荷分布。",
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {"mode": "palette-classic"},
           "custom": {
-            "axisLabel": "new templates/day",
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "lineWidth": 1,
-            "pointSize": 5,
-            "showPoints": "never"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 100},
-              {"color": "red", "value": 300}
-            ]
+            "axisLabel": "rows/day",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "pointSize": 4,
+            "showPoints": "never",
+            "spanNulls": true
           },
           "unit": "short"
         }
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
       "id": 3,
       "options": {
-        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": false},
-        "tooltip": {"mode": "single"}
+        "legend": {"calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
       },
       "targets": [
         {
           "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT date AS time, count(*)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_first_seen/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY date ORDER BY date",
+          "rawSql": "WITH top_hosts AS (SELECT COALESCE(host, '(no host)') AS h, sum(count) AS c FROM read_parquet('s3://logs-archive/gold/volume/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) GROUP BY h ORDER BY c DESC LIMIT 10) SELECT date AS time, COALESCE(host, '(no host)') AS metric, sum(count)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/volume/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date) AND COALESCE(host, '(no host)') IN (SELECT h FROM top_hosts) GROUP BY date, host ORDER BY date, host",
           "refId": "A"
         }
       ],
-      "title": "New template count (per day)",
+      "title": "Top-10 host by volume (日次)",
       "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内の新規 template 一覧 (新しい first_seen_ts 順)。 gold/template_dict (shinbunbun/dotfiles-private#269) と LEFT JOIN して template_text 列を表示 (先頭 100 文字)、 dict なき template は `(no dict)` で fallback。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "custom": {"align": "left", "displayMode": "auto"}
-        }
-      },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22},
-      "id": 4,
-      "options": {
-        "showHeader": true,
-        "sortBy": [{"desc": true, "displayName": "first_seen_jst"}]
-      },
-      "targets": [
-        {
-          "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "WITH dict AS (SELECT DISTINCT ON (template_id) template_id, template_text FROM read_parquet('s3://logs-archive/gold/template_dict/source=macos-unified/date=*/data.parquet', hive_partitioning=true) ORDER BY template_id, date DESC) SELECT fs.template_id, COALESCE(LEFT(dict.template_text, 100), '(no dict)') AS template_text, fs.first_seen_ts AT TIME ZONE 'Asia/Tokyo' AS first_seen_jst, fs.date AS first_seen_date FROM read_parquet('s3://logs-archive/gold/template_first_seen/source=macos-unified/date=*/data.parquet', hive_partitioning=true) AS fs LEFT JOIN dict ON dict.template_id = fs.template_id WHERE $__timeFilter(fs.date) ORDER BY fs.first_seen_ts DESC LIMIT 50",
-          "refId": "A"
-        }
-      ],
-      "title": "新規 template 一覧 (range 内、新しい順)",
-      "type": "table"
     },
     {
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 30},
@@ -201,7 +167,7 @@
           "unit": "short"
         }
       },
-      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 31},
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 31},
       "id": 5,
       "options": {
         "colorMode": "value",
@@ -225,7 +191,7 @@
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内に出現した unique template_id 数。",
+      "description": "範囲内に観測されている distinct service 数 (macOS process 名)。",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -233,7 +199,7 @@
           "unit": "short"
         }
       },
-      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 31},
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 31},
       "id": 6,
       "options": {
         "colorMode": "value",
@@ -248,48 +214,16 @@
           "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT max(date) AS time, count(DISTINCT template_id)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_rate/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date)",
+          "rawSql": "SELECT max(date) AS time, count(DISTINCT COALESCE(service, '(no service)'))::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/volume/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date)",
           "refId": "A"
         }
       ],
-      "title": "Unique templates (range)",
+      "title": "Distinct services (range)",
       "type": "stat"
     },
     {
       "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内に新規出現した template の累計。 急増は drift signal。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {"mode": "thresholds"},
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 500}, {"color": "red", "value": 1500}]},
-          "unit": "short"
-        }
-      },
-      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 31},
-      "id": 7,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "SELECT max(date) AS time, count(*)::BIGINT AS value FROM read_parquet('s3://logs-archive/gold/template_first_seen/source=macos-unified/date=*/data.parquet', hive_partitioning=true) WHERE $__timeFilter(date)",
-          "refId": "A"
-        }
-      ],
-      "title": "New templates (range)",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "postgres", "uid": "PmyduckPoc0001"},
-      "description": "範囲内に観測されている host (macOS Unified Log は macmini / mx-macbook 等の Apple ハード)。 macmini が稼働していない期間は 0 になることあり。",
+      "description": "範囲内に観測されている distinct host 数 (Apple ハード数、 macmini / mx-macbook 等)。",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -297,7 +231,7 @@
           "unit": "short"
         }
       },
-      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 31},
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 31},
       "id": 8,
       "options": {
         "colorMode": "value",

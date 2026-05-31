@@ -3,8 +3,8 @@
 # Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #19)
 # 経緯: shinbunbun/dotfiles-private#197 Phase 5 (再起動)
 #
-# silver は immutable layer (medallion sidecar table パターン)。drain は別 prefix
-# templates/ に書き、silver 自体は触らない。row_id 列が sidecar の join key。
+# silver は immutable layer (medallion sidecar table パターン)。row_id 列は
+# 将来 sidecar table と join するための安定 key として保持。
 #
 # Schedule: 01:35 JST (= bronze 00:35 + 1h)。bronze 失敗日は silver 側 S3 GetObject
 # が NoSuchKey で fail-fast、concurrencyPolicy: Forbid 維持。

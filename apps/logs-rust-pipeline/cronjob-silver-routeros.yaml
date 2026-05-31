@@ -3,7 +3,7 @@
 # Source repo: shinbunbun/logs-pipeline (silver subcommand、PR #19)
 # 経緯: shinbunbun/dotfiles-private#197 Phase 5 (再起動)
 #
-# silver immutable layer。drain は templates/ sidecar に書く。
+# silver immutable layer。
 # Schedule: 01:45 JST (= bronze 00:45 + 1h)。
 apiVersion: batch/v1
 kind: CronJob
