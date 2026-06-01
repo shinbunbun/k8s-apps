@@ -47,7 +47,7 @@ spec:
       initContainers:
         # hermes-runtime repo を deploy key で clone、PVC に展開
         - name: clone-runtime
-          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          image: docker.io/nousresearch/hermes-agent:v2026.5.29
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -151,7 +151,7 @@ spec:
               readOnly: true
       containers:
         - name: hermes
-          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          image: docker.io/nousresearch/hermes-agent:v2026.5.29
           # Hermes kanban の claim TTL は kanban_db.py に hardcode (15 min)、
           # config から設定不可。ローカル LLM は worker thinking が 30+ min かかり
           # 15 min で reclaim → 別 worker で再 spawn される並列累積問題が発生する。
@@ -205,7 +205,7 @@ spec:
               memory: "4Gi"
               cpu: "2000m"
         - name: state-syncer
-          image: docker.io/nousresearch/hermes-agent:v2026.5.7
+          image: docker.io/nousresearch/hermes-agent:v2026.5.29
           command: ["/bin/sh", "-c"]
           args:
             - |
