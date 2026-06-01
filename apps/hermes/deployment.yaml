@@ -152,7 +152,20 @@ spec:
       containers:
         - name: hermes
           image: docker.io/nousresearch/hermes-agent:v2026.5.7
-          args: ["gateway", "run"]
+          # Hermes kanban の claim TTL は kanban_db.py に hardcode (15 min)、
+          # config から設定不可。ローカル LLM は worker thinking が 30+ min かかり
+          # 15 min で reclaim → 別 worker で再 spawn される並列累積問題が発生する。
+          # 起動時に sed で 60 min に patch して直列実行を可能にする (immutable image
+          # のため container 起動内のみ effect、 Pod restart 毎に再 patch される)。
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Patching Hermes claim TTL: 15min -> 60min for long-running LLM workers"
+              sed -i 's/DEFAULT_CLAIM_TTL_SECONDS = 15 \* 60/DEFAULT_CLAIM_TTL_SECONDS = 60 * 60/' \
+                /opt/hermes/hermes_cli/kanban_db.py
+              grep "DEFAULT_CLAIM_TTL_SECONDS = " /opt/hermes/hermes_cli/kanban_db.py | head -1
+              exec /usr/bin/tini -g -- /opt/hermes/docker/entrypoint.sh gateway run
           env:
             # 個別 env で渡す (envFrom を使うと GITHUB_DEPLOY_KEY も env 化されて process listing に露出するため避ける)
             - name: TELEGRAM_BOT_TOKEN
