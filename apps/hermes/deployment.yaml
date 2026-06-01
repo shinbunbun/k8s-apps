@@ -161,6 +161,10 @@ spec:
           args:
             - |
               set -e
+              # Add Hermes venv bin to PATH so the kanban dispatcher's spawn_fn can
+              # find `hermes` (it shells out to `hermes -p <profile> ...`). Without
+              # this, all worker spawns fail with "hermes executable not found on PATH".
+              export PATH=/opt/hermes/.venv/bin:$PATH
               echo "Patching Hermes claim TTL: 15min -> 60min for long-running LLM workers"
               sed -i 's/DEFAULT_CLAIM_TTL_SECONDS = 15 \* 60/DEFAULT_CLAIM_TTL_SECONDS = 60 * 60/' \
                 /opt/hermes/hermes_cli/kanban_db.py
