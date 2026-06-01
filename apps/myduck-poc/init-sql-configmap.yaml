@@ -17,6 +17,16 @@ metadata:
   name: myduck-init-sql
 data:
   01-bootstrap.sql: |
+    -- DuckDB の buffer manager 上限を cgroup limit (6Gi) より下に固定する。
+    -- ダッシュボードの定常 parquet scan で DuckDB が読み込みブロックを内部
+    -- キャッシュに溜め続け、約 89Mi/時で単調増加して 6Gi limit に到達 →
+    -- OOMKilled → 再起動を約 2.7 日周期で繰り返していた (working set は負荷に
+    -- 関係なく線形増加)。memory_limit を設定すると DuckDB 自身が上限到達時に
+    -- buffer を eviction/spill するため、kubelet による OOMKill ではなく
+    -- DuckDB 側で頭打ちさせられる。6Gi - 1Gi (myduckserver Go プロセス等の
+    -- DuckDB 管理外メモリ分のヘッドルーム) = 5GB に設定。
+    SET memory_limit = '5GB';
+
     INSTALL httpfs;
     LOAD httpfs;
 
