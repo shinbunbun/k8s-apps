@@ -88,11 +88,9 @@ spec:
       valuesObject:
         # === Tempo server 本体 ===
         tempo:
-          # retention: 一時的に 1h に短縮 (既存の無駄 trace を compactor に全 GC させる
-          # ためのワンショット flush)。Beyla 計装を自前アプリのみに絞る前に貯まった
-          # Grafana 内部DBポーリング等のノイズ trace (~19GB) を消す目的。
-          # GC 完了後、別 PR で 336h (14日) に戻すこと。
-          retention: 1h
+          # retention 14日 (compactor が古い block を delete)
+          # (2026-06-02: 旧ノイズ trace flush のため一時的に 1h へ下げた後、本値に復帰)
+          retention: 336h
 
           # 匿名テレメトリ無効化 (homelab では不要)
           reportingEnabled: false
