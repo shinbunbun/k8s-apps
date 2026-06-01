@@ -21,8 +21,13 @@
 # 2026-05-29 に dashboard (Route A MyDuck Server 経路) の定常クエリで working set
 # が長時間 93% 以上で稼働し OOMKilled 発生 (限界到達まで ~3.5h 累積)。
 # DuckDB は読み込んだ Parquet を内部キャッシュに溜める挙動があり、PoC 規模でも
-# 累積で 4 Gi 限界を超えた。6 Gi に拡張して止血。本採用時に DuckDB の
-# memory_limit setting と cgroup limit の整合を取り直して再評価する。
+# 累積で 4 Gi 限界を超えた。6 Gi に拡張して止血した。
+# 2026-06-01: 6 Gi でも working set が約 89Mi/時で線形増加し続け、~2.7 日周期で
+# 6 Gi 到達 → OOMKilled → 再起動を繰り返していることを確認。cgroup limit 増量
+# だけでは周期が延びるだけで根治しないため、init.sql (init-sql-configmap.yaml)
+# で DuckDB の memory_limit を 5GB (cgroup 6Gi より下) に設定し、OOMKill では
+# なく DuckDB 自身に buffer eviction させる方式に変更。cgroup limit は
+# memory_limit + 管理外メモリのヘッドルームとして 6 Gi を維持する。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
