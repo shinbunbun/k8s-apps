@@ -152,6 +152,24 @@ spec:
       containers:
         - name: hermes
           image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          # s6-overlay 移行 (v2026.5.29~) への対応:
+          # このイメージから ENTRYPOINT が `/init` (s6-overlay) に変わり、tini は同梱されなくなった。
+          # 旧来の `/usr/bin/tini -- docker/entrypoint.sh gateway run` は二重で破綻する:
+          #   (1) tini 不在 → `exec: /usr/bin/tini: not found` で exit 127 → CrashLoopBackOff
+          #   (2) docker/entrypoint.sh が CMD を exec しない deprecated shim に降格 (cont-init のみ実行)
+          # 正しい起動は image 本来の ENTRYPOINT `/init /opt/hermes/docker/main-wrapper.sh` を exec し、
+          # CMD として `gateway run` を渡すこと。main-wrapper が venv activate と
+          # `s6-setuidgid hermes` による uid 10000 への drop を行う (旧 PATH=venv 追加 workaround も不要に)。
+          #
+          # securityContext.runAsUser:0 の理由: s6 の /init は root で起動して cont-init
+          # (skills bundle / profile reconcile / /opt/data chown) を実行した後に workload を
+          # uid 10000 (hermes) へ drop する設計。pod-level の runAsUser:10000 のままだと
+          # `s6-applyuidgid: Operation not permitted` で init が失敗し gateway が起動しない。
+          # この container だけ root 起動に上書きする — 実際の gateway/worker は s6 が uid 10000 へ
+          # drop するため workload の実効 UID は従来と不変 (state-syncer / initContainer は 10000 据え置き)。
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
           # Hermes kanban の claim TTL は kanban_db.py に hardcode (15 min)、
           # config から設定不可。ローカル LLM は worker thinking が 30+ min かかり
           # 15 min で reclaim → 別 worker で再 spawn される並列累積問題が発生する。
@@ -161,15 +179,13 @@ spec:
           args:
             - |
               set -e
-              # Add Hermes venv bin to PATH so the kanban dispatcher's spawn_fn can
-              # find `hermes` (it shells out to `hermes -p <profile> ...`). Without
-              # this, all worker spawns fail with "hermes executable not found on PATH".
-              export PATH=/opt/hermes/.venv/bin:$PATH
               echo "Patching Hermes claim TTL: 15min -> 60min for long-running LLM workers"
               sed -i 's/DEFAULT_CLAIM_TTL_SECONDS = 15 \* 60/DEFAULT_CLAIM_TTL_SECONDS = 60 * 60/' \
                 /opt/hermes/hermes_cli/kanban_db.py
               grep "DEFAULT_CLAIM_TTL_SECONDS = " /opt/hermes/hermes_cli/kanban_db.py | head -1
-              exec /usr/bin/tini -g -- /opt/hermes/docker/entrypoint.sh gateway run
+              # image 本来の s6 ENTRYPOINT を exec。main-wrapper が venv activate +
+              # `gateway run` を `s6-setuidgid hermes hermes gateway run` にルーティングする。
+              exec /init /opt/hermes/docker/main-wrapper.sh gateway run
           env:
             # 個別 env で渡す (envFrom を使うと GITHUB_DEPLOY_KEY も env 化されて process listing に露出するため避ける)
             - name: TELEGRAM_BOT_TOKEN
