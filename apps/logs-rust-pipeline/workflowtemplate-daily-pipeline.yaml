@@ -67,9 +67,14 @@ spec:
             # kill (exit 143)。行数が増加傾向 (routeros 3.7M→5.5M / systemd 83k→207k, 直近1週)
             # で 4Gi 閾値を超えたため、成長ヘッドルームを見て 12Gi に引き上げ。
             # sizeLimit は上限値であり実消費ではないため、未使用時の node 圧迫はない。
+            #
+            # silver_mem: routeros は最大行数 (5.5M, 増加傾向) にもかかわらず最小の 4Gi
+            # だったため、2026-06-03 backfill 再実行時に silver が OOMKilled (exit 137)。
+            # backfill template の silver は 12Gi (daily 8Gi 想定 + 余裕) で完走するため、
+            # daily 側も他大規模 source (macos-unified) と揃えて 4Gi→8Gi に引き上げ。
             withItems:
               - {source: systemd,        bronze_mem: 12Gi, bronze_tmp: 12Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
-              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
+              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 8Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
               - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 8Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
 
