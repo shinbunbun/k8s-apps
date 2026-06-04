@@ -62,9 +62,14 @@ spec:
                 - {name: silver_tmp,  value: "{{item.silver_tmp}}"}
                 - {name: gold_mem,    value: "{{item.gold_mem}}"}
                 - {name: gold_tmp,    value: "{{item.gold_tmp}}"}
+            # bronze_tmp: systemd / routeros は当初 4Gi (旧 CronJob 同値) だったが、
+            # 2026-06-03 の daily run で両者とも bronze が EmptyDir "tmp" 4Gi 超過で
+            # kill (exit 143)。行数が増加傾向 (routeros 3.7M→5.5M / systemd 83k→207k, 直近1週)
+            # で 4Gi 閾値を超えたため、成長ヘッドルームを見て 12Gi に引き上げ。
+            # sizeLimit は上限値であり実消費ではないため、未使用時の node 圧迫はない。
             withItems:
-              - {source: systemd,        bronze_mem: 12Gi, bronze_tmp:  4Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
-              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp:  4Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
+              - {source: systemd,        bronze_mem: 12Gi, bronze_tmp: 12Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
               - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 4Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 8Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
 
