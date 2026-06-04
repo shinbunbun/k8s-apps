@@ -28,6 +28,18 @@
 # で DuckDB の memory_limit を 5GB (cgroup 6Gi より下) に設定し、OOMKill では
 # なく DuckDB 自身に buffer eviction させる方式に変更。cgroup limit は
 # memory_limit + 管理外メモリのヘッドルームとして 6 Gi を維持する。
+# 2026-06-04: memory_limit=5GB 設定後も 6 Gi 到達で OOMKilled が再発。新規接続
+# から current_setting('memory_limit') を確認すると 4.6 GiB (=5GB) が正しく効いて
+# いるのに、working set は 5GB を超えて 5.97 GiB まで伸びていた。原因は DuckDB の
+# buffer cache ではなく、その外側 (go-mysql-server コネクションハンドラ) の per-
+# connection メモリリーク。gold parquet は数 MB しかなくキャッシュ蓄積では GiB 級
+# 増加を説明できない。リーク源は tcpSocket probe による接続 churn で、readiness
+# (5s) / liveness (30s) が 5432 を叩くたびにハンドラが生成→破棄され少量ずつ漏れる
+# (クエリ負荷ゼロ・CPU アイドルでも 24h 一定レートで線形増加するのと整合)。probe
+# 間隔を readiness 5→30s / liveness 30→60s に延ばして接続レートを約 6 倍下げ、OOM
+# 周期を ~2.7 日 → ~2 週間に緩和する。memory_limit が効かない層のリークなので
+# cgroup/DuckDB 上限ではなく接続レートを下げるのが効く。根治は上流 myduckserver の
+# リーク修正待ちで、本対策は緩和。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -114,17 +126,23 @@ spec:
             limits:
               cpu: "2"
               memory: 6Gi
+          # tcpSocket probe の接続 churn が myduckserver の per-connection リーク
+          # を駆動するため (詳細は冒頭コメント 2026-06-04 参照)、probe 間隔を延ばし
+          # て接続レートを下げる。readiness 30s で readinessProbe 起因の接続を 6 倍
+          # 削減、liveness 60s で同様に半減する。failureThreshold は据え置きなので
+          # 障害検知の総猶予 (period × threshold) は readiness 30→180s / liveness
+          # 60→180s に延びるが、PoC かつ単一クエリエンジンなので許容する。
           readinessProbe:
             tcpSocket:
               port: 5432
             initialDelaySeconds: 15
-            periodSeconds: 5
+            periodSeconds: 30
             failureThreshold: 6
           livenessProbe:
             tcpSocket:
               port: 5432
             initialDelaySeconds: 60
-            periodSeconds: 30
+            periodSeconds: 60
             failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
