@@ -271,7 +271,9 @@ spec:
               memory: "64Mi"
               cpu: "20m"
             limits:
-              memory: "256Mi"
+              # git push / gc --auto の pack-objects が 15min cycle 蓄積後に瞬間的に
+              # 256Mi を超え OOMKill されていた (定常は 1-5MB)。スパイク吸収のため 512Mi に引き上げ。
+              memory: "512Mi"
               cpu: "200m"
       volumes:
         - name: state
