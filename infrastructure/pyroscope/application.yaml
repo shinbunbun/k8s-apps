@@ -98,7 +98,18 @@ spec:
             storage:
               backend: s3
               s3:
-                endpoint: garage.garage.svc.cluster.local:3900
+                # 既定の `garage` ClusterIP は 3 Pod に round-robin し、約 1/3 の確率で
+                # garage-1 (g3pro) をコーディネータに選ぶ。g3pro は単一 SATA SSD が
+                # Garage retention GC churn で恒常飽和しており、segment-writer の同期
+                # flush (15s deadline) が g3pro のディスク待ちで timeout → profile
+                # rejected → alloy push error バーストになる (dotfiles-private#266)。
+                # `garage-local` Service (apps/garage/pyroscope-s3-service.yaml) は
+                # internalTrafficPolicy: Local で同一ノードの garage Pod にのみ振る。
+                # pyroscope を nixos-desktop に固定 (下記 affinity) することで同居する
+                # garage-0 (NVMe) を常にコーディネータにし、g3pro を同期パスから外す。
+                # RF=3 consistent の write quorum=2/3 は NVMe 2 ノードで満たされ、
+                # g3pro へは resync で非同期にレプリカが届くため冗長性は不変。
+                endpoint: garage-local.garage.svc.cluster.local:3900
                 bucket_name: pyroscope-blocks
                 region: garage
                 insecure: true
@@ -172,6 +183,22 @@ spec:
               memory: 512Mi
             limits:
               memory: 2Gi
+
+          # === ノード固定 (nixos-desktop) ===
+          # garage-local Service (internalTrafficPolicy: Local) で S3 コーディネータを
+          # 同一ノードの garage Pod に限定する設計上、pyroscope は garage-0 と同居する
+          # nixos-desktop (NVMe・24 コア) に固定する必要がある。
+          # ・g3pro に再配置されると Local が garage-1=g3pro に振られ本末転倒
+          # ・nixos-desktop は最強ノードかつ garage-0 同居でネットワークホップ 0
+          # データは emptyDir (object storage が真実) なので再配置自体は無害。
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values: ["nixos-desktop"]
 
         # === Service 設定 ===
         # ClusterIP のみ (外部公開なし)。Grafana datasource / alloy-profiles から

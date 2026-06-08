@@ -1,0 +1,54 @@
+# Pyroscope 専用 S3 入口 Service (g3pro コーディネータ回避)
+#
+# 【背景】
+# alloy-profiles の eBPF profile push が `deadline_exceeded` で頻発する不具合
+# (dotfiles-private#266) の調査で、真因が
+# 「g3pro の単一 SATA SSD が Garage の retention GC churn (DELETE≈PUT ~7,600/h、
+# RF=3 で全ノードに波及) で恒常飽和 (iowait 34% / disk 68%、churn burst 時 90%+)」
+# と判明。pyroscope の segment-writer flush は同期 15s deadline で Garage write
+# quorum を待つため、既定 `garage` ClusterIP が約 1/3 の確率で garage-1 (g3pro) を
+# コーディネータに選ぶと、飽和した g3pro のディスク待ちで flush timeout → profile
+# rejected → alloy push error バーストになる。
+#
+# 【対策】
+# Garage は RF=3 + consistencyMode=consistent で write/read quorum=2/3。NVMe の
+# 2 ノード (garage-0=nixos-desktop / garage-2=nixos) だけで quorum を満たせるため、
+# pyroscope のコーディネータを高速ノードに固定すれば g3pro を同期パスから外せる
+# (g3pro へは従来通り resync で非同期にレプリカが配られ、RF=3 の冗長性は不変)。
+#
+# `internalTrafficPolicy: Local` は「呼び出し元と同一ノード上の Pod にのみ」振る。
+# pyroscope StatefulSet を nixos-desktop に固定 (infrastructure/pyroscope の
+# affinity 参照) することで、同居する garage-0 (nixos-desktop, NVMe) にのみ
+# ルーティングされ、ネットワークホップ 0・g3pro 不関与のコーディネータになる。
+#
+# 【注意】Local のため pyroscope と同一ノードに garage Pod が居ることが前提。
+# pyroscope を nixos-desktop に固定する nodeAffinity と必ずセットで運用する
+# (g3pro へ再配置されると garage-1=g3pro に振られて本末転倒になるため)。
+# RF=2 への変更は consistent mode では quorum=2/2 となり全 write に g3pro が
+# 必須化するため不可 (cluster.yaml のコメント参照)。
+#
+# operator 管理外の素の Service。selector は operator 生成の `garage` Service と
+# 同じ 3 Pod にマッチするが、ルーティングは internalTrafficPolicy で同一ノードに
+# 限定される。公開ポートは S3 API (3900) のみ。
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-local
+  namespace: garage
+  labels:
+    app.kubernetes.io/name: garage
+    app.kubernetes.io/instance: garage
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Local
+  selector:
+    # operator 生成の `garage` Service と同一 selector (storage tier の 3 Pod のみ)。
+    # 将来 operator が非 storage Pod を足しても拾わないよう tier ラベルまで一致させる。
+    app.kubernetes.io/instance: garage
+    app.kubernetes.io/name: garage
+    garage.rajsingh.info/tier: storage
+  ports:
+    - name: s3
+      port: 3900
+      protocol: TCP
+      targetPort: 3900
