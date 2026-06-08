@@ -31,6 +31,7 @@ resources:
   - reference-grants.yaml
   - keys.yaml
   - lan-service.yaml
+  - pyroscope-s3-service.yaml
 
 generators:
   - secret-generator.yaml
