@@ -249,6 +249,16 @@ spec:
               cd /opt/data
               git config user.email "hermes@bot.local"
               git config user.name "Hermes Bot"
+              # OOM 恒久対策: state.db 等の DB は .gitignore 済だが、過去に追跡していた肥大履歴の
+              # repack/push が pack-objects で 512Mi を瞬間超過し OOMKill されていた。
+              # auto-gc を無効化し pack のメモリ使用 (delta window / 大 blob の delta 化) を絞ることで
+              # push 時のスパイクを抑える。PVC-local の .git/config は版管理外なので、ここで毎起動
+              # idempotent に再設定して PVC 再作成後も効くようにする。
+              git config gc.auto 0
+              git config pack.windowMemory 8m
+              git config pack.threads 1
+              git config pack.deltaCacheSize 4m
+              git config core.bigFileThreshold 512k
               while true; do
                 sleep 900
                 git add -A
@@ -274,8 +284,10 @@ spec:
               memory: "64Mi"
               cpu: "20m"
             limits:
-              # git push / gc --auto の pack-objects が 15min cycle 蓄積後に瞬間的に
-              # 256Mi を超え OOMKill されていた (定常は 1-5MB)。スパイク吸収のため 512Mi に引き上げ。
+              # 旧 OOM の真因は state.db / profiles/reviewer/state.db (各 ~7-10MB の SQLite) が
+              # .gitignore 漏れで毎 cycle 履歴に積まれ repo が 115MB 肥大 → push の repack が 512Mi 超過。
+              # 対策: DB を untrack (hermes-runtime .gitignore) + 上記 pack config で push を bound 化。
+              # 定常は 1-5MB なので 512Mi はスパイク用の十分なヘッドルーム。
               memory: "512Mi"
               cpu: "200m"
       volumes:
