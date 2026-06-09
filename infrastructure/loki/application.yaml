@@ -24,7 +24,9 @@
 # をマウントして LogQL rule を評価、VMAlertmanager LAN VIP (192.168.128.13:9093) に送信。
 # external_url は既存 Grafana を指す。tenant=fake で運用 (multi-tenant 不使用)。
 #
-# 【retention】30 日 (720h) を踏襲。NixOS 側 Loki の挙動と揃える。
+# 【retention】14 日 (336h)。loki-chunks の極小チャンクが garage metadata を
+# 肥大させていたため 30日(720h) から短縮。長期ログは Parquet アーカイブが担う
+# (詳細は limits_config.retention_period のコメント参照)。
 #
 # 【ネットワーク】
 # - Fluent Bit 送信先: loki-lan Service (192.168.128.14 固定 VIP) → write pod 直送
@@ -105,7 +107,13 @@ spec:
               # access_key_id / secret_access_key は env 経由 (loki-garage-credentials Secret)
               # この Secret は Garage Operator が GarageKey CR の secretTemplate で自動生成
           limits_config:
-            retention_period: 720h
+            # retention 14日 (336h)。30日(720h)から短縮。
+            # loki-chunks の極小チャンク (211万オブジェクト, 平均4KB) が garage の
+            # metadata DB (db.lmdb) を肥大させ homeMachine の disk-pressure を招いていたため、
+            # live オブジェクト数を比例削減する。Loki は「直近の高速検索層」に徹し、
+            # それ以前のログは OTLP→Vector→Garage の Parquet アーカイブ (logs-archive,
+            # DuckDB 経由で参照可) が長期保存を担うので情報は失われない。
+            retention_period: 336h
             ingestion_rate_mb: 50
             ingestion_burst_size_mb: 100
             max_query_parallelism: 32
