@@ -141,6 +141,18 @@ spec:
           emptyDir:
             sizeLimit: "{{inputs.parameters.tmp_size}}"
       activeDeadlineSeconds: 3600
+      # 一過性エラー (Garage S3 download timeout 等、2026-06-10 daily run で k8s-pods
+      # silver が "operation timed out" で落ち Workflow 全体 Failed) を自動リトライで吸収。
+      # OnFailure: container exit≠0 (S3 timeout の exit 1 を含む) で再試行。OOM (exit 137)
+      # も対象だが mem は source 毎にチューニング済で稀、2 回の追加試行コストは許容範囲。
+      # backoff 指数: 30s → 60s (S3/Garage の瞬断が収まるのを待つ)。
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+        backoff:
+          duration: "30s"
+          factor: "2"
+          maxDuration: "5m"
       metadata:
         labels:
           app: logs-rust-pipeline
@@ -211,6 +223,15 @@ spec:
           emptyDir:
             sizeLimit: "{{inputs.parameters.tmp_size}}"
       activeDeadlineSeconds: 3600
+      # bronze と同方針: 一過性 S3 timeout を OnFailure × 2 リトライで吸収。
+      # silver は bronze parquet を S3 から download するため timeout の影響を最も受けやすい。
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+        backoff:
+          duration: "30s"
+          factor: "2"
+          maxDuration: "5m"
       metadata:
         labels:
           app: logs-rust-pipeline
@@ -281,6 +302,14 @@ spec:
           emptyDir:
             sizeLimit: "{{inputs.parameters.tmp_size}}"
       activeDeadlineSeconds: 1800
+      # bronze / silver と同方針: 一過性 S3 timeout を OnFailure × 2 リトライで吸収。
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+        backoff:
+          duration: "30s"
+          factor: "2"
+          maxDuration: "5m"
       metadata:
         labels:
           app: logs-rust-pipeline
