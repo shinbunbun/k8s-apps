@@ -6,9 +6,26 @@
 # 構造:
 #   daily-pipeline (steps, withItems で 4 source 並列展開)
 #       source-pipeline (DAG, source ごとに bronze→silver→gold-volume 直列)
-#           bronze        -> logs-pipeline bronze --source <s>
-#           silver        -> logs-pipeline silver --source <s>     (depends: bronze)
-#           gold-volume   -> logs-pipeline gold-build --table volume --source <s> (depends: silver)
+#           bronze        -> ingest-stage(stage=bronze)  logs-pipeline bronze --source <s>
+#           silver        -> ingest-stage(stage=silver)  logs-pipeline silver --source <s>     (depends: bronze)
+#           gold-volume   -> gold-volume                 logs-pipeline gold-build --table volume --source <s> (depends: silver)
+#
+# 【テンプレート統合 (T62)】bronze/silver/gold-volume の 3 stage はかつて
+# それぞれ別テンプレート (各 ~85 行) として定義され、retryStrategy/affinity
+# (g3pro NotIn)/securityContext/volumeMounts/podSpecPatch が完全重複していた。
+# #479 の retryStrategy 追加時も 3 箇所に同じブロックを貼る必要があり drift の
+# 温床だった (実際 retryStrategy コメントが stage 間でずれ始めていた)。
+#
+# bronze と silver は「テンプレート名・tier ラベル・args の stage 名」だけが
+# 異なり構造完全一致だったため、stage 名を inputs.parameters 化した単一テンプレート
+# ingest-stage に統合した。gold-volume は args が gold-build --table volume と
+# 構造が異なり (4要素 vs bronze/silver の 2要素)、activeDeadlineSeconds も 1800
+# (bronze/silver は 3600)、pod に table=volume ラベルが付くなど固有差分が多いため、
+# 無理に統合せず独立テンプレートのまま残した (タスク方針: gold 固有差分は最小分岐)。
+# これで bronze≡silver の重複 (~85 行) が解消され、共通部の方針変更が ingest-stage
+# 1 箇所 + gold-volume 1 箇所の計 2 箇所保守 (従来 3 箇所) に減る。
+# 注意: source-pipeline DAG の task 名 (bronze/silver/gold-volume) は維持して
+# いるため、Workflow node 名・既存の挙動は変わらない。
 #
 # Phase 3 拡張ポイント:
 #
@@ -83,7 +100,9 @@ spec:
               - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 8Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 8Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
 
-    # 1 source 分の bronze -> silver -> gold-volume を直列実行
+    # 1 source 分の bronze -> silver -> gold-volume を直列実行。
+    # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。
+    # gold-volume は固有差分が多いため独立テンプレート (下記参照)。
     - name: source-pipeline
       inputs:
         parameters:
@@ -97,17 +116,19 @@ spec:
       dag:
         tasks:
           - name: bronze
-            template: bronze
+            template: ingest-stage
             arguments:
               parameters:
+                - {name: stage,     value: bronze}
                 - {name: source,    value: "{{inputs.parameters.source}}"}
                 - {name: memory,    value: "{{inputs.parameters.bronze_mem}}"}
                 - {name: tmp_size,  value: "{{inputs.parameters.bronze_tmp}}"}
           - name: silver
             dependencies: [bronze]
-            template: silver
+            template: ingest-stage
             arguments:
               parameters:
+                - {name: stage,     value: silver}
                 - {name: source,    value: "{{inputs.parameters.source}}"}
                 - {name: memory,    value: "{{inputs.parameters.silver_mem}}"}
                 - {name: tmp_size,  value: "{{inputs.parameters.silver_tmp}}"}
@@ -120,10 +141,17 @@ spec:
                 - {name: memory,    value: "{{inputs.parameters.gold_mem}}"}
                 - {name: tmp_size,  value: "{{inputs.parameters.gold_tmp}}"}
 
-    # Stage: bronze (raw/ NDJSON.zst -> daily-struct/ Parquet)
-    - name: bronze
+    # 共通 stage テンプレート: bronze と silver を統合。
+    #   - stage:  binary に渡す stage 名 + pod の tier ラベル (bronze / silver)。
+    #             args は `<stage> --source <source>`。bronze/silver は構造同一の
+    #             ため stage 名 1 パラメータで両者を表現できる。
+    #   - source / memory / tmp_size: 従来どおり source 毎チューニング値。
+    # gold-volume は args 構造 (gold-build --table volume)・deadline (1800)・
+    # table ラベルが異なるため本テンプレートには含めず独立定義する。
+    - name: ingest-stage
       inputs:
         parameters:
+          - name: stage
           - name: source
           - name: memory
           - name: tmp_size
@@ -146,84 +174,6 @@ spec:
       # OnFailure: container exit≠0 (S3 timeout の exit 1 を含む) で再試行。OOM (exit 137)
       # も対象だが mem は source 毎にチューニング済で稀、2 回の追加試行コストは許容範囲。
       # backoff 指数: 30s → 60s (S3/Garage の瞬断が収まるのを待つ)。
-      retryStrategy:
-        limit: "2"
-        retryPolicy: OnFailure
-        backoff:
-          duration: "30s"
-          factor: "2"
-          maxDuration: "5m"
-      metadata:
-        labels:
-          app: logs-rust-pipeline
-          tier: bronze
-          source: "{{inputs.parameters.source}}"
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: NotIn
-                    values: [g3pro]
-      container:
-        image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
-        args:
-          - bronze
-          - --source
-          - "{{inputs.parameters.source}}"
-        env:
-          - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
-          - name: RUST_LOG
-            value: "info"
-        envFrom:
-          - secretRef:
-              name: logs-rust-pipeline-credentials
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            # placeholder: k8s CRD admission が ResourceQuantity 正規表現で validate するため
-            # parameter substitution string ({{...}}) を直接書けない。実際の memory limit は
-            # template の podSpecPatch で Pod 生成時に strategic merge patch で上書きする。
-            memory: 256Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          capabilities:
-            drop: [ALL]
-        volumeMounts:
-          - name: tmp
-            mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir:
-            # placeholder: memory と同じく podSpecPatch で上書きする
-            sizeLimit: 100Mi
-
-    # Stage: silver (daily-struct/ -> silver/ immutable canonical schema)
-    - name: silver
-      inputs:
-        parameters:
-          - name: source
-          - name: memory
-          - name: tmp_size
-      podSpecPatch: |
-        containers:
-        - name: main
-          resources:
-            limits:
-              memory: "{{inputs.parameters.memory}}"
-        volumes:
-        - name: tmp
-          emptyDir:
-            sizeLimit: "{{inputs.parameters.tmp_size}}"
-      activeDeadlineSeconds: 3600
-      # bronze と同方針: 一過性 S3 timeout を OnFailure × 2 リトライで吸収。
       # silver は bronze parquet を S3 から download するため timeout の影響を最も受けやすい。
       retryStrategy:
         limit: "2"
@@ -235,7 +185,7 @@ spec:
       metadata:
         labels:
           app: logs-rust-pipeline
-          tier: silver
+          tier: "{{inputs.parameters.stage}}"
           source: "{{inputs.parameters.source}}"
       affinity:
         nodeAffinity:
@@ -249,7 +199,7 @@ spec:
       container:
         image: ghcr.io/shinbunbun/logs-pipeline:7bd76bc
         args:
-          - silver
+          - "{{inputs.parameters.stage}}"
           - --source
           - "{{inputs.parameters.source}}"
         env:
@@ -285,6 +235,9 @@ spec:
             sizeLimit: 100Mi
 
     # Stage: gold-volume (silver -> gold/volume/ host+service+level GROUP BY count)
+    # ingest-stage と共通部 (podSpecPatch/retryStrategy/affinity/securityContext/
+    # volumeMounts/volumes) は同一だが、args が gold-build --table volume と構造が
+    # 異なり、activeDeadlineSeconds=1800、pod に table=volume ラベルが付くため独立。
     - name: gold-volume
       inputs:
         parameters:
