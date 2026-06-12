@@ -3,7 +3,8 @@
 # - main container: 公式 image `nousresearch/hermes-agent` を gateway run で起動
 # - initContainer: hermes-runtime repo を deploy key で clone/fetch、PVC に展開
 # - sidecar `state-syncer`: 15 min ごとに git add/commit/push (skill/memory/config の差分を private repo に同期)。
-#   push が non-fast-forward で弾かれたら origin/main に rebase して再 push、conflict 時はローカル優先で abort し log のみ。
+#   push が non-fast-forward で弾かれたら origin/main に rebase して再 push、conflict 時はローカル優先で abort。
+#   conflict は level=error (logfmt) で 15 分ごとに再ログされ、K3sPodErrorLogDetected (loki-config) 経由で Discord に通知される。
 #
 # nodeSelector で nixos-desktop に固定 (LLM endpoint と同 node)。
 # PVC ReadWriteOnce + strategy Recreate で Pod 入れ替え時の競合回避。
@@ -269,18 +270,27 @@ spec:
                 git add -A
                 if ! git diff --cached --quiet; then
                   git commit -m "[auto] hermes state sync $(date -Iminutes)"
-                  # push が non-fast-forward で弾かれる場合 (hermes-runtime に PR がマージされ
-                  # origin/main が先行) は origin/main に rebase してから再 push。conflict 時は
-                  # ローカル優先で abort し log だけ残す (state は PVC が真、自動でリモート優先にしない)。
-                  if ! git push origin HEAD:main; then
-                    echo "push rejected, attempting rebase onto origin/main"
-                    git fetch origin main
-                    if git rebase origin/main; then
-                      git push origin HEAD:main || echo "push failed after rebase, will retry next cycle"
-                    else
-                      git rebase --abort
-                      echo "rebase conflict: keeping local state, manual intervention needed"
-                    fi
+                fi
+                # push は commit の有無に関係なく毎 cycle 試行する (up-to-date なら no-op)。
+                # conflict 等で未 push commit が滞留した場合も毎 cycle 再試行 + 再ログされ、
+                # サイレント停止しない。
+                # push が non-fast-forward で弾かれる場合 (hermes-runtime に PR がマージされ
+                # origin/main が先行) は origin/main に rebase してから再 push。conflict 時は
+                # ローカル優先で abort する (state は PVC が真、自動でリモート優先にしない)。
+                # conflict ログは logfmt (level=error) で出す: Alloy の level 抽出が拾い、
+                # loki-config の K3sPodErrorLogDetected アラートが Alertmanager → Discord に
+                # 通知する。手動復旧するまで 15 分ごとに再発火する。
+                if ! git push origin HEAD:main; then
+                  echo "push rejected, attempting rebase onto origin/main"
+                  if ! git fetch origin main; then
+                    echo 'level=warn msg="state-syncer fetch failed, will retry next cycle"'
+                    continue
+                  fi
+                  if git rebase origin/main; then
+                    git push origin HEAD:main || echo 'level=warn msg="state-syncer push failed after rebase, will retry next cycle"'
+                  else
+                    git rebase --abort
+                    echo 'level=error msg="state-syncer rebase conflict: keeping local state, manual intervention needed"'
                   fi
                 fi
               done
