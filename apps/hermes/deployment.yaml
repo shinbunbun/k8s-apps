@@ -286,10 +286,15 @@ spec:
                     echo 'level=warn msg="state-syncer fetch failed, will retry next cycle"'
                     continue
                   fi
-                  if git rebase origin/main; then
+                  # --autostash: main container が常時 /opt/data に書くため、add -A 後〜rebase
+                  # 開始の間に worktree が dirty になるレースがある。autostash で吸収しないと
+                  # rebase が開始前に拒否される。
+                  # --abort || true: rebase が開始前に失敗した場合 "no rebase in progress" で
+                  # abort 自体が失敗し、set -e が error ログ手前でスクリプトを殺すのを防ぐ。
+                  if git rebase --autostash origin/main; then
                     git push origin HEAD:main || echo 'level=warn msg="state-syncer push failed after rebase, will retry next cycle"'
                   else
-                    git rebase --abort
+                    git rebase --abort || true
                     echo 'level=error msg="state-syncer rebase conflict: keeping local state, manual intervention needed"'
                   fi
                 fi
