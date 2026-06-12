@@ -3,6 +3,13 @@
 # apps/ 配下のサブディレクトリを自動検出し、
 # 各ディレクトリに対応する ArgoCD Application を自動生成する。
 # _templates/ ディレクトリは除外される。
+#
+# destination.namespace は原則ディレクトリ名 (.path.basename) を使うが、
+# kustomization.yaml の namespace: がディレクトリ名と異なる app
+# (alloy-config→alloy, argo-workflows-config→argo など) では
+# git generator から exclude し、list generator で実 namespace を明示供給する。
+# これにより basename と同名の空 namespace が CreateNamespace で量産されるのを抑止する。
+# 実リソースの namespace は kustomization.yaml 側のまま据え置きで変更しない。
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -12,6 +19,7 @@ spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
   generators:
+    # ディレクトリ名 == 実 namespace の app は git generator で自動検出する。
     - git:
         repoURL: git@github.com:shinbunbun/k8s-apps.git
         revision: main
@@ -19,6 +27,67 @@ spec:
           - path: apps/*
           - path: apps/_templates
             exclude: true
+          # kustomization.yaml の namespace がディレクトリ名と異なる 9 app は
+          # git generator から除外し、下の list generator で namespace を明示する。
+          - path: apps/alloy-config
+            exclude: true
+          - path: apps/argo-workflows-config
+            exclude: true
+          - path: apps/authentik-config
+            exclude: true
+          - path: apps/grafana-config
+            exclude: true
+          - path: apps/librechat-config
+            exclude: true
+          - path: apps/librechat-mongodb
+            exclude: true
+          - path: apps/log-archiver-vector-config
+            exclude: true
+          - path: apps/loki-config
+            exclude: true
+          - path: apps/victoriametrics-config
+            exclude: true
+    # kustomization.yaml の namespace がディレクトリ名と異なる 9 app は
+    # 実 namespace を namespace キーで明示供給する。
+    # path 構造は git generator の .path.{path,basename} と揃え、template を共通化する。
+    - list:
+        elements:
+          - path:
+              path: apps/alloy-config
+              basename: alloy-config
+            namespace: alloy
+          - path:
+              path: apps/argo-workflows-config
+              basename: argo-workflows-config
+            namespace: argo
+          - path:
+              path: apps/authentik-config
+              basename: authentik-config
+            namespace: authentik
+          - path:
+              path: apps/grafana-config
+              basename: grafana-config
+            namespace: grafana
+          - path:
+              path: apps/librechat-config
+              basename: librechat-config
+            namespace: librechat
+          - path:
+              path: apps/librechat-mongodb
+              basename: librechat-mongodb
+            namespace: librechat
+          - path:
+              path: apps/log-archiver-vector-config
+              basename: log-archiver-vector-config
+            namespace: log-archiver-vector
+          - path:
+              path: apps/loki-config
+              basename: loki-config
+            namespace: loki
+          - path:
+              path: apps/victoriametrics-config
+              basename: victoriametrics-config
+            namespace: victoriametrics
   template:
     metadata:
       name: "{{ .path.basename }}"
@@ -30,7 +99,9 @@ spec:
         path: "{{ .path.path }}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{ .path.basename }}"
+        # namespace キーがあればそれ (list generator)、なければ basename (git generator)。
+        # sprig dig は missingkey=error と両立する。
+        namespace: '{{ dig "namespace" .path.basename . }}'
       syncPolicy:
         automated:
           prune: true
