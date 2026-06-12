@@ -14,6 +14,9 @@
 # では kubectl.kubernetes.io/last-applied-configuration annotation に全データが
 # コピーされ metadata.annotations 256KiB 上限を超過して ConfigMap apply が失敗する。
 # server-side apply は last-applied-configuration を使わないためこの制限を回避できる。
+#
+# 注意: configMapGenerator セクションは gen-kustomization.py が生成する。
+# ダッシュボードの追加・変更は同スクリプトの DASHBOARDS を編集して再実行すること。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: grafana
