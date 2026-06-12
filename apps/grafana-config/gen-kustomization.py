@@ -10,6 +10,10 @@
     ./gen-kustomization.py        # kustomization.yaml を上書き生成
     ./gen-kustomization.py --check # 既存ファイルとの差分が無いか確認 (CI 向け)
 
+実行時は (--check / 通常実行いずれも) まず dashboards/ の実 JSON 集合と
+DASHBOARDS テーブルの file 集合を突合し、差分があれば exit 1 する。
+dashboards/ に置いた JSON の DASHBOARDS 追記漏れ・逆の登録ミスを検知する。
+
 各タプルのフィールド:
     file   : dashboards/ 配下の JSON ファイル名 (拡張子込み)
     name   : 生成する ConfigMap 名。None なら "grafana-dashboard-<basename>"
@@ -122,6 +126,37 @@ def block(file, name, folder, comment):
     return "\n".join(lines)
 
 
+def check_dashboards_dir():
+    """DASHBOARDS テーブルの file 集合と dashboards/ の実 JSON 集合を突合する。
+
+    dashboards/ に JSON を置いて DASHBOARDS への追記を忘れると ConfigMap が
+    生成されず Grafana sidecar にロードされない不具合が静かに発生する。逆に
+    DASHBOARDS に存在しないファイルを書くと kustomize build が失敗する。両方を
+    集合比較で検知し、差分があれば stderr にファイル名を出して終了する。
+
+    検証専用 (生成出力には一切触れない)。--check / 通常実行の両方で呼ぶ。
+    """
+    table = {d[0] for d in DASHBOARDS}
+    disk = {p.name for p in (HERE / "dashboards").glob("*.json")}
+    missing_in_table = sorted(disk - table)  # disk にあるが DASHBOARDS 未登録
+    missing_on_disk = sorted(table - disk)   # DASHBOARDS にあるが disk に無い
+    if missing_in_table or missing_on_disk:
+        sys.stderr.write(
+            "dashboards/ の実ファイルと DASHBOARDS テーブルが一致しません。\n"
+        )
+        if missing_in_table:
+            sys.stderr.write(
+                "  dashboards/ に存在するが DASHBOARDS 未登録: "
+                + ", ".join(missing_in_table) + "\n"
+            )
+        if missing_on_disk:
+            sys.stderr.write(
+                "  DASHBOARDS にあるが dashboards/ に存在しない: "
+                + ", ".join(missing_on_disk) + "\n"
+            )
+        sys.exit(1)
+
+
 def render():
     parts = [HEADER.rstrip("\n")]
     for d in DASHBOARDS:
@@ -130,6 +165,7 @@ def render():
 
 
 def main():
+    check_dashboards_dir()
     out = render()
     if "--check" in sys.argv:
         cur = KUSTOMIZATION.read_text()
