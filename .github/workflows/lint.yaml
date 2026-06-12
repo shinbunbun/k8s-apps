@@ -1,0 +1,42 @@
+# lint CI: gen-kustomization drift ガード + appset 二重リスト突合
+#
+# このリポジトリは ArgoCD repo-server が kustomization.yaml を直読みするため、
+# 手書き drift がそのまま本番に流れる。CI で機械的に検知する。
+#
+# 実行する検証:
+#   1. apps/grafana-config/gen-kustomization.py --check
+#      - 生成物 kustomization.yaml が DASHBOARDS テーブルと乖離していないか
+#      - dashboards/ の実 JSON 集合と DASHBOARDS テーブルの集合突合 (内蔵)
+#   2. applicationsets/check-appset.py
+#      - apps-appset.yaml の git exclude / list elements が apps/ の実
+#        namespace override 集合と一致するか
+#
+# kustomize build smoke は本ワークフローには含めない。理由はリポジトリの app
+# overlay の多くが KSOPS (SOPS/Age) generator を含み、復号鍵を CI に渡せない
+# ため build が成立しない。Age 鍵を GitHub-hosted runner に持ち込むのは
+# セキュリティ上避ける。上記 2 つの python 検証で drift 経路を塞ぐ。
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: gen-kustomization drift ガード (--check + dashboards/ 突合)
+        run: python3 apps/grafana-config/gen-kustomization.py --check
+
+      - name: apps-appset 二重リスト突合
+        run: python3 applicationsets/check-appset.py
