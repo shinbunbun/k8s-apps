@@ -2,7 +2,8 @@
 #
 # - main container: 公式 image `nousresearch/hermes-agent` を gateway run で起動
 # - initContainer: hermes-runtime repo を deploy key で clone/fetch、PVC に展開
-# - sidecar `state-syncer`: 15 min ごとに git add/commit/push (skill/memory/config の差分を private repo に同期)
+# - sidecar `state-syncer`: 15 min ごとに git add/commit/push (skill/memory/config の差分を private repo に同期)。
+#   push が non-fast-forward で弾かれたら origin/main に rebase して再 push、conflict 時はローカル優先で abort し log のみ。
 #
 # nodeSelector で nixos-desktop に固定 (LLM endpoint と同 node)。
 # PVC ReadWriteOnce + strategy Recreate で Pod 入れ替え時の競合回避。
@@ -68,7 +69,9 @@ spec:
               export GIT_SSH_COMMAND="ssh -F /tmp/ssh/config -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
               # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
               # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
-              git config --global --add safe.directory /opt/data
+              # HOME=/opt/data (PVC) なので .gitconfig は hermes-runtime の追跡ファイル。--add だと
+              # 起動ごとに [safe] 行が蓄積するため --replace-all で常に 1 行に正規化 (自己修復的)。
+              git config --global --replace-all safe.directory /opt/data
               cd /opt/data
               # 過去の起動で .git/ だけ作って remote add 前に死んでた場合に対応するため、
               # init → remote 設定 → fetch → reset の各 step を idempotent に並べる
@@ -245,7 +248,9 @@ spec:
               export GIT_SSH_COMMAND="ssh -F /tmp/ssh/config -i /run/secrets/deploy-key -o UserKnownHostsFile=/tmp/ssh/known_hosts -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
               # /opt/data の owner が initial 起動時の root chown と fsGroup の組み合わせで
               # git の dubious-ownership 警告に引っかかるため、明示的に safe.directory 登録
-              git config --global --add safe.directory /opt/data
+              # HOME=/opt/data (PVC) なので .gitconfig は hermes-runtime の追跡ファイル。--add だと
+              # 起動ごとに [safe] 行が蓄積するため --replace-all で常に 1 行に正規化 (自己修復的)。
+              git config --global --replace-all safe.directory /opt/data
               cd /opt/data
               git config user.email "hermes@bot.local"
               git config user.name "Hermes Bot"
@@ -264,7 +269,19 @@ spec:
                 git add -A
                 if ! git diff --cached --quiet; then
                   git commit -m "[auto] hermes state sync $(date -Iminutes)"
-                  git push origin HEAD:main || echo "push failed, will retry next cycle"
+                  # push が non-fast-forward で弾かれる場合 (hermes-runtime に PR がマージされ
+                  # origin/main が先行) は origin/main に rebase してから再 push。conflict 時は
+                  # ローカル優先で abort し log だけ残す (state は PVC が真、自動でリモート優先にしない)。
+                  if ! git push origin HEAD:main; then
+                    echo "push rejected, attempting rebase onto origin/main"
+                    git fetch origin main
+                    if git rebase origin/main; then
+                      git push origin HEAD:main || echo "push failed after rebase, will retry next cycle"
+                    else
+                      git rebase --abort
+                      echo "rebase conflict: keeping local state, manual intervention needed"
+                    fi
+                  fi
                 fi
               done
           env:
