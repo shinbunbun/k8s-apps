@@ -34,7 +34,6 @@
     managerFilePatterns: [
       "/^apps/.+/.+\\.yaml$/",
       "/^infrastructure/.+/.+\\.yaml$/",
-      "/^jobs/.+\\.yaml$/",
       "/^manifests/.+\\.yaml$/",
     ],
   },
