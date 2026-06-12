@@ -41,8 +41,7 @@ k8s-apps/
 ├── bootstrap/          # ArgoCD 初期設定（触らないでOK）
 ├── projects/           # ArgoCD プロジェクト定義
 ├── apps/               # ★ ここにアプリを追加
-│   ├── _templates/     # テンプレート（コピー元：simple-web-app / web-app-with-secrets）
-│   └── example-nginx/  # サンプルアプリ
+│   └── _templates/     # テンプレート（コピー元：simple-web-app / web-app-with-secrets）
 ├── infrastructure/     # インフラ系設定
 └── applicationsets/    # 自動検出設定
 ```
