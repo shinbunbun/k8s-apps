@@ -732,6 +732,24 @@ spec:
           summary: "High Loki query latency"
           description: "95th percentile query latency is {{ $value }} seconds"
 
+      # Alloy の config hot reload 失敗検知
+      # alloy DaemonSet は config-reloader sidecar (prometheus-config-reloader) が
+      # ConfigMap 変更を検知して Alloy の POST /-/reload を叩く。Alloy は新 config の
+      # 読み込みに失敗すると 400 を返し、直前の正常 config を維持し続ける (安全動作)。
+      # この時 ConfigMap は適用済み・pod は Running なので ArgoCD は Synced/Healthy を
+      # 表示し、壊れた config を push しても誰も気づけない。alloy_config_last_load_successful
+      # は最後の読み込み結果を 1/0 で持つ gauge (VMServiceScrape で取得済み) なので、
+      # 0 が継続したら hot reload が拒否され古い config で滞留していることを意味する。
+      # 参考: dotfiles-private#261, grafana/alloy#304
+      - alert: AlloyConfigReloadFailed
+        expr: 'alloy_config_last_load_successful == 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alloy config reload failed on {{ $labels.pod }}"
+          description: "Alloy ({{ $labels.namespace }}/{{ $labels.pod }}) rejected its latest config and is running stale config. Check the config-reloader sidecar logs and the most recent ConfigMap change. Likely a syntax/escape error in the alloy config (River/LogQL)."
+
   # Garage クラスタ健全性監視
   # ディスク容量はノード全体 (ホスト FS) に対する監視が `DiskSpaceLow` (上記 system-alerts
   # グループ、85% 閾値) で既に担保されている。
