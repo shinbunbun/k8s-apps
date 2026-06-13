@@ -3,6 +3,9 @@ kind: Kustomization
 namespace: cloudflared-k3s
 resources:
   - deployment.yaml
-  - configmap.yaml
 generators:
   - secret-generator.yaml
+configMapGenerator:
+  - name: cloudflared-config
+    files:
+      - config.yaml
