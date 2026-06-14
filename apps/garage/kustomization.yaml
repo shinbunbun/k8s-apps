@@ -25,12 +25,16 @@ commonAnnotations:
 
 resources:
   - cluster.yaml
+  - cluster-archive.yaml
   - pyroscope-namespace.yaml
   - tempo-namespace.yaml
   - buckets.yaml
+  - buckets-archive.yaml
   - reference-grants.yaml
   - keys.yaml
+  - keys-archive.yaml
   - lan-service.yaml
+  - lan-service-archive.yaml
   - pyroscope-s3-service.yaml
 
 generators:

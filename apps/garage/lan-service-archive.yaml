@@ -1,0 +1,31 @@
+# garage-archive クラスタ LAN 内アクセス用 LoadBalancer Service (S3 API)
+#
+# myduck-poc / unified-dotfiles の Claude MCP (mcp-server-motherduck) など LAN 上の
+# クライアントが s3://logs-archive/... を read_parquet するための固定 VIP。
+# garage-lan (.20、メインクラスタ) と同方式で Cilium LB IPAM から払い出し、Cilium BGP が
+# 192.168.128.0/24 を RouterOS に広告するため LAN から port 3900 に到達できる。
+#
+# selector は operator が garage-archive クラスタの pod に付与するラベル
+# (app.kubernetes.io/instance: garage-archive) で絞る。公開は S3 API (3900) のみ。
+#
+# 既存 LAN VIP: .11 grafana / .12 vmselect / .13 vmalertmanager / .14 loki
+# / .15 hubble-ui / .16 scanopy / .17-.19 log-archiver-vector / .20 garage (メイン)
+# / .21 argocd-server / .22 garage-archive (本 Service)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-archive-lan
+  namespace: garage
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.22
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/instance: garage-archive
+    app.kubernetes.io/name: garage
+    garage.rajsingh.info/tier: storage
+  ports:
+    - name: s3
+      port: 3900
+      protocol: TCP
+      targetPort: 3900
