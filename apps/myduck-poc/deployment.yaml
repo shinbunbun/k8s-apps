@@ -96,7 +96,7 @@ spec:
             # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION)
             # DuckDB の PROVIDER credential_chain CHAIN 'env' で自動拾い
             - secretRef:
-                name: myduck-poc-duckdb-credentials
+                name: myduck-poc-duckdb-archive-credentials
           volumeMounts:
             # ConfigMap mount は ..data atomic update のため symlink で
             # materialize される (実体: 01-bootstrap.sql -> ..data/01-bootstrap.sql)。

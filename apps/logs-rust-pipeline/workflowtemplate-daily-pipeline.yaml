@@ -204,12 +204,12 @@ spec:
           - "{{inputs.parameters.source}}"
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 100m
@@ -288,12 +288,12 @@ spec:
           - "{{inputs.parameters.source}}"
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 100m
