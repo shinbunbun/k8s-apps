@@ -24,10 +24,9 @@
 #   loki                → loki-chunks / loki-ruler / loki-admin を owner
 #   cnpg                → cnpg-backups を owner (grafana-db の Barman が使用)
 #   cnpg-authentik      → cnpg-backups を owner (authentik-db 専用キー、grafana-db と障害隔離)
-#   vector              → logs-archive を owner (retention lifecycle 設定用)
-#   logs-rust-pipeline  → logs-archive を read + write (Rust + Polars pipeline で
-#                         raw/ → daily-struct/ 派生、Phase 4 本採用、旧 logs-typed-dbt の置換)
-#   grafana-duckdb      → logs-archive を read のみ (Grafana DuckDB datasource / MCP motherduck 用)
+#
+# logs-archive 系キー (vector / logs-rust-pipeline / grafana-duckdb) は単一ノード
+# garage-archive クラスタへ分離したため keys-archive.yaml に移設済み。
 #
 # 【出力 Secret 構造】
 #   各 GarageKey は secretTemplate で AWS SDK 標準形式の Secret を同 namespace に生成:
@@ -126,95 +125,6 @@ spec:
       owner: true
   secretTemplate:
     name: cnpg-garage-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: vector
-  namespace: log-archiver-vector
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: vector
-  bucketPermissions:
-    - bucketRef:
-        name: logs-archive
-        namespace: garage
-      read: true
-      write: true
-      owner: true
-  secretTemplate:
-    name: vector-garage-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-# Rust + Polars pipeline (apps/logs-rust-pipeline) 専用キー。
-# raw/ NDJSON.zst の read と daily-struct/ Parquet の write を担う。
-# logs-typed-dbt と同じ logs-archive bucket に対する read+write 権限だが、
-# 独立したアクセスキーで権限を分離 (Phase 4 で旧 dbt 廃止後も独立運用するため)。
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: logs-rust-pipeline
-  namespace: logs-rust-pipeline
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: logs-rust-pipeline
-  bucketPermissions:
-    - bucketRef:
-        name: logs-archive
-        namespace: garage
-      read: true
-      write: true
-  secretTemplate:
-    name: logs-rust-pipeline-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-# Grafana DuckDB datasource プラグイン専用 read-only キー。
-# initSql で SET s3_access_key_id / s3_secret_access_key に流し、
-# read_parquet('s3://logs-archive/daily/...') で長期ログを集計する。
-# write/owner なしにすることで、Explore タブから誤って COPY TO や
-# DELETE 等を実行しても AccessDenied で弾かれる (Grafana の権限分離は
-# UI/team レベルでは効くが、DuckDB datasource は SQL 任意実行を許す
-# ため、Garage 側の最小権限でガードする)。
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: grafana-duckdb
-  namespace: grafana
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: grafana-duckdb
-  bucketPermissions:
-    - bucketRef:
-        name: logs-archive
-        namespace: garage
-      read: true
-  secretTemplate:
-    name: grafana-duckdb-credentials
     accessKeyIdKey: AWS_ACCESS_KEY_ID
     secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
     regionKey: AWS_REGION
