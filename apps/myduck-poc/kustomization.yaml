@@ -25,7 +25,8 @@ kind: Kustomization
 namespace: myduck-poc
 
 resources:
-  - garagekey.yaml
+  # garagekey.yaml は garage-archive クラスタへ分離 (apps/garage/keys-archive.yaml の
+  # myduck-poc-duckdb-archive に移設)。
   - init-sql-configmap.yaml
   - deployment.yaml
   - service.yaml
