@@ -35,7 +35,7 @@ data:
       PROVIDER credential_chain,
       CHAIN 'env',
       REGION 'garage',
-      ENDPOINT '192.168.128.20:3900',
+      ENDPOINT '192.168.128.22:3900',
       URL_STYLE 'path',
       USE_SSL false
     );

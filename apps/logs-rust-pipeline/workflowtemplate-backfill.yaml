@@ -96,12 +96,12 @@ spec:
           - "{{inputs.parameters.date}}"
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 100m
@@ -159,12 +159,12 @@ spec:
           - --force
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 100m
@@ -227,14 +227,14 @@ spec:
           - --force
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
           - name: POLARS_MAX_THREADS
             value: "2"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 500m
@@ -298,12 +298,12 @@ spec:
           - daily-struct
         env:
           - name: AWS_S3_ENDPOINT
-            value: "http://garage.garage.svc.cluster.local:3900"
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
         envFrom:
           - secretRef:
-              name: logs-rust-pipeline-credentials
+              name: logs-rust-pipeline-archive-credentials
         resources:
           requests:
             cpu: 50m

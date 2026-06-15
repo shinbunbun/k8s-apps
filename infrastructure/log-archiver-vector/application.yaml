@@ -128,7 +128,7 @@ spec:
         # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION の 3 フィールド。
         envFrom:
           - secretRef:
-              name: vector-garage-credentials
+              name: vector-garage-archive-credentials
 
         # Vector 自身の Prometheus メトリクスを VMAgent が拾えるように
         # Prometheus exporter sink を有効化する (下の customConfig 参照)。
@@ -252,7 +252,7 @@ spec:
               type: aws_s3
               inputs: [enrich, enrich_otlp]
               bucket: logs-archive
-              endpoint: http://garage.garage.svc.cluster.local:3900
+              endpoint: http://garage-archive.garage.svc.cluster.local:3900
               region: garage
               # auth は envFrom 由来の AWS_* 環境変数を暗黙に読む
               # Vector の helm chart は customConfig を tpl で再評価するため、
