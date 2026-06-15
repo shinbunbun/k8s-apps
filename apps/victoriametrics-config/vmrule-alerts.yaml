@@ -62,15 +62,34 @@ spec:
           summary: "Low disk space on {{ $labels.instance }}"
           description: "Disk usage is above 85% on {{ $labels.mountpoint }} (current value: {{ $value }}%)"
 
-      # Swap使用量警告
+      # Swap使用量警告: スワップ占有率"だけ"では誤検知になる。
+      # swappiness=1 の環境では RAM が潤沢でもアイドルなコールドページがスワップに溜まり、
+      # 占有率が高止まりするだけで実害がない(性能影響もメモリ逼迫もない)。
+      # スワップ消費が問題になるのは「実メモリも逼迫している」時だけなので、
+      # 「スワップ高占有」AND「空きRAMも僅少」の複合条件で発火させる。
       - alert: HighSwapUsage
-        expr: '(1 - (node_memory_SwapFree_bytes{instance!="shinbunbun-macmini"} / node_memory_SwapTotal_bytes{instance!="shinbunbun-macmini"})) * 100 > 50'
-        for: 5m
+        expr: |
+          (1 - (node_memory_SwapFree_bytes{instance!="shinbunbun-macmini"} / node_memory_SwapTotal_bytes{instance!="shinbunbun-macmini"})) * 100 > 80
+          and
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 20
+        for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High swap usage on {{ $labels.instance }}"
-          description: "Swap usage is above 50% (current value: {{ $value }}%). This may indicate memory pressure."
+          summary: "High swap usage under memory pressure on {{ $labels.instance }}"
+          description: "Swap usage >80% かつ 空きRAM <20% (swap 現在値: {{ $value }}%)。実メモリ逼迫を伴う本物のスワップ消費です。"
+
+      # スワップスラッシング: 占有率と無関係に、スワップからの読み戻し(pswpin)が
+      # 継続的に高い = 実際にページングで性能劣化している状態だけを検知する。
+      # ホームラボで本当に困るのはこのシグナル(高占有の高止まりではなく能動的なページング)。
+      - alert: SwapThrashing
+        expr: 'rate(node_vmstat_pswpin{instance!="shinbunbun-macmini"}[5m]) * 4096 > 10 * 1024 * 1024'
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Swap thrashing on {{ $labels.instance }}"
+          description: "スワップ読み戻しが継続的に {{ $value | humanize }}B/s 超 (10分継続)。アクティブなページングで性能劣化中です。"
 
       # RouterOS CPU高使用率
       - alert: RouterOSHighCPU
