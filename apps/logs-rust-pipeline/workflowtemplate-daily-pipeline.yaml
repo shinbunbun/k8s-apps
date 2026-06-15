@@ -85,20 +85,20 @@ spec:
             # で 4Gi 閾値を超えたため、成長ヘッドルームを見て 12Gi に引き上げ。
             # sizeLimit は上限値であり実消費ではないため、未使用時の node 圧迫はない。
             #
-            # silver_mem: routeros は最大行数 (5.5M, 増加傾向) にもかかわらず最小の 4Gi
-            # だったため、2026-06-03 backfill 再実行時に silver が OOMKilled (exit 137)。
-            # backfill template の silver は 12Gi (daily 8Gi 想定 + 余裕) で完走するため、
-            # daily 側も他大規模 source (macos-unified) と揃えて 4Gi→8Gi に引き上げ。
-            #
-            # k8s-pods も同様に 4Gi のまま取り残されており、2026-06-09 daily run で silver が
-            # OOMKilled (exit 137)。binary ログの peak_mib=4244.8 (5.76M 行) が 4Gi=4096MiB を
-            # わずかに超過したのが原因。routeros と同規模行数のため、同じく 4Gi→8Gi に引き上げ
-            # (peak ~4.15GiB に対し約1.9倍ヘッドルーム)。
+            # silver_mem: 2026-06-03/06-09 に routeros / k8s-pods が collect 経路で silver
+            # OOMKilled (exit 137、k8s-pods peak_mib=4244.8/5.76M 行が 4Gi 超過) したため
+            # 両者を 8Gi に引き上げていた (systemd は 6Gi)。その後 silver を sink+Engine::Streaming 化
+            # (logs-pipeline PR #40、image f735758、dotfiles-private#258 (1)) し、2026-06-14
+            # daily run の実測 peak が routeros 1.17GiB / k8s-pods 3.37GiB / systemd 0.44GiB /
+            # macos 0.27GiB に低下したため、実測 peak を基準に right-size する。
+            # k8s-pods は global sort が peak を支配し streaming の効きが薄く行数増で伸びやすい
+            # (06-09 collect 4.15GiB) ため余裕厚めの 6Gi、他は実測 peak の 2.5x 以上を確保。
+            # bronze_mem / *_tmp 系は本 right-size の対象外 (別途実測ベース)。
             withItems:
-              - {source: systemd,        bronze_mem: 12Gi, bronze_tmp: 12Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
-              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 8Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
-              - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 8Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
-              - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 8Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: systemd,        bronze_mem: 12Gi, bronze_tmp: 12Gi, silver_mem: 2Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 3Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
+              - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 2Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
 
     # 1 source 分の bronze -> silver -> gold-volume を直列実行。
     # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。
