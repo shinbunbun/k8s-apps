@@ -56,7 +56,10 @@ spec:
         cpu: 100m
         memory: 256Mi
       limits:
-        memory: 1Gi
+        # データ移行などの大量 PUT バーストで 1Gi では OOMKilled になった
+        # (Phase 2 の 38GiB 一括投入時に 3 回 OOM)。単一ノードで index 構築 +
+        # バルク書込を捌くため 2Gi に引き上げ。nixos-desktop は RAM 潤沢。
+        memory: 2Gi
 
   s3Api:
     region: garage
