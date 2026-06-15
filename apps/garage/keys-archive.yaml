@@ -1,0 +1,122 @@
+# アーカイブ専用クラスタ (garage-archive) のアクセスキー定義
+#
+# 既存 keys.yaml の各キー (メインクラスタの logs-archive を参照) と移行期間中に共存させる
+# ため、GarageKey 名・生成 Secret 名ともに `-archive` サフィックスで分離する。Phase 3 で
+# 各クライアントを本 Secret + 新 endpoint (garage-archive.garage.svc:3900 / LAN .22) に
+# 切り替え、Phase 4 で旧キーを削除する。
+#
+# bucketRef.name は GarageBucket の metadata.name (logs-archive-standalone) を指す
+# (alias ではなく k8s リソース名で解決される)。
+#
+# cross-ns reference は既存 reference-grants.yaml の allow-consumer-namespaces が
+# 全 consumer ns × 全 GarageCluster/GarageBucket を許可済みのため追加不要。
+#
+# 【権限マッピング】
+#   vector-archive             → logs-archive owner (lifecycle 設定権限を維持)
+#   logs-rust-pipeline-archive → logs-archive read + write
+#   grafana-duckdb-archive     → logs-archive read のみ
+#   myduck-poc-duckdb-archive  → logs-archive read のみ
+#
+# sync-wave 2: GarageBucket (wave 1) 適用後に投入。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: vector-archive
+  namespace: log-archiver-vector
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-archive
+    namespace: garage
+  name: vector-archive
+  bucketPermissions:
+    - bucketRef:
+        name: logs-archive-standalone
+        namespace: garage
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: vector-garage-archive-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: logs-rust-pipeline-archive
+  namespace: logs-rust-pipeline
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-archive
+    namespace: garage
+  name: logs-rust-pipeline-archive
+  bucketPermissions:
+    - bucketRef:
+        name: logs-archive-standalone
+        namespace: garage
+      read: true
+      write: true
+  secretTemplate:
+    name: logs-rust-pipeline-archive-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: grafana-duckdb-archive
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-archive
+    namespace: garage
+  name: grafana-duckdb-archive
+  bucketPermissions:
+    - bucketRef:
+        name: logs-archive-standalone
+        namespace: garage
+      read: true
+  secretTemplate:
+    name: grafana-duckdb-archive-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: myduck-poc-duckdb-archive
+  namespace: myduck-poc
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-archive
+    namespace: garage
+  name: myduck-poc-duckdb-archive
+  bucketPermissions:
+    - bucketRef:
+        name: logs-archive-standalone
+        namespace: garage
+      read: true
+  secretTemplate:
+    name: myduck-poc-duckdb-archive-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true

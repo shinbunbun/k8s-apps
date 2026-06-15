@@ -1,0 +1,67 @@
+# Garage アーカイブ専用クラスタ (単一ノード・非HA)
+#
+# 【背景】メイン garage クラスタ (cluster.yaml, RF=3) は loki-chunks の極小オブジェクト
+# 大量 (~139万) による LMDB metadata 肥大で homeMachine (garage-2/nixos) の `/` を
+# 慢性的に逼迫させていた。logs-archive バケット (parquet, ~38GiB) は容量の最大消費源だが
+# 「長期ログのコールドストレージ」であり HA 不要。そこで logs-archive だけを本クラスタに
+# 分離し、メインクラスタから 38GiB×3 の複製負荷を取り除く。
+#
+# 【非HA設計】replication.factor=1 + storage.replicas=1。単一コピーなので nixos-desktop の
+# ディスク故障で archive は永久喪失する (Loki retention 14d を超える過去 parquet は再生成
+# 不可) が、コールドストレージとして許容する方針 (ユーザー承認済み)。
+# garage には per-bucket replication factor が無いため、HA を捨てるバケットはこのように
+# 別クラスタへ分離するしかない。
+#
+# 【配置】storage.nodeSelector で nixos-desktop に固定 (974GB ディスク、空き 170GB)。
+# local-path PVC は pod スケジュール先ノードにバインドされるため、単一 replica + nodeSelector
+# で確実に nixos-desktop へ寄せる。
+#
+# 【image / metadata】メインクラスタと同じ dxflrs/garage:v2.3.0 を明示 pin。
+# metadata は別 PVC + 6h auto-snapshot (operator デフォルト方針を踏襲)。
+#
+# 【admin token】専用 SOPS Secret garage-archive-admin-tokens を渡す
+# (secrets/garage-archive-admin-tokens.enc.yaml、secret-generator.yaml で生成)。
+apiVersion: garage.rajsingh.info/v1beta2
+kind: GarageCluster
+metadata:
+  name: garage-archive
+  namespace: garage
+  labels:
+    app.kubernetes.io/name: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  zone: dc1
+  image: dxflrs/garage:v2.3.0
+
+  replication:
+    factor: 1
+
+  storage:
+    replicas: 1
+    nodeSelector:
+      kubernetes.io/hostname: nixos-desktop
+    data:
+      type: PersistentVolumeClaim
+      size: 50Gi
+      storageClassName: local-path
+    metadata:
+      type: PersistentVolumeClaim
+      size: 2Gi
+      storageClassName: local-path
+      accessModes: [ReadWriteOnce]
+    metadataAutoSnapshotInterval: "6h"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  s3Api:
+    region: garage
+
+  admin:
+    adminTokenSecretRef:
+      name: garage-archive-admin-tokens
+      key: admin-token

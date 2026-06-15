@@ -1,0 +1,18 @@
+# アーカイブ専用クラスタ (garage-archive) のバケット定義
+#
+# metadata.name は garage ns 内で一意である必要があるため logs-archive-standalone とし、
+# spec.globalAlias で実バケット名 logs-archive を付与する。別クラスタなので alias 名の
+# 衝突は起きず、クライアントは従来どおり s3://logs-archive/... でアクセスできる。
+#
+# sync-wave 1: GarageCluster garage-archive (wave 0) が Ready になってから apply。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: logs-archive-standalone
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage-archive
+  globalAlias: logs-archive
