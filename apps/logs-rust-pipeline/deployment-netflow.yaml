@@ -1,0 +1,69 @@
+# netflow collector (常駐 Deployment)
+#
+# RouterOS /ip traffic-flow の IPFIX (UDP 2055) を受信し、フローレコードを
+# raw/source=netflow/ へ ndjson.zst で書き出す。既存 bronze→silver→gold バッチが
+# この raw を処理する (案X)。設計: shinbunbun/dotfiles-private#326。
+#
+# 【replicas は必ず 1】IPFIX は template (フィールド定義) を別パケットで送り、
+# parser がプロセス内 cache に保持してデータレコードを復号する。複数 Pod に
+# datagram が分散すると、template を受けていない Pod がデータを復号できず取り
+# こぼす。単一 listener + Recreate を厳守する。
+# image / Garage 資格情報 / endpoint は既存 logs-pipeline batch と共有。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflow-collector
+  labels:
+    app: logs-rust-pipeline
+    component: netflow
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: logs-rust-pipeline
+      component: netflow
+  template:
+    metadata:
+      labels:
+        app: logs-rust-pipeline
+        component: netflow
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      containers:
+        - name: netflow
+          image: ghcr.io/shinbunbun/logs-pipeline:a82e0a5
+          args: [netflow]
+          ports:
+            - name: ipfix
+              containerPort: 2055
+              protocol: UDP
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: "http://garage-archive.garage.svc.cluster.local:3900"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-archive-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]

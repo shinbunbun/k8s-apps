@@ -1,0 +1,28 @@
+# passive-dns collector LAN LoadBalancer (TZSP 受信用)
+#
+# RouterOS (192.168.1.1) の sniffer streaming-server 宛先となる固定 VIP。
+# Cilium LB IPAM が 192.168.128.24 を割り当て、Cilium BGP が 192.168.128.0/24 を
+# RouterOS に広告しているため LAN 上から到達できる。
+# 既存 VIP: .11 grafana / .12 vmselect / .13 vmalertmanager / .14 loki
+# / .15 hubble-ui / .16 scanopy / .17-.19 log-archiver-vector / .20 garage
+# / .21 argocd / .22 garage-archive。本 Service が .24、netflow が .23。
+#
+# externalTrafficPolicy: Local — 送信元 IP を保持 (SNAT 回避)。単一 replica なので
+# VIP は当該 Pod のノードからのみ announce される。
+apiVersion: v1
+kind: Service
+metadata:
+  name: passive-dns-lan
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.24
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: logs-rust-pipeline
+    component: passive-dns
+  ports:
+    - name: tzsp
+      port: 37008
+      targetPort: tzsp
+      protocol: UDP
