@@ -41,7 +41,7 @@ spec:
                     values: [g3pro]
       containers:
         - name: netflow
-          image: ghcr.io/shinbunbun/logs-pipeline:a82e0a5
+          image: ghcr.io/shinbunbun/logs-pipeline:a9883f8
           args: [netflow]
           ports:
             - name: ipfix
