@@ -1,0 +1,593 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "RouterOS アクセス先統計。passive DNS (sniffer) と netflow (traffic-flow) を (client_ip, dst_ip) 時間窓 join し、クライアント別のアクセス先ドメインと帯域を可視化。silver 直読み (DuckDB/MyDuck datasource)。設計: dotfiles-private#326。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "アクセス先統計 (passive-DNS ⋈ netflow, dotfiles-private#326)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "外部トラフィック bytes のうち passive DNS でドメイン名が付いた割合。残りは DoH/DoT 迂回・直 IP 接続 (RouterOS リゾルバを経由しない)。低い値ほど暗号化 DNS 利用が多い。",
+      "id": 1,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT max(flow_ts) AS time, 100.0*sum(CASE WHEN named THEN bytes ELSE 0 END)/NULLIF(sum(bytes),0) AS value FROM m",
+          "refId": "A"
+        }
+      ],
+      "title": "DNS 帰属率 (named bytes %)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "LAN クライアント ↔ 外部の総バイト (上り+下り)。内部 (LAN 内/router) flow は除外。",
+      "id": 2,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT max(flow_ts) AS time, sum(bytes)::BIGINT AS value FROM m",
+          "refId": "A"
+        }
+      ],
+      "title": "外部トラフィック総量 (range)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "passive DNS で観測した distinct qname 数 (RouterOS リゾルバ経由)。",
+      "id": 3,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT max(ts) AS time, count(DISTINCT qname)::BIGINT AS value FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)",
+          "refId": "A"
+        }
+      ],
+      "title": "観測ドメイン数 (distinct qname)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "DNS を引いた distinct LAN クライアント数。",
+      "id": 4,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT max(ts) AS time, count(DISTINCT client_ip)::BIGINT AS value FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)",
+          "refId": "A"
+        }
+      ],
+      "title": "アクティブクライアント数",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "外部トラフィックを named/unnamed で日次 stack。unnamed の比率が DoH/DoT・直 IP 接続の規模を示す。",
+      "id": 5,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "none",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT date_trunc('day', flow_ts) AS time, CASE WHEN named THEN 'named (DNS解決済)' ELSE 'unnamed (迂回/直IP)' END AS metric, sum(bytes)::BIGINT AS value FROM m GROUP BY 1,2 ORDER BY 1,2",
+          "refId": "A"
+        }
+      ],
+      "title": "日次トラフィック: named vs unnamed (stacked bytes)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "ドメイン別の総バイト (上り+下り、両方向 join)。",
+      "id": 6,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\nSELECT qname, sum(bytes)::BIGINT AS bytes, count(*)::BIGINT AS flows FROM joined WHERE rn=1 GROUP BY qname ORDER BY bytes DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "宛先ドメイン ランキング (bytes)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "どの LAN クライアントがどのドメインへ何バイト通信したか。",
+      "id": 7,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\nSELECT client_ip, qname, sum(bytes)::BIGINT AS bytes FROM joined WHERE rn=1 GROUP BY client_ip, qname ORDER BY bytes DESC LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "title": "クライアント × ドメイン (bytes)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "総バイト上位 10 ドメインの日次帯域。",
+      "id": 8,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "none",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\n, top AS (SELECT qname FROM joined WHERE rn=1 GROUP BY qname ORDER BY sum(bytes) DESC LIMIT 10)\nSELECT date_trunc('day', flow_ts) AS time, qname AS metric, sum(bytes)::BIGINT AS value FROM joined WHERE rn=1 AND qname IN (SELECT qname FROM top) GROUP BY 1,2 ORDER BY 1,2",
+          "refId": "A"
+        }
+      ],
+      "title": "Top-10 ドメイン 帯域推移 (日次)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "logs-archive",
+    "routeros",
+    "access-stats"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Logs Archive - RouterOS Access Stats",
+  "uid": "logs-archive-routeros-access",
+  "version": 1,
+  "weekStart": ""
+}
