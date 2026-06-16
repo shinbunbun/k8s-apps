@@ -27,3 +27,9 @@ resources:
   - workflowtemplate-daily-pipeline.yaml
   - cronworkflow-daily.yaml
   - workflowtemplate-backfill.yaml
+  # 常駐 collector (RouterOS アクセス先統計, dotfiles-private#326)。
+  # raw/source={passive-dns,netflow}/ を産出し、上記 daily DAG が処理する。
+  - deployment-passive-dns.yaml
+  - service-passive-dns-lan.yaml
+  - deployment-netflow.yaml
+  - service-netflow-lan.yaml

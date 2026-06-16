@@ -1,0 +1,24 @@
+# netflow collector LAN LoadBalancer (IPFIX 受信用)
+#
+# RouterOS (192.168.1.1) の traffic-flow target 宛先となる固定 VIP。
+# Cilium LB IPAM が 192.168.128.23 を割り当て、Cilium BGP 経由で LAN から到達可能。
+#
+# externalTrafficPolicy: Local — 送信元 IP (= exporter) を保持 (SNAT 回避)。
+# netflow レコードの exporter フィールドを正しく記録するため。
+apiVersion: v1
+kind: Service
+metadata:
+  name: netflow-lan
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.23
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app: logs-rust-pipeline
+    component: netflow
+  ports:
+    - name: ipfix
+      port: 2055
+      targetPort: ipfix
+      protocol: UDP
