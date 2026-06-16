@@ -99,6 +99,26 @@ spec:
               - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 3Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
               - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 2Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+          # passive-dns / netflow (RouterOS アクセス先統計, dotfiles-private#326) は
+          # collector が raw/source={passive-dns,netflow}/ を産出するのみで、silver/gold
+          # の per-source projection は未実装 (silver.rs が両 source を bail)。raw/ は
+          # 7 日 lifecycle で expire するため、bronze (schema-on-read で daily-struct/ へ
+          # 永続化) だけを先行配線する縮約版 bronze-only-pipeline で回す。silver/gold は
+          # 構造化スキーマ確定後 (#326 フェーズ4 後続 PR) に source-pipeline へ移行する。
+          # 上の per-source と同じ step group に置き並列起動 (依存なし)。
+          - name: per-source-bronze
+            template: bronze-only-pipeline
+            arguments:
+              parameters:
+                - {name: source,      value: "{{item.source}}"}
+                - {name: bronze_mem,  value: "{{item.bronze_mem}}"}
+                - {name: bronze_tmp,  value: "{{item.bronze_tmp}}"}
+            # netflow は直近 raw 実測で日次 1 万行規模、passive-dns も同オーダーで
+            # systemd/routeros (数十万〜数百万行) より桁違いに小さいため控えめに割当。
+            # 成長時は実測 peak を見て他 source と同様 right-size する。
+            withItems:
+              - {source: passive-dns,  bronze_mem: 2Gi, bronze_tmp: 4Gi}
+              - {source: netflow,      bronze_mem: 2Gi, bronze_tmp: 4Gi}
 
     # 1 source 分の bronze -> silver -> gold-volume を直列実行。
     # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。
@@ -140,6 +160,31 @@ spec:
                 - {name: source,    value: "{{inputs.parameters.source}}"}
                 - {name: memory,    value: "{{inputs.parameters.gold_mem}}"}
                 - {name: tmp_size,  value: "{{inputs.parameters.gold_tmp}}"}
+
+    # bronze のみ実行する縮約版 source-pipeline (passive-dns / netflow 専用)。
+    # 両 source は collector が raw/ を産出するのみで silver/gold projection が未実装
+    # (silver.rs が PassiveDns|Netflow を bail) のため、source-pipeline の
+    # bronze→silver→gold-volume 直列に載せると silver で必ず Failed になる。raw/ は
+    # 7 日で expire するので、daily-struct/ への永続化 (=bronze) だけを先行配線する。
+    # silver/gold は構造化スキーマ確定後 (dotfiles-private#326 後続 PR) に
+    # source-pipeline へ統合し本テンプレートは廃止する。
+    # bronze stage 本体は source-pipeline と同じ共通テンプレート ingest-stage を流用。
+    - name: bronze-only-pipeline
+      inputs:
+        parameters:
+          - name: source
+          - name: bronze_mem
+          - name: bronze_tmp
+      dag:
+        tasks:
+          - name: bronze
+            template: ingest-stage
+            arguments:
+              parameters:
+                - {name: stage,     value: bronze}
+                - {name: source,    value: "{{inputs.parameters.source}}"}
+                - {name: memory,    value: "{{inputs.parameters.bronze_mem}}"}
+                - {name: tmp_size,  value: "{{inputs.parameters.bronze_tmp}}"}
 
     # 共通 stage テンプレート: bronze と silver を統合。
     #   - stage:  binary に渡す stage 名 + pod の tier ラベル (bronze / silver)。
