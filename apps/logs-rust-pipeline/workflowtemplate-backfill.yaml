@@ -87,7 +87,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:f735758
+        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
         args:
           - migrate
           - --source
@@ -149,7 +149,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:f735758
+        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
         args:
           - silver
           - --source
@@ -215,7 +215,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:f735758
+        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
         args:
           - gold-build
           - --table
@@ -285,7 +285,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:f735758
+        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
         args:
           - verify
           - --source
