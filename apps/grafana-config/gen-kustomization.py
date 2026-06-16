@@ -86,6 +86,7 @@ DASHBOARDS = [
     ("systemd-archive.json", "grafana-dashboard-logs-archive-systemd", "Logs Archive", None),
     ("k8s-pods-archive.json", "grafana-dashboard-logs-archive-k8s-pods", "Logs Archive", None),
     ("macos-unified-archive.json", "grafana-dashboard-logs-archive-macos-unified", "Logs Archive", None),
+    ("routeros-access-archive.json", "grafana-dashboard-logs-archive-routeros-access", "Logs Archive", None),
     ("cilium.json", None, "Kubernetes", None),
     ("hubble.json", None, "Kubernetes", None),
     ("hubble-network-overview-namespace.json", None, "Kubernetes", None),
