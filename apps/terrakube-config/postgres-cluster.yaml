@@ -1,0 +1,34 @@
+# Terrakube 用 PostgreSQL Cluster (CNPG)
+# 設計判断は apps/authentik-config / apps/grafana-config と同じ。
+# backup は Barman Cloud Plugin 経由で Garage に書き込む。
+# Plugin 設定は objectstore.yaml、スケジュールは scheduled-backup.yaml。
+#
+# このクラスタは Terrakube 本体 (infrastructure/terrakube, Helm) が
+# `<name>-rw` Service 経由で参照する外部 DB。Terrakube の workspace 変数
+# (= secret, E1 方針) を保持するため、HA (instances:3) + daily backup で
+# 可用性と DR を担保する (dotfiles-private#327)。
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: terrakube-db
+spec:
+  description: "Terrakube control-plane database"
+  instances: 3
+
+  bootstrap:
+    initdb:
+      database: terrakube
+      owner: terrakube
+      secret:
+        name: terrakube-db-app
+
+  storage:
+    storageClass: local-path
+    size: 5Gi
+
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: terrakube-db-backup
+        serverName: terrakube-db-v1
