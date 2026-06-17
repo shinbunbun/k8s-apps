@@ -15,6 +15,7 @@
 #   pyroscope           — Pyroscope 2.0 monolithic (pyroscope-blocks owner、Issue dotfiles#699)
 #   tempo               — Tempo monolithic (tempo-traces owner、Issue unified-dotfiles#16)
 #   myduck-poc          — MyDuck Server PoC (logs-archive read-only、Issue dotfiles-private#263)
+#   terrakube           — Terrakube (cnpg-terrakube: cnpg-backups owner / terrakube: terrakube-storage owner、Issue dotfiles-private#327)
 #
 # to は GarageCluster と GarageBucket の両方を許可 (apps/garage/keys.yaml の
 # 各 GarageKey が clusterRef + bucketPermissions[].bucketRef の 2 経路で
@@ -45,6 +46,8 @@ spec:
       namespace: tempo
     - kind: GarageKey
       namespace: myduck-poc
+    - kind: GarageKey
+      namespace: terrakube
   to:
     - kind: GarageCluster
     - kind: GarageBucket

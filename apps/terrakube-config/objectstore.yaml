@@ -1,0 +1,30 @@
+# Barman Cloud Plugin 経由で Garage に WAL archive + base backup を書き込む設定。
+# authentik-config / grafana-config の objectstore.yaml と同じ構成。
+# credentials Secret は terrakube NS 内の cnpg-garage-credentials で、
+# GarageKey "cnpg-terrakube" (apps/garage/keys.yaml) が secretTemplate で
+# 自動生成する (grafana-db / authentik-db と障害隔離した専用キー)。
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: terrakube-db-backup
+spec:
+  configuration:
+    destinationPath: s3://cnpg-backups/
+    endpointURL: http://garage.garage.svc.cluster.local:3900
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-garage-credentials
+        key: AWS_ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-garage-credentials
+        key: AWS_SECRET_ACCESS_KEY
+      region:
+        name: cnpg-garage-credentials
+        key: AWS_REGION
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+      immediateCheckpoint: true
+      jobs: 2
+  retentionPolicy: "14d"

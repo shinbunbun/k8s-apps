@@ -27,7 +27,7 @@ spec:
           - path: apps/*
           - path: apps/_templates
             exclude: true
-          # kustomization.yaml の namespace がディレクトリ名と異なる 9 app は
+          # kustomization.yaml の namespace がディレクトリ名と異なる 10 app は
           # git generator から除外し、下の list generator で namespace を明示する。
           - path: apps/alloy-config
             exclude: true
@@ -45,9 +45,11 @@ spec:
             exclude: true
           - path: apps/loki-config
             exclude: true
+          - path: apps/terrakube-config
+            exclude: true
           - path: apps/victoriametrics-config
             exclude: true
-    # kustomization.yaml の namespace がディレクトリ名と異なる 9 app は
+    # kustomization.yaml の namespace がディレクトリ名と異なる 10 app は
     # 実 namespace を namespace キーで明示供給する。
     # path 構造は git generator の .path.{path,basename} と揃え、template を共通化する。
     - list:
@@ -84,6 +86,10 @@ spec:
               path: apps/loki-config
               basename: loki-config
             namespace: loki
+          - path:
+              path: apps/terrakube-config
+              basename: terrakube-config
+            namespace: terrakube
           - path:
               path: apps/victoriametrics-config
               basename: victoriametrics-config
