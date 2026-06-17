@@ -1,0 +1,132 @@
+# Argo CronWorkflow: IP→ASN/org reference parquet ビルダー (dotfiles-private#348)
+#
+# RouterOS アクセス先統計 v2。passive-DNS で名前が付かない ~20% のトラフィック
+# (ゲーム/P2P 直 IP・DoH 解決済 HTTPS) を「組織名」で characterize するための
+# IP→ASN/org/country ディメンション表を週次でリフレッシュする。
+#
+# 設計 (#348 / #326 のアーキ判断に整合):
+#   - これは medallion の gold ではなく **reference (dimension) 層**。自分のログの
+#     派生物ではなく外部から持ち込む参照データなので reference/ に置く。
+#   - join 自体は materialize しない。Grafana MyDuck datasource が query-time に
+#     silver ⋈ この reference parquet を inet range join する (dashboard 側 SQL)。
+#   - 出力: s3://logs-archive/reference/asn/asn.parquet (garage-archive)。MyDuck が
+#     同バケットを read 済みなので追加の credential 配線は不要。
+#
+# データ: iptoasn.com (public domain, アカウント不要, 1h 更新)。v4/v6 個別 TSV を
+# そのまま使う。combined.tsv は v4 を v4-mapped IPv6 (::ffff:a.b.c.d) で格納し
+# DuckDB の INET 比較で plain v4 と一致しないため使わない。range_start/range_end は
+# VARCHAR のまま保持し、query 時に ::INET BETWEEN で範囲照合する (整数化不要)。
+#
+# ランタイム: 公式 python:slim + pip 固定版 duckdb の純 SQL ジョブ。専用イメージや
+# 新 gold エンジンを増やさず k8s 単一リポジトリに収める。週次 + retry で runtime pip
+# の一時失敗は吸収。書き込みは既存 logs-rust-pipeline-archive-credentials を再利用。
+#
+# 初回: CronWorkflow は作成時には走らないため、merge 後に一度手動トリガする
+#   argo submit --from cronwf/asn-reference-build -n logs-rust-pipeline
+# (asn.parquet 生成までは dashboard の org/country パネルが空になる)。
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: asn-reference-build
+spec:
+  # 毎週月曜 04:00 JST。daily pipeline (00:35) とずらす。ASN は変化が遅いので週次で十分。
+  schedules:
+    - "0 4 * * 1"
+  timezone: "Asia/Tokyo"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    entrypoint: build
+    activeDeadlineSeconds: 900
+    ttlStrategy:
+      secondsAfterCompletion: 86400
+    podMetadata:
+      labels:
+        app: logs-rust-pipeline
+        tier: reference
+        source: asn
+    templates:
+      - name: build
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: NotIn
+                      values: [g3pro]
+        retryStrategy:
+          limit: "2"
+          retryPolicy: OnFailure
+          backoff:
+            duration: "1m"
+            factor: "2"
+            maxDuration: "10m"
+        script:
+          image: python:3.12-slim
+          command: [bash]
+          source: |
+            set -euo pipefail
+            # pip は readOnlyRootFilesystem 下で書けないので /tmp に隔離インストール。
+            pip install --no-cache-dir --quiet --target /tmp/pylib 'duckdb==1.1.3'
+            export PYTHONPATH=/tmp/pylib HOME=/tmp
+            python - <<'PY'
+            import os, duckdb
+            con = duckdb.connect()
+            con.execute("INSTALL httpfs")
+            con.execute("LOAD httpfs")
+            con.execute(f"""
+                CREATE SECRET garage (
+                  TYPE s3, PROVIDER credential_chain, CHAIN 'env',
+                  REGION 'garage', ENDPOINT '{os.environ["GARAGE_S3_ENDPOINT"]}',
+                  URL_STYLE 'path', USE_SSL false
+                )
+            """)
+            cols = "{'range_start':'VARCHAR','range_end':'VARCHAR','asn':'BIGINT','country':'VARCHAR','org':'VARCHAR'}"
+            con.execute(f"""
+                COPY (
+                  SELECT range_start, range_end, asn, country, org, 'v4' AS family
+                  FROM read_csv('https://iptoasn.com/data/ip2asn-v4.tsv.gz',
+                       delim='\t', header=false, compression='gzip', columns={cols})
+                  UNION ALL
+                  SELECT range_start, range_end, asn, country, org, 'v6' AS family
+                  FROM read_csv('https://iptoasn.com/data/ip2asn-v6.tsv.gz',
+                       delim='\t', header=false, compression='gzip', columns={cols})
+                ) TO 's3://logs-archive/reference/asn/asn.parquet'
+                  (FORMAT parquet, COMPRESSION zstd)
+            """)
+            n = con.execute(
+                "SELECT count(*) FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet')"
+            ).fetchone()[0]
+            print(f"wrote s3://logs-archive/reference/asn/asn.parquet rows={n}")
+            assert n > 100000, f"unexpectedly few rows: {n}"
+            PY
+          env:
+            - name: GARAGE_S3_ENDPOINT
+              value: "garage-archive.garage.svc.cluster.local:3900"
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-archive-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        volumes:
+          - name: tmp
+            emptyDir:
+              sizeLimit: 512Mi

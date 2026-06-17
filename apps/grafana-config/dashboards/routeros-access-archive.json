@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "RouterOS アクセス先統計。passive DNS (sniffer) と netflow (traffic-flow, TCP/UDP のみ) を answer_ip⋈dst_ip で時間窓 join (client優先→IP fallback, 24h last-seen) し、クライアント別のアクセス先ドメインと帯域を可視化。ipipv6 トンネル transport・ICMP 等の非 L4 は除外。silver 直読み (DuckDB/MyDuck datasource)。設計: dotfiles-private#326。",
+  "description": "RouterOS アクセス先統計。passive DNS (sniffer) と netflow (traffic-flow, TCP/UDP のみ) を answer_ip⋈dst_ip で時間窓 join (client優先→IP fallback, 24h last-seen) し、クライアント別のアクセス先ドメインと帯域を可視化。ipipv6 トンネル transport・ICMP 等の非 L4 は除外。silver 直読み (DuckDB/MyDuck datasource)。設計: dotfiles-private#326。v2 (#348): 未帰属 ~20% を IP→ASN/org (iptoasn, reference/asn/asn.parquet を inet range join) で組織/国別に characterize、coalesce(domain, org) で補完。",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -40,7 +40,7 @@
         "type": "postgres",
         "uid": "PmyduckPoc0001"
       },
-      "description": "実 L4 (TCP/UDP) 外部トラフィック bytes のうちドメイン名が付いた割合 (client優先→IP fallback, 24h last-seen join)。非 L4 (ipipv6 トンネル transport・ICMP) は除外済。残りは passive DNS に一度も現れない宛先 = DoH/DoT 迂回・直 IP (ゲーム/P2P/WebRTC)。この未帰属分は GeoIP/ASN enrich (v2) で組織/国別に特性化予定。",
+      "description": "実 L4 (TCP/UDP) 外部トラフィック bytes のうちドメイン名が付いた割合 (client優先→IP fallback, 24h last-seen join)。非 L4 (ipipv6 トンネル transport・ICMP) は除外済。残りは passive DNS に一度も現れない宛先 = DoH/DoT 迂回・直 IP (ゲーム/P2P/WebRTC)。この未帰属分は下部 v2 セクション (GeoIP/ASN enrich) で組織/国別に特性化する。",
       "id": 1,
       "fieldConfig": {
         "defaults": {
@@ -568,6 +568,374 @@
       ],
       "title": "Top-10 ドメイン 帯域推移 (日次)",
       "type": "timeseries"
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "GeoIP/ASN enrich (v2, dotfiles-private#348)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "実 L4 外部 bytes のうち domain (passive DNS) または org (ASN) のいずれかで宛先が判明した割合。DNS 帰属率 (上部) に ASN enrich を coalesce で足した実効カバレッジ。実測ほぼ 100% (未帰属は AS 未割当の僅少 IP のみ)。",
+      "id": 11,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 33
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true)\n  WHERE $__timeFilter(date) AND proto IN ('Tcp', 'Udp')\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\nasn AS (\n  SELECT range_start, range_end, org, nullif(country, 'None') AS country FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet') WHERE asn <> 0\n),\nip_org AS (\n  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country\n  FROM (SELECT DISTINCT remote FROM flows_ext) i\n  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET\n  GROUP BY i.remote\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n),\nattg AS (\n  SELECT att.flow_ts, att.client_ip, att.remote, att.bytes, att.qname,\n         o.org, o.country,\n         coalesce(att.qname, NULLIF(o.org, ''), '(unknown)') AS dest,\n         CASE WHEN att.qname IS NOT NULL THEN 'domain'\n              WHEN NULLIF(o.org, '') IS NOT NULL THEN 'org'\n              ELSE 'unknown' END AS dest_kind\n  FROM att LEFT JOIN ip_org o ON att.remote = o.remote\n)\nSELECT max(flow_ts) AS time, 100.0*sum(CASE WHEN dest_kind <> 'unknown' THEN bytes ELSE 0 END)/NULLIF(sum(bytes),0) AS value FROM attg",
+          "refId": "A"
+        }
+      ],
+      "title": "帰属率: domain+org 合算 (bytes %)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "未帰属トラフィック (DoH 解決済 HTTPS・ゲーム/P2P 直 IP) を含む全外部 flow を、IP→ASN org で組織別に集計。passive DNS に名前が出ない CDN/クラウド (Google/Cloudflare/Akamai 等) もここで可視化される。データ: iptoasn.com。",
+      "id": 9,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true)\n  WHERE $__timeFilter(date) AND proto IN ('Tcp', 'Udp')\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\nasn AS (\n  SELECT range_start, range_end, org, nullif(country, 'None') AS country FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet') WHERE asn <> 0\n),\nip_org AS (\n  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country\n  FROM (SELECT DISTINCT remote FROM flows_ext) i\n  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET\n  GROUP BY i.remote\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n),\nattg AS (\n  SELECT att.flow_ts, att.client_ip, att.remote, att.bytes, att.qname,\n         o.org, o.country,\n         coalesce(att.qname, NULLIF(o.org, ''), '(unknown)') AS dest,\n         CASE WHEN att.qname IS NOT NULL THEN 'domain'\n              WHEN NULLIF(o.org, '') IS NOT NULL THEN 'org'\n              ELSE 'unknown' END AS dest_kind\n  FROM att LEFT JOIN ip_org o ON att.remote = o.remote\n)\nSELECT coalesce(NULLIF(org,''),'(AS未割当/不明)') AS org, any_value(country) AS country, sum(bytes)::BIGINT AS bytes, count(*)::BIGINT AS flows FROM attg GROUP BY 1 ORDER BY bytes DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "組織別 帯域 (ASN org, bytes)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "ASN の登録国別の帯域。注意: これは AS 登録国であって IP の地理的 serving 位置ではない (例: Akamai が NL と出る)。厳密な geo 国別が要件化したら reference/geo/ に GeoLite2 Country を別 parquet で追加する想定。",
+      "id": 10,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true)\n  WHERE $__timeFilter(date) AND proto IN ('Tcp', 'Udp')\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\nasn AS (\n  SELECT range_start, range_end, org, nullif(country, 'None') AS country FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet') WHERE asn <> 0\n),\nip_org AS (\n  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country\n  FROM (SELECT DISTINCT remote FROM flows_ext) i\n  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET\n  GROUP BY i.remote\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n),\nattg AS (\n  SELECT att.flow_ts, att.client_ip, att.remote, att.bytes, att.qname,\n         o.org, o.country,\n         coalesce(att.qname, NULLIF(o.org, ''), '(unknown)') AS dest,\n         CASE WHEN att.qname IS NOT NULL THEN 'domain'\n              WHEN NULLIF(o.org, '') IS NOT NULL THEN 'org'\n              ELSE 'unknown' END AS dest_kind\n  FROM att LEFT JOIN ip_org o ON att.remote = o.remote\n)\nSELECT coalesce(NULLIF(country,''),'(不明)') AS country, sum(bytes)::BIGINT AS bytes, count(DISTINCT remote)::BIGINT AS ips FROM attg GROUP BY 1 ORDER BY bytes DESC LIMIT 30",
+          "refId": "A"
+        }
+      ],
+      "title": "国別 帯域 (ASN登録国・近似, bytes)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "総バイト上位 10 組織 (ASN org) の日次帯域。",
+      "id": 13,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "none",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true)\n  WHERE $__timeFilter(date) AND proto IN ('Tcp', 'Udp')\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\nasn AS (\n  SELECT range_start, range_end, org, nullif(country, 'None') AS country FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet') WHERE asn <> 0\n),\nip_org AS (\n  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country\n  FROM (SELECT DISTINCT remote FROM flows_ext) i\n  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET\n  GROUP BY i.remote\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n),\nattg AS (\n  SELECT att.flow_ts, att.client_ip, att.remote, att.bytes, att.qname,\n         o.org, o.country,\n         coalesce(att.qname, NULLIF(o.org, ''), '(unknown)') AS dest,\n         CASE WHEN att.qname IS NOT NULL THEN 'domain'\n              WHEN NULLIF(o.org, '') IS NOT NULL THEN 'org'\n              ELSE 'unknown' END AS dest_kind\n  FROM att LEFT JOIN ip_org o ON att.remote = o.remote\n)\n, toporg AS (SELECT coalesce(NULLIF(org,''),'(unknown)') AS org FROM attg GROUP BY 1 ORDER BY sum(bytes) DESC LIMIT 10)\nSELECT date_trunc('day', flow_ts) AS time, coalesce(NULLIF(org,''),'(unknown)') AS metric, sum(bytes)::BIGINT AS value FROM attg WHERE coalesce(NULLIF(org,''),'(unknown)') IN (SELECT org FROM toporg) GROUP BY 1,2 ORDER BY 1,2",
+          "refId": "A"
+        }
+      ],
+      "title": "Top-10 組織 帯域推移 (日次)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "宛先を coalesce(domain, org) で補完したランキング。domain (passive DNS で名前が付いた分) を優先し、付かなかった分は ASN org で埋める。kind 列で domain/org の別が分かる。issue #348 の『ドメインランキングを coalesce(domain, org) 補完』に対応。",
+      "id": 14,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PmyduckPoc0001"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true)\n  WHERE $__timeFilter(date) AND proto IN ('Tcp', 'Udp')\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\nasn AS (\n  SELECT range_start, range_end, org, nullif(country, 'None') AS country FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet') WHERE asn <> 0\n),\nip_org AS (\n  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country\n  FROM (SELECT DISTINCT remote FROM flows_ext) i\n  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET\n  GROUP BY i.remote\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n),\nattg AS (\n  SELECT att.flow_ts, att.client_ip, att.remote, att.bytes, att.qname,\n         o.org, o.country,\n         coalesce(att.qname, NULLIF(o.org, ''), '(unknown)') AS dest,\n         CASE WHEN att.qname IS NOT NULL THEN 'domain'\n              WHEN NULLIF(o.org, '') IS NOT NULL THEN 'org'\n              ELSE 'unknown' END AS dest_kind\n  FROM att LEFT JOIN ip_org o ON att.remote = o.remote\n)\nSELECT dest, any_value(dest_kind) AS kind, sum(bytes)::BIGINT AS bytes, count(*)::BIGINT AS flows FROM attg WHERE dest <> '(unknown)' GROUP BY dest ORDER BY bytes DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "宛先ランキング (coalesce domain→org, bytes)",
+      "type": "table"
     }
   ],
   "refresh": "",
@@ -588,6 +956,6 @@
   "timezone": "",
   "title": "Logs Archive - RouterOS Access Stats",
   "uid": "logs-archive-routeros-access",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
