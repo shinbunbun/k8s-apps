@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "RouterOS アクセス先統計。passive DNS (sniffer) と netflow (traffic-flow) を (client_ip, dst_ip) 時間窓 join し、クライアント別のアクセス先ドメインと帯域を可視化。silver 直読み (DuckDB/MyDuck datasource)。設計: dotfiles-private#326。",
+  "description": "RouterOS アクセス先統計。passive DNS (sniffer) と netflow (traffic-flow) を answer_ip⋈dst_ip で時間窓 join (client優先→IP fallback, 24h last-seen) し、クライアント別のアクセス先ドメインと帯域を可視化。silver 直読み (DuckDB/MyDuck datasource)。設計: dotfiles-private#326。",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -40,7 +40,7 @@
         "type": "postgres",
         "uid": "PmyduckPoc0001"
       },
-      "description": "外部トラフィック bytes のうち passive DNS でドメイン名が付いた割合。残りは DoH/DoT 迂回・直 IP 接続 (RouterOS リゾルバを経由しない)。低い値ほど暗号化 DNS 利用が多い。",
+      "description": "外部トラフィック bytes のうちドメイン名が付いた割合 (client優先→IP fallback, 24h last-seen join)。残りは passive DNS に一度も現れない宛先 = DoH/DoT 迂回・iCloud Private Relay・直 IP 接続。この未帰属分は GeoIP/ASN enrich (v2) で組織/国別に特性化予定。",
       "id": 1,
       "fieldConfig": {
         "defaults": {
@@ -88,7 +88,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT max(flow_ts) AS time, 100.0*sum(CASE WHEN named THEN bytes ELSE 0 END)/NULLIF(sum(bytes),0) AS value FROM m",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\nSELECT max(flow_ts) AS time, 100.0*sum(CASE WHEN qname IS NOT NULL THEN bytes ELSE 0 END)/NULLIF(sum(bytes),0) AS value FROM att",
           "refId": "A"
         }
       ],
@@ -148,7 +148,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT max(flow_ts) AS time, sum(bytes)::BIGINT AS value FROM m",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\nSELECT max(flow_ts) AS time, sum(bytes)::BIGINT AS value FROM att",
           "refId": "A"
         }
       ],
@@ -280,7 +280,7 @@
         "type": "postgres",
         "uid": "PmyduckPoc0001"
       },
-      "description": "外部トラフィックを named/unnamed で日次 stack。unnamed の比率が DoH/DoT・直 IP 接続の規模を示す。",
+      "description": "外部トラフィックを named/unnamed で日次 stack。unnamed (passive DNS 非経由) の比率が DoH/DoT・iCloud Private Relay・直 IP の規模を示す。",
       "id": 5,
       "fieldConfig": {
         "defaults": {
@@ -341,7 +341,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, answer_ip, ttl FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (SELECT * FROM flows WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')),\nm AS (\n  SELECT f.flow_ts, f.bytes,\n    EXISTS (SELECT 1 FROM pd WHERE pd.client_ip=f.client AND pd.answer_ip=f.remote\n            AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND) AS named\n  FROM flows_ext f\n)\nSELECT date_trunc('day', flow_ts) AS time, CASE WHEN named THEN 'named (DNS解決済)' ELSE 'unnamed (迂回/直IP)' END AS metric, sum(bytes)::BIGINT AS value FROM m GROUP BY 1,2 ORDER BY 1,2",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\nSELECT date_trunc('day', flow_ts) AS time, CASE WHEN qname IS NOT NULL THEN 'named (DNS解決済)' ELSE 'unnamed (迂回/直IP)' END AS metric, sum(bytes)::BIGINT AS value FROM att GROUP BY 1,2 ORDER BY 1,2",
           "refId": "A"
         }
       ],
@@ -415,7 +415,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\nSELECT qname, sum(bytes)::BIGINT AS bytes, count(*)::BIGINT AS flows FROM joined WHERE rn=1 GROUP BY qname ORDER BY bytes DESC LIMIT 50",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\nSELECT qname, sum(bytes)::BIGINT AS bytes, count(*)::BIGINT AS flows FROM att WHERE qname IS NOT NULL GROUP BY qname ORDER BY bytes DESC LIMIT 50",
           "refId": "A"
         }
       ],
@@ -427,7 +427,7 @@
         "type": "postgres",
         "uid": "PmyduckPoc0001"
       },
-      "description": "どの LAN クライアントがどのドメインへ何バイト通信したか。",
+      "description": "どの LAN クライアントがどのドメインへ何バイト通信したか。client優先 join のため大半は実 client の解決だが、共有 CDN IP は他 client の解決で名付く場合あり。",
       "id": 7,
       "fieldConfig": {
         "defaults": {
@@ -489,7 +489,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\nSELECT client_ip, qname, sum(bytes)::BIGINT AS bytes FROM joined WHERE rn=1 GROUP BY client_ip, qname ORDER BY bytes DESC LIMIT 100",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\nSELECT client_ip, qname, sum(bytes)::BIGINT AS bytes FROM att WHERE qname IS NOT NULL GROUP BY client_ip, qname ORDER BY bytes DESC LIMIT 100",
           "refId": "A"
         }
       ],
@@ -562,7 +562,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip, ttl\n  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\njoined AS (\n  SELECT f.flow_ts, f.client AS client_ip, pd.qname, f.bytes,\n    row_number() OVER (PARTITION BY f.flow_ts, f.client, f.remote, f.bytes ORDER BY pd.dns_ts DESC) AS rn\n  FROM flows f\n  JOIN pd ON pd.client_ip = f.client AND pd.answer_ip = f.remote\n    AND f.flow_ts BETWEEN pd.dns_ts AND pd.dns_ts + INTERVAL (pd.ttl) SECOND\n)\n, top AS (SELECT qname FROM joined WHERE rn=1 GROUP BY qname ORDER BY sum(bytes) DESC LIMIT 10)\nSELECT date_trunc('day', flow_ts) AS time, qname AS metric, sum(bytes)::BIGINT AS value FROM joined WHERE rn=1 AND qname IN (SELECT qname FROM top) GROUP BY 1,2 ORDER BY 1,2",
+          "rawSql": "WITH pd AS (\n  SELECT ts AS dns_ts, client_ip, qname, answer_ip FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nnf AS (\n  SELECT ts AS flow_ts, src_ip, dst_ip, bytes FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet', hive_partitioning=true) WHERE $__timeFilter(date)\n),\nflows AS (\n  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf\n  UNION ALL\n  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf\n),\nflows_ext AS (\n  SELECT * FROM flows\n  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%' OR remote LIKE '240b:%' OR remote = '114.17.55.115')\n),\natt AS (\n  SELECT f.flow_ts, f.client AS client_ip, f.bytes,\n    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname\n         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname\n  FROM flows_ext f\n  ASOF LEFT JOIN pd s ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts\n  ASOF LEFT JOIN pd a ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts\n)\n, top AS (SELECT qname FROM att WHERE qname IS NOT NULL GROUP BY qname ORDER BY sum(bytes) DESC LIMIT 10)\nSELECT date_trunc('day', flow_ts) AS time, qname AS metric, sum(bytes)::BIGINT AS value FROM att WHERE qname IN (SELECT qname FROM top) GROUP BY 1,2 ORDER BY 1,2",
           "refId": "A"
         }
       ],
@@ -588,6 +588,6 @@
   "timezone": "",
   "title": "Logs Archive - RouterOS Access Stats",
   "uid": "logs-archive-routeros-access",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
