@@ -33,3 +33,6 @@ resources:
   - service-passive-dns-lan.yaml
   - deployment-netflow.yaml
   - service-netflow-lan.yaml
+  # IP→ASN/org reference parquet 週次ビルダー (アクセス先統計 v2, dotfiles-private#348)。
+  # reference/asn/asn.parquet を産出し、dashboard が query-time に inet range join する。
+  - cronworkflow-asn-reference.yaml

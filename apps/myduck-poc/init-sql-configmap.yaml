@@ -30,6 +30,13 @@ data:
     INSTALL httpfs;
     LOAD httpfs;
 
+    -- inet 拡張: アクセス先統計 v2 (dotfiles-private#348) の dashboard が
+    -- reference/asn/asn.parquet に対して `ip::INET BETWEEN range_start::INET AND
+    -- range_end::INET` で v4/v6 両対応の CIDR range join を行うため。httpfs と同様
+    -- 起動時に一度ロードしておき、panel SQL 側で per-query の INSTALL/LOAD を不要にする。
+    INSTALL inet;
+    LOAD inet;
+
     CREATE PERSISTENT SECRET garage (
       TYPE S3,
       PROVIDER credential_chain,
