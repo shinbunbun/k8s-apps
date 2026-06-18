@@ -276,7 +276,14 @@ spec:
             oauth2:
               responseTypes: ["code", "token", "id_token"]
               skipApprovalScreen: true
-            connectors: []
+            # Dex は connector を最低 1 つ要求する (空だと "no connectors specified"
+            # で起動失敗)。1a では外部依存なしで起動する mockCallback を置く。
+            # ingress 全無効で内部限定なので mock の無認証ログインは外部に露出しない。
+            # Phase 1b で Authentik OIDC connector (type: oidc, $VAR 注入) に差し替える。
+            connectors:
+              - type: mockCallback
+                id: mock
+                name: Mock
             staticClients:
               - id: terrakube
                 public: true
