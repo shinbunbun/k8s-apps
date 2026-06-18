@@ -104,7 +104,7 @@ spec:
           # 鍵は GarageKey operator 生成の terrakube-garage-credentials を env で渡す。
           initContainers:
             - name: garage-sigv4-proxy
-              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:1.11.1
               restartPolicy: Always
               args:
                 - --name=s3
@@ -217,7 +217,7 @@ spec:
           # 経由する。terraform は executor pod 内で実行されるので localhost で届く。
           initContainers:
             - name: garage-sigv4-proxy
-              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:1.11.1
               restartPolicy: Always
               args:
                 - --name=s3
@@ -296,7 +296,7 @@ spec:
           # registry の module storage S3 client が経由する。
           initContainers:
             - name: garage-sigv4-proxy
-              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:1.11.1
               restartPolicy: Always
               args:
                 - --name=s3
