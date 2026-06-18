@@ -229,35 +229,3 @@ spec:
     regionKey: AWS_REGION
     includeEndpoint: false
     includeRegion: true
----
-# Terrakube 本体の object storage 用 GarageKey。terrakube-storage に
-# read+write+owner を付与 (state/module/output の読み書きと list/delete)。
-# 生成 Secret は terrakube ns の terrakube-garage-credentials。Terrakube 本体
-# (Helm, infrastructure/terrakube) の storage.aws.* 設定から Phase 1 で参照する。
-# Issue: shinbunbun/dotfiles-private#327
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: terrakube
-  namespace: terrakube
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: terrakube
-  bucketPermissions:
-    - bucketRef:
-        name: terrakube-storage
-        namespace: garage
-      read: true
-      write: true
-      owner: true
-  secretTemplate:
-    name: terrakube-garage-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
