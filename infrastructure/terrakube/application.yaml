@@ -42,16 +42,28 @@ spec:
           dexClientScope: "email openid profile offline_access groups"
           dexIssuerUri: "https://terrakube.shinbunbun.com/dex"
 
-        # ---- ストレージ: Garage (S3 互換) -----------------------------------
+        # ---- ストレージ: Garage (S3 互換) — sidecar 経由で SigV4 region を矯正 ----
         # configMap の MINIO 分岐を選択させる (bucketName+accessKey+secretKey+endpoint
         # が全て truthy で選択)。accessKey/secretKey は分岐条件にしか使われず
         # configMap には出力されない (existingSecret:true なので secret にも出ない)。
         # 実際の鍵は各 component の env で terrakube-garage-credentials から注入する。
+        #
+        # endpoint は Garage 直 (garage.garage:3900) ではなく **同一 pod の
+        # aws-sigv4-proxy sidecar (localhost:8899)** に向ける。Terrakube の S3 client は
+        # custom endpoint 指定時に SigV4 の署名 region を "auto" でハードコードしており
+        # (upstream #2555/#2824/#3115、main/2.32-beta でも未修正)、Garage の厳格な
+        # s3_region="garage" 検証で 400 (unexpected scope auto) になる。sidecar が受けた
+        # リクエストの Authorization を strip し region=garage で再署名して
+        # garage.garage:3900 へ転送する (各 component の initContainers を参照)。
+        # ※ endpoint を空にして region(getRegion()) 分岐へ落とす案は不可: executor の
+        #   terraform backend 生成が endpoint!=null の時だけ use_path_style/
+        #   skip_region_validation を出力するため、空にすると backend が壊れる。
+        # upstream の region 修正がリリースされたら sidecar を撤去し Garage 直に戻す。
         storage:
           defaultStorage: false
           minio:
             bucketName: terrakube-storage
-            endpoint: http://garage.garage.svc.cluster.local:3900
+            endpoint: http://localhost:8899
             accessKey: "injected-via-env"
             secretKey: "injected-via-env"
 
@@ -85,6 +97,41 @@ spec:
         api:
           existingSecret: true
           secrets: []
+          # Garage への S3 書き込みで region "auto" ハードコードを回避する sidecar
+          # (理由は storage コメント参照)。native sidecar = initContainer +
+          # restartPolicy:Always。localhost:8899 で受け、Authorization を strip し
+          # region=garage で再署名して garage.garage:3900 (http) へ転送する。
+          # 鍵は GarageKey operator 生成の terrakube-garage-credentials を env で渡す。
+          initContainers:
+            - name: garage-sigv4-proxy
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              restartPolicy: Always
+              args:
+                - --name=s3
+                - --region=garage
+                - --host=garage.garage.svc.cluster.local:3900
+                - --upstream-url-scheme=http
+                - --strip=Authorization
+                - --port=:8899
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+              ports:
+                - containerPort: 8899
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           # terraform CLI / remote backend は LAN VIP 経由で API に接続する
           # (tunnel 非経由・CF Access なし・PAT 認証)。ブラウザ用の /api は
           # cloudflared 経由 (CF Access 配下)。LoadBalancer でも ClusterIP は
@@ -165,6 +212,39 @@ spec:
         executor:
           existingSecret: true
           secrets: []
+          # api と同じ Garage 用 sigv4 sidecar (理由は storage コメント参照)。
+          # executor の S3 client と terraform backend (endpoint=localhost:8899) が
+          # 経由する。terraform は executor pod 内で実行されるので localhost で届く。
+          initContainers:
+            - name: garage-sigv4-proxy
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              restartPolicy: Always
+              args:
+                - --name=s3
+                - --region=garage
+                - --host=garage.garage.svc.cluster.local:3900
+                - --upstream-url-scheme=http
+                - --strip=Authorization
+                - --port=:8899
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+              ports:
+                - containerPort: 8899
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           replicaCount: "1"
           affinity:
             nodeAffinity:
@@ -212,6 +292,38 @@ spec:
         registry:
           existingSecret: true
           secrets: []
+          # api と同じ Garage 用 sigv4 sidecar (理由は storage コメント参照)。
+          # registry の module storage S3 client が経由する。
+          initContainers:
+            - name: garage-sigv4-proxy
+              image: public.ecr.aws/aws-observability/aws-sigv4-proxy:v1.11.1
+              restartPolicy: Always
+              args:
+                - --name=s3
+                - --region=garage
+                - --host=garage.garage.svc.cluster.local:3900
+                - --upstream-url-scheme=http
+                - --strip=Authorization
+                - --port=:8899
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: terrakube-garage-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+              ports:
+                - containerPort: 8899
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           replicaCount: "1"
           affinity:
             nodeAffinity:
