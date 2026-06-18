@@ -60,7 +60,10 @@ spec:
           auth:
             enabled: false
 
-        # ---- 外部公開は Phase 1b。ingress は全無効、domain は URL 構築用に保持 --
+        # ---- 外部公開は Cloudflare Tunnel + CF Access。chart の ingress は使わず
+        # 全無効 (apps/cloudflared-k3s が単一ホスト terrakube.shinbunbun.com で
+        # / → UI, /api → API, /dex → Dex にパスルーティング)。domain は UI/API の
+        # URL 構築に使うため UI と API を同一ホストにして同一オリジン化 (CORS 回避)。
         ingress:
           useTls: true
           ui:
@@ -68,7 +71,8 @@ spec:
             domain: "terrakube.shinbunbun.com"
           api:
             enabled: false
-            domain: "terrakube-api.shinbunbun.com"
+            # UI と同一ホスト。ブラウザは https://terrakube.shinbunbun.com/api/v1/ を叩く
+            domain: "terrakube.shinbunbun.com"
           registry:
             enabled: false
             domain: "terrakube-reg.shinbunbun.com"
@@ -81,6 +85,13 @@ spec:
         api:
           existingSecret: true
           secrets: []
+          # terraform CLI / remote backend は LAN VIP 経由で API に接続する
+          # (tunnel 非経由・CF Access なし・PAT 認証)。ブラウザ用の /api は
+          # cloudflared 経由 (CF Access 配下)。LoadBalancer でも ClusterIP は
+          # 併存するので in-cluster の service 名解決は不変。
+          serviceType: LoadBalancer
+          serviceAnnotations:
+            io.cilium/lb-ipam-ips: "192.168.128.25"
           defaultDatabase: false
           defaultRedis: true
           loadSampleData: false
