@@ -85,19 +85,3 @@ metadata:
 spec:
   clusterRef:
     name: garage
----
-# Terrakube (セルフホスト Terraform コントロールプレーン) の object storage backend。
-# Terraform state / module / job output を格納する。Terrakube 本体 (Helm,
-# infrastructure/terrakube) が GarageKey "terrakube" 経由で read/write する。
-# retention は Terrakube 側で管理 (state は世代管理されるため lifecycle 未設定)。
-# Issue: shinbunbun/dotfiles-private#327
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageBucket
-metadata:
-  name: terrakube-storage
-  namespace: garage
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  clusterRef:
-    name: garage
