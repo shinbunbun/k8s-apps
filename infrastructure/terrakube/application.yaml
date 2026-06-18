@@ -1,0 +1,296 @@
+# Terrakube — セルフホスト Terraform コントロールプレーン (dotfiles-private#327)
+#
+# 本体は公式 Helm chart (charts.terrakube.io)。grafana / argo-workflows と同じく
+# infrastructure/ に Helm Application を置き、CNPG / Garage / secret の土台は
+# apps/terrakube-config/ (kustomize) 側で用意する。
+#
+# 【Phase 1a の範囲】内部起動・検証まで。外部公開 (Cloudflare Tunnel) と
+# Authentik OIDC connector は Phase 1b。1a では dex.config.connectors を空にして
+# Dex を素直に起動させ、api/executor/registry/ui/valkey が healthy になり
+# api が CNPG(DB) と Garage(S3) に接続できることを内部で確認する。
+#
+# 【secret 方針】chart は secret を平文 values でしか受けないため、各 component を
+# existingSecret:true + secrets:[] にして chart の平文 secret 生成を止め、機微値は
+# deployment が toYaml する `<c>.env` の valueFrom: secretKeyRef で注入する:
+#   - DB password   ← terrakube-db-app (CNPG bootstrap secret, key: password)
+#   - Garage S3 鍵  ← terrakube-garage-credentials (GarageKey operator 生成)
+#   - PatSecret / InternalSecret ← terrakube-app-secrets (KSOPS、自前生成)
+# これで平文を git に置かずに済む。UI secret は非機微 (公開 config のみ) なので
+# existingSecret:false で chart 生成に任せる。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: terrakube
+  namespace: argocd
+  annotations:
+    # CNPG Cluster (apps/terrakube-config) より後に同期
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://charts.terrakube.io
+    chart: terrakube
+    targetRevision: "4.7.3"
+    helm:
+      releaseName: terrakube
+      valuesObject:
+        # ---- 認証 / セキュリティ -------------------------------------------
+        security:
+          useOpenLDAP: false
+          adminGroup: "Terrakube Admins"
+          dexClientId: "terrakube"
+          dexClientScope: "email openid profile offline_access groups"
+          dexIssuerUri: "https://terrakube.shinbunbun.com/dex"
+
+        # ---- ストレージ: Garage (S3 互換) -----------------------------------
+        # configMap の MINIO 分岐を選択させる (bucketName+accessKey+secretKey+endpoint
+        # が全て truthy で選択)。accessKey/secretKey は分岐条件にしか使われず
+        # configMap には出力されない (existingSecret:true なので secret にも出ない)。
+        # 実際の鍵は各 component の env で terrakube-garage-credentials から注入する。
+        storage:
+          defaultStorage: false
+          minio:
+            bucketName: terrakube-storage
+            endpoint: http://garage.garage.svc.cluster.local:3900
+            accessKey: "injected-via-env"
+            secretKey: "injected-via-env"
+
+        # ---- Valkey (内包): auth 無効 (cluster 内部 + NetworkPolicy 防御) -----
+        valkey:
+          auth:
+            enabled: false
+
+        # ---- 外部公開は Phase 1b。ingress は全無効、domain は URL 構築用に保持 --
+        ingress:
+          useTls: true
+          ui:
+            enabled: false
+            domain: "terrakube.shinbunbun.com"
+          api:
+            enabled: false
+            domain: "terrakube-api.shinbunbun.com"
+          registry:
+            enabled: false
+            domain: "terrakube-reg.shinbunbun.com"
+          dex:
+            enabled: false
+          executor:
+            enabled: false
+
+        # ---- API (HA 2 replica) --------------------------------------------
+        api:
+          existingSecret: true
+          secrets: []
+          defaultDatabase: false
+          defaultRedis: true
+          loadSampleData: false
+          replicaCount: "2"
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
+          properties:
+            databaseType: "POSTGRESQL"
+            databaseHostname: "terrakube-db-rw.terrakube.svc.cluster.local"
+            databaseName: "terrakube"
+            databaseUser: "terrakube"
+            databasePort: "5432"
+            databaseSchema: "public"
+            databaseSslMode: "disable"
+            redisPort: "6379"
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["g3pro"]
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/component: terrakube-api
+                    topologyKey: kubernetes.io/hostname
+          env:
+            - name: PatSecret
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-app-secrets
+                  key: PatSecret
+            - name: InternalSecret
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-app-secrets
+                  key: InternalSecret
+            - name: DexClientId
+              value: "terrakube"
+            - name: DatasourcePassword
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-db-app
+                  key: password
+            - name: AwsStorageAccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AwsStorageSecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+            # Garage の S3 region (GarageCluster s3Api.region) に合わせる。
+            # configMap MINIO 分岐は us-east-1 をハードコードするので env で上書き。
+            - name: AwsStorageRegion
+              value: "garage"
+            # valkey auth 無効なので空パスワードで接続
+            - name: TerrakubeRedisPassword
+              value: ""
+
+        # ---- Executor (シングル、非HA、g3pro 回避) -------------------------
+        executor:
+          existingSecret: true
+          secrets: []
+          replicaCount: "1"
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["g3pro"]
+          env:
+            - name: InternalSecret
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-app-secrets
+                  key: InternalSecret
+            - name: AwsTerraformStateAccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AwsTerraformStateSecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AwsTerraformOutputAccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AwsTerraformOutputSecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AwsTerraformStateRegion
+              value: "garage"
+            - name: AwsTerraformOutputRegion
+              value: "garage"
+            - name: TerrakubeRedisPassword
+              value: ""
+
+        # ---- Registry (シングル、内部のみ; 公開は Phase 5) -----------------
+        registry:
+          existingSecret: true
+          secrets: []
+          replicaCount: "1"
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["g3pro"]
+          env:
+            - name: PatSecret
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-app-secrets
+                  key: PatSecret
+            - name: InternalSecret
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-app-secrets
+                  key: InternalSecret
+            - name: AppClientId
+              value: "terrakube"
+            - name: AwsStorageAccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AwsStorageSecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: terrakube-garage-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AwsStorageRegion
+              value: "garage"
+
+        # ---- UI (HA 2 replica) — secret は非機微なので chart 生成 ----------
+        ui:
+          existingSecret: false
+          replicaCount: "2"
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["g3pro"]
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/component: terrakube-ui
+                    topologyKey: kubernetes.io/hostname
+
+        # ---- Dex — 1a は connector 空で素起動。Authentik OIDC は Phase 1b ----
+        dex:
+          enabled: true
+          existingSecret: false
+          config:
+            issuer: https://terrakube.shinbunbun.com/dex
+            storage:
+              type: memory
+            web:
+              http: 0.0.0.0:5556
+              allowedOrigins: ['*']
+            oauth2:
+              responseTypes: ["code", "token", "id_token"]
+              skipApprovalScreen: true
+            connectors: []
+            staticClients:
+              - id: terrakube
+                public: true
+                name: Terrakube
+                redirectURIs:
+                  - https://terrakube.shinbunbun.com
+                  - /device/callback
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: terrakube
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
