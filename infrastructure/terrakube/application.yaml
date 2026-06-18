@@ -311,6 +311,11 @@ spec:
                   # Authentik は email_verified を必ずしも返さないため許容
                   insecureSkipEmailVerified: true
                   getUserInfo: true
+                  # Dex の汎用 OIDC connector は既定で upstream の groups クレームを
+                  # 破棄する。Authentik の oidc_groups スコープ (scope_name=groups,
+                  # {"groups":[...]}) を Terrakube へ伝播させ adminGroup
+                  # "Terrakube Admins" 判定を効かせるため有効化する。
+                  insecureEnableGroups: true
             staticClients:
               - id: terrakube
                 public: true
