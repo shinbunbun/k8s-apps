@@ -47,4 +47,19 @@ ingress:
     service: http://librechat.librechat.svc.cluster.local:3080
     originRequest:
       httpHostHeader: chat.shinbunbun.com
+  # Terrakube (dotfiles-private#327): /dex は Dex、それ以外は UI。
+  # path ルールは catch-all の UI ルールより前に置くこと (先頭一致順)。
+  - hostname: terrakube.shinbunbun.com
+    path: ^/dex
+    service: http://terrakube-dex.terrakube.svc.cluster.local:5556
+    originRequest:
+      httpHostHeader: terrakube.shinbunbun.com
+  - hostname: terrakube.shinbunbun.com
+    service: http://terrakube-ui-service.terrakube.svc.cluster.local:8080
+    originRequest:
+      httpHostHeader: terrakube.shinbunbun.com
+  - hostname: terrakube-api.shinbunbun.com
+    service: http://terrakube-api-service.terrakube.svc.cluster.local:8080
+    originRequest:
+      httpHostHeader: terrakube-api.shinbunbun.com
   - service: http_status:404
