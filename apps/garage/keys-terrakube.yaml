@@ -1,0 +1,38 @@
+# Terrakube 専用クラスタ (garage-terrakube) のアクセスキー定義
+#
+# GarageKey 名・生成 Secret 名ともに旧メインクラスタの terrakube キー (keys.yaml、
+# 生成 Secret terrakube-garage-credentials) と分離するため別名にする。Terrakube の
+# api/executor/registry はこの Secret terrakube-storage-credentials を env で参照する
+# (infrastructure/terrakube/application.yaml)。
+#
+# bucketRef.name は GarageBucket の metadata.name (terrakube-storage-tk) を指す。
+# cross-ns reference は reference-grants.yaml の allow-consumer-namespaces (terrakube ns ×
+# GarageCluster/GarageBucket) が許可済みのため追加不要。
+#
+# sync-wave 2: GarageBucket (wave 1) 適用後に投入。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: terrakube-tk
+  namespace: terrakube
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-terrakube
+    namespace: garage
+  name: terrakube-tk
+  bucketPermissions:
+    - bucketRef:
+        name: terrakube-storage-tk
+        namespace: garage
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: terrakube-storage-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true

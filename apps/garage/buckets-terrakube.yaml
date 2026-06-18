@@ -1,0 +1,24 @@
+# Terrakube 専用クラスタ (garage-terrakube) のバケット定義
+#
+# metadata.name は garage ns 内で一意である必要があるため terrakube-storage-tk とし、
+# spec.globalAlias で実バケット名 terrakube-storage を付与する (Terrakube の
+# storage.minio.bucketName と一致)。別クラスタなので旧メインクラスタの
+# terrakube-storage バケット (buckets.yaml、現在未使用) と alias が衝突しても問題ない
+# (cluster-archive の logs-archive と同じ前例)。
+#
+# 旧メインクラスタの terrakube-storage バケット + GarageKey terrakube (keys.yaml) は
+# 一度も使われていない (state 未書込) ため当面 cruft として残し、別 PR で削除する
+# (GarageKey 単独削除は ReferenceGrant を残せば prune gotcha を踏まない)。
+#
+# sync-wave 1: GarageCluster garage-terrakube (wave 0) が Ready になってから apply。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: terrakube-storage-tk
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage-terrakube
+  globalAlias: terrakube-storage

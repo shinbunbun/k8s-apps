@@ -1,0 +1,68 @@
+# Terrakube 専用 Garage クラスタ (単一ノード・非HA・s3_region=auto)
+#
+# 【背景】Terrakube の S3 client は custom endpoint 指定時に SigV4 署名 region を "auto" で
+# ハードコードしており (upstream #2555/#2824/#3115、main 未修正)、メイン garage クラスタの
+# 厳格な s3_region="garage" 検証で 400 (unexpected scope auto) になり state/configuration の
+# 書き込みが失敗する。aws-sigv4-proxy sidecar で再署名する案は、SDK の aws-chunked
+# (STREAMING 署名) を proxy が再署名できず別の 400 (x-amz-decoded-content-length should be
+# signed) になり破綻した。
+#
+# 【解決】Terrakube 専用に s3_region="auto" の Garage クラスタを立て、Terrakube を直結する
+# (proxy 無し)。SDK は素のまま region=auto で署名 → 本クラスタの auto と一致 → 通る。
+# proxy を挟まないので aws-chunked も SDK 自前署名のまま Garage が受ける。Terrakube は無改変・
+# image build 不要。upstream が region を修正してもクライアント env を auto に保てば壊れない。
+# メイン garage クラスタは s3_region=garage のまま (他 consumer 影響なし)。
+#
+# 【非HA設計】replication.factor=1 + storage.replicas=1、nixos-desktop に固定 (cluster-archive
+# と同方針)。Terrakube state の真実は GitOps repo + CNPG メタデータ + ローカル退避 state で
+# 再現可能なため、単一コピーで許容 (pragmatic HA 方針)。durability を上げたい場合は factor=3 +
+# topologySpreadConstraints へ。
+#
+# 【admin token】メイン garage と同じ garage-admin-tokens Secret を再利用 (operator↔cluster
+# 認証用の bearer、同一 operator が両クラスタを管理するので値共有で問題なし)。専用トークンに
+# 分離したくなったら garage-terrakube-admin-tokens を別途 SOPS 生成する。
+apiVersion: garage.rajsingh.info/v1beta2
+kind: GarageCluster
+metadata:
+  name: garage-terrakube
+  namespace: garage
+  labels:
+    app.kubernetes.io/name: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  zone: dc1
+  image: dxflrs/garage:v2.3.0
+
+  replication:
+    factor: 1
+
+  storage:
+    replicas: 1
+    nodeSelector:
+      kubernetes.io/hostname: nixos-desktop
+    data:
+      type: PersistentVolumeClaim
+      size: 10Gi
+      storageClassName: local-path
+    metadata:
+      type: PersistentVolumeClaim
+      size: 2Gi
+      storageClassName: local-path
+      accessModes: [ReadWriteOnce]
+    metadataAutoSnapshotInterval: "6h"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  # Terrakube の S3 client がハードコードする region "auto" に合わせる (本クラスタ専用)。
+  s3Api:
+    region: auto
+
+  admin:
+    adminTokenSecretRef:
+      name: garage-admin-tokens
+      key: admin-token
