@@ -47,4 +47,23 @@ ingress:
     service: http://librechat.librechat.svc.cluster.local:3080
     originRequest:
       httpHostHeader: chat.shinbunbun.com
+  # Terrakube (dotfiles-private#327): 単一ホスト terrakube.shinbunbun.com に
+  # パスルーティング。/dex → Dex (CF Access は別 app で bypass)、/api → API
+  # (ブラウザ SPA 用、CF Access 配下)、他 → UI。path ルールは catch-all の UI
+  # ルールより前に置くこと (先頭一致順)。terraform CLI は LAN VIP
+  # (192.168.128.25) で API に直結 (tunnel 非経由)。
+  - hostname: terrakube.shinbunbun.com
+    path: ^/dex
+    service: http://terrakube-dex.terrakube.svc.cluster.local:5556
+    originRequest:
+      httpHostHeader: terrakube.shinbunbun.com
+  - hostname: terrakube.shinbunbun.com
+    path: ^/api
+    service: http://terrakube-api-service.terrakube.svc.cluster.local:8080
+    originRequest:
+      httpHostHeader: terrakube.shinbunbun.com
+  - hostname: terrakube.shinbunbun.com
+    service: http://terrakube-ui-service.terrakube.svc.cluster.local:8080
+    originRequest:
+      httpHostHeader: terrakube.shinbunbun.com
   - service: http_status:404
