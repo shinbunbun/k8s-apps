@@ -48,10 +48,16 @@ ingress:
     originRequest:
       httpHostHeader: chat.shinbunbun.com
   # Terrakube (dotfiles-private#327): 単一ホスト terrakube.shinbunbun.com に
-  # パスルーティング。/dex → Dex (CF Access は別 app で bypass)、/api・/graphql・
-  # /webhook・/callback → API (UI は REST=/api/v1 と GraphQL=/graphql/api/v1 の
-  # 両方を叩く。/webhook v2 は GitHub の push 配送、/callback は VCS 接続の
-  # OAuth callback。どちらも CF Access bypass する別 app が必要)、他 → UI。
+  # パスルーティング。/dex → Dex (CF Access は別 app で bypass)、その他 API prefix
+  # → API、他 → UI。UI が叩く API prefix を全て列挙する必要がある (未列挙だと
+  # UI nginx catch-all に落ち HTML が返って .map 等で壊れる):
+  #   - /api      : Elide REST (JSON:API)
+  #   - /graphql  : GraphQL (organization 一覧 等)
+  #   - /pat      : Personal Access Token (Account Settings)
+  #   - /access-token : Team Token / 権限取得 (RBAC)
+  #   - /webhook  : GitHub の push 配送 (v2)。CF Access bypass する別 app が必要
+  #   - /callback : VCS 接続の OAuth callback。CF Access bypass する別 app が必要
+  # /pat・/access-token はブラウザ=認証済みなので CF Access 保護のまま (bypass 不要)。
   # path ルールは catch-all の UI ルールより前に置くこと (先頭一致順)。
   # terraform CLI は LAN VIP (192.168.128.25) で API に直結 (tunnel 非経由)。
   - hostname: terrakube.shinbunbun.com
@@ -60,7 +66,7 @@ ingress:
     originRequest:
       httpHostHeader: terrakube.shinbunbun.com
   - hostname: terrakube.shinbunbun.com
-    path: ^/(api|graphql|webhook|callback)
+    path: ^/(api|graphql|webhook|callback|pat|access-token)
     service: http://terrakube-api-service.terrakube.svc.cluster.local:8080
     originRequest:
       httpHostHeader: terrakube.shinbunbun.com
