@@ -176,15 +176,24 @@ spec:
           existingSecret: true
           secrets: []
           replicaCount: "1"
+          # executor は routeros workspace の remote run を実行する=LAN 内から
+          # RouterOS API (api://192.168.1.1:8728) に到達する必要がある。RouterOS の
+          # firewall input は `in_interface_list=!LAN` で「LAN IF 以外を drop」する
+          # インターフェースベース判定なので、nixos-desktop (192.168.1.4) から
+          # bridge1 経由で着信する traffic は送信元 IP に依らず許可される。Cilium は
+          # pod→LAN egress を node IP にマスカレード (enable-ipv4-masquerade=true,
+          # native-routing-cidr=10.42.0.0/16 外) するので executor の送信元は
+          # 192.168.1.4 になる。よって executor を nixos-desktop に固定すれば
+          # firewall.tf 変更なしで RouterOS API に到達できる (chicken-egg 回避)。
+          # 非HA executor (replica 1) の設計通り、単一 LAN ノードに hard pin する。
           affinity:
             nodeAffinity:
-              preferredDuringSchedulingIgnoredDuringExecution:
-                - weight: 100
-                  preference:
-                    matchExpressions:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
                       - key: kubernetes.io/hostname
-                        operator: NotIn
-                        values: ["g3pro"]
+                        operator: In
+                        values: ["nixos-desktop"]
           env:
             - name: InternalSecret
               valueFrom:
