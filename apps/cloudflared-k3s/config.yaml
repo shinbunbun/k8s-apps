@@ -57,7 +57,10 @@ ingress:
   #   - /access-token : Team Token / 権限取得 (RBAC)
   #   - /webhook  : GitHub の push 配送 (v2)。CF Access bypass する別 app が必要
   #   - /callback : VCS 接続の OAuth callback。CF Access bypass する別 app が必要
-  # /pat・/access-token はブラウザ=認証済みなので CF Access 保護のまま (bypass 不要)。
+  #   - /tfstate  : workspace state の取得/表示 (UI の State タブが叩く
+  #                 /tfstate/v1/.../terraform.tfstate)。未列挙だと UI nginx の
+  #                 catch-all に落ち index.html(HTML) が返り「state が壊れて見える」。
+  # /pat・/access-token・/tfstate はブラウザ=認証済みなので CF Access 保護のまま (bypass 不要)。
   # path ルールは catch-all の UI ルールより前に置くこと (先頭一致順)。
   # terraform CLI は LAN VIP (192.168.128.25) で API に直結 (tunnel 非経由)。
   - hostname: terrakube.shinbunbun.com
@@ -66,7 +69,7 @@ ingress:
     originRequest:
       httpHostHeader: terrakube.shinbunbun.com
   - hostname: terrakube.shinbunbun.com
-    path: ^/(api|graphql|webhook|callback|pat|access-token)
+    path: ^/(api|graphql|webhook|callback|pat|access-token|tfstate)
     service: http://terrakube-api-service.terrakube.svc.cluster.local:8080
     originRequest:
       httpHostHeader: terrakube.shinbunbun.com
