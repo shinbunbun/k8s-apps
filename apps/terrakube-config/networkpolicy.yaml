@@ -1,0 +1,36 @@
+# Terrakube Valkey NetworkPolicy (dotfiles-private#327)
+#
+# Valkey は auth.enabled:false で起動している (infrastructure/terrakube/
+# application.yaml: valkey.auth.enabled:false / TerrakubeRedisPassword="")。
+# パスワード防御が無いため、その分の防御を NetworkPolicy で担保する
+# (chart values のコメント「auth 無効 (cluster 内部 + NetworkPolicy 防御)」を実装)。
+#
+# 到達を許すのは同 namespace の Valkey 利用者 = terrakube-api / terrakube-executor
+# のみ (registry/ui/dex は Redis 非依存)。from の複数 podSelector は OR 評価。
+#
+# Cilium は default policy mode (selector にマッチした endpoint のみ isolation)
+# のため、この NP は Valkey pod だけを isolation 対象にし、CNPG db pod の
+# operator 調停経路 (cnpg-system) や API の LAN VIP 経路には一切影響しない。
+# egress は policyTypes に含めないので Valkey の通信は従来どおり。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: terrakube-valkey-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/instance: terrakube
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: terrakube-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: terrakube-executor
+      ports:
+        - protocol: TCP
+          port: 6379
