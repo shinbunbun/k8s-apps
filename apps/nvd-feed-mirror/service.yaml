@@ -1,0 +1,22 @@
+# LAN 内 vulnix 向け固定 VIP。Cilium LB IPAM から払い出し、Cilium BGP が
+# 192.168.128.0/24 を RouterOS に広告するため LAN から port 80 に到達できる。
+# vulnix は `--mirror http://192.168.128.26/` で指す (path-style, Host 不要)。
+#
+# 既存 LAN VIP: .11 grafana / .12 vmselect / .13 vmalertmanager / .14 loki / .15 hubble-ui
+# / .16 scanopy / .17-.19 log-archiver-vector / .20 garage / .21 argocd / .22 garage-archive
+# / .23 netflow / .24 passive-dns / .25 terrakube-api / .26 nvd-feed-mirror (本 Service)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvd-feed-mirror-lan
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.26
+spec:
+  type: LoadBalancer
+  selector:
+    app: nvd-feed-mirror
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080

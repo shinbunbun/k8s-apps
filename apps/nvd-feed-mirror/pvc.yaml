@@ -1,0 +1,16 @@
+# ミラーした NVD フィードの置き場 (再取得可能な使い捨てキャッシュ)。
+#
+# 約 350MB (modified ~211MB + 年次 6×~23MB) のため 2Gi で十分な余裕。RWO + local-path
+# (k3s ノードローカル) で単一 nginx Pod に固定。durability 不要 (NVD から再シード可能) なので
+# Garage は使わず、IO 飽和気味の Garage(RF=3) に負荷を足さない設計。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nvd-feeds
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
