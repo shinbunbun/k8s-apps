@@ -31,11 +31,13 @@ spec:
             summary: "NVD mirror のフィードファイルが欠落している"
             description: "{{ $value }} 個のみ present (expected 未満)。初回シード未完か一部 fetch 失敗。"
         # modified フィードが長時間更新されない = NVD 側更新停止 or 同期不全。
-        # NVD は JSON Data Feeds を 2023-12-15 に deprecate 済みで、公称「modified=2h 周期」は
-        # 形骸化し実際は数日遅延も珍しくない (年次フィードは日次更新が継続)。そのため鮮度しきい値は
-        # NVD/vulnix の設計境界に合わせる: modified は「直近 8 日間の変更」しか含まず、vulnix は前回
-        # 更新から 7 日超で全年次フィード (日次更新=最新) を再取得する。よって 7 日を超えて初めて
-        # 実カバレッジが劣化する → しきい値 = 7d。sync 停止自体は NvdMirrorSyncStalled (2h) が別途カバー。
+        # NVD の JSON 2.0 フィード (vulnix が使う側) は現役で、modified は公称「2h 毎」更新。ただし
+        # 実運用では NVD 側の再生成遅延で数日古くなることがある (例: 2026-06 に年次は日次更新が続く
+        # 一方 modified だけ 4 日遅延)。加えて本メトリクスはファイル mtime で、条件付き GET が 304 を
+        # 返す間 (=データ確認済みだが未変更) は mtime が進まない。そのため鮮度しきい値は NVD/vulnix の
+        # 設計境界に合わせる: modified は「直近 8 日間の変更」しか含まず、vulnix は前回更新から 7 日超で
+        # 全年次フィード (日次更新=最新) を再取得する。よって 7 日を超えて初めて実カバレッジが劣化する
+        # → しきい値 = 7d。sync 停止自体は NvdMirrorSyncStalled (2h) が別途カバー。
         - alert: NvdMirrorDataStale
           expr: "nvd_mirror_modified_mtime_seconds > 0 and time() - nvd_mirror_modified_mtime_seconds > 604800"
           for: 30m
