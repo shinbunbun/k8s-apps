@@ -1,0 +1,41 @@
+# nvd-feed-mirror の鮮度/可用性アラート。
+#
+# 配信は止めない設計 (古くても last-good を出す) のため、健全性は probe で traffic を
+# 切るのではなくアラートで監視する。VMAlert は selectAllByDefault: true なので本 namespace の
+# VMRule も拾う。Pod ダウン自体は既存の InstanceDown (up==0) でカバーされる。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: nvd-feed-mirror-alerts
+spec:
+  groups:
+    - name: nvd-feed-mirror
+      interval: 60s
+      rules:
+        # sync ループ (1h 周期) が止まった = sidecar 停止 / 慢性失敗。
+        - alert: NvdMirrorSyncStalled
+          expr: "time() - nvd_mirror_last_run_timestamp_seconds > 7200"
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NVD mirror sync が 2h 以上更新されていない"
+            description: "sync sidecar の最終実行から {{ $value | humanizeDuration }} 経過。sidecar 停止か慢性 fetch 失敗の可能性。diff-gate は last-good で継続するが鮮度が劣化する。"
+        # vulnix が必要とする 7 ファイルが揃っていない。
+        - alert: NvdMirrorFilesMissing
+          expr: "nvd_mirror_files_present < nvd_mirror_files_expected"
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NVD mirror のフィードファイルが欠落している"
+            description: "{{ $value }} 個のみ present (expected 未満)。初回シード未完か一部 fetch 失敗。"
+        # modified フィードが長時間更新されない = NVD 側更新停止 or 同期不全 (NVD は通常 ~2h 周期)。
+        - alert: NvdMirrorDataStale
+          expr: "nvd_mirror_modified_mtime_seconds > 0 and time() - nvd_mirror_modified_mtime_seconds > 43200"
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NVD mirror の modified フィードが 12h 以上古い"
+            description: "modified フィードの最終更新から {{ $value | humanizeDuration }} 経過。NVD 側停止か同期経路の問題。"

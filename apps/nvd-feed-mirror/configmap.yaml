@@ -49,12 +49,35 @@ data:
       fi
     done
 
-    # 終了判定: 全ファイルが存在すれば成功 (鮮度ではなく可用性で判定)。
-    missing=0
+    # 鮮度/可用性メトリクスを /metrics に出力 (nginx が静的配信、VMAgent が scrape)。
+    # 配信は止めない設計のため readinessProbe では落とさず、アラートで気づく経路にする
+    # (probe で落とすと Service から外れ「やや古い」が「全く配信しない」に悪化するため)。
+    now=$(date -u +%s)
+    total=$(set -- $files; echo $#)
+    present=0
     for f in $files; do
-      [ -s "$WEBROOT/$f" ] || { echo "MISSING $f" >&2; missing=1; }
+      [ -s "$WEBROOT/$f" ] && present=$((present + 1))
     done
-    exit "$missing"
+    mod_mtime=$(date -u -r "$WEBROOT/nvdcve-2.0-modified.json.gz" +%s 2>/dev/null || echo 0)
+    {
+      echo "# HELP nvd_mirror_last_run_timestamp_seconds Unix time when the sync loop last completed."
+      echo "# TYPE nvd_mirror_last_run_timestamp_seconds gauge"
+      echo "nvd_mirror_last_run_timestamp_seconds $now"
+      echo "# HELP nvd_mirror_files_present Number of expected feed files currently present."
+      echo "# TYPE nvd_mirror_files_present gauge"
+      echo "nvd_mirror_files_present $present"
+      echo "# HELP nvd_mirror_files_expected Number of feed files vulnix needs (modified + 直近6年)."
+      echo "# TYPE nvd_mirror_files_expected gauge"
+      echo "nvd_mirror_files_expected $total"
+      echo "# HELP nvd_mirror_modified_mtime_seconds Mtime of mirrored nvdcve-2.0-modified.json.gz (0 if absent)."
+      echo "# TYPE nvd_mirror_modified_mtime_seconds gauge"
+      echo "nvd_mirror_modified_mtime_seconds $mod_mtime"
+    } > "$WEBROOT/metrics.tmp" && mv "$WEBROOT/metrics.tmp" "$WEBROOT/metrics"
+
+    # 終了判定: 全ファイルが存在すれば成功 (鮮度ではなく可用性で判定 → restart 耐性)。
+    [ "$present" -eq "$total" ] && exit 0
+    echo "WARN: only $present/$total feed files present" >&2
+    exit 1
   run-sidecar.sh: |
     #!/bin/sh
     # 起動直後に 1 回 + 以後 1 時間ごとに同期。modified フィードは頻繁に更新されるため。
