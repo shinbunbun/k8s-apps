@@ -47,6 +47,14 @@ ingress:
     service: http://librechat.librechat.svc.cluster.local:3080
     originRequest:
       httpHostHeader: chat.shinbunbun.com
+  # NVD フィードミラー (公開 dotfiles の GitHub-hosted runner が LAN VIP .26 に到達できないため、
+  # tunnel 経由で公開する)。配信するのは NIST 公開ドメインの NVD フィード 7 ファイル + /metrics のみ。
+  # 【重要】vulnix は素の GET しかできず認証ヘッダを送れないため、本ホストは CF Access の対象外
+  # (public / bypass) にすること。濫用防止は CF のキャッシュ + レート制限で行う。
+  - hostname: nvd-mirror.shinbunbun.com
+    service: http://nvd-feed-mirror-lan.nvd-feed-mirror.svc.cluster.local:80
+    originRequest:
+      httpHostHeader: nvd-mirror.shinbunbun.com
   # Terrakube (dotfiles-private#327): 単一ホスト terrakube.shinbunbun.com に
   # パスルーティング。/dex → Dex (CF Access は別 app で bypass)、その他 API prefix
   # → API、他 → UI。UI が叩く API prefix を全て列挙する必要がある (未列挙だと
