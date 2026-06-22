@@ -137,6 +137,17 @@ spec:
             ring:
               kvstore:
                 store: memberlist
+          # 2026-06-22: ingester チャンク蓄積を延長し idle flush 頻度を削減 (極小チャンク churn 根治)。
+          # 既定 chunk_idle_period=30m では低流量ストリーム (6,890 streams、各~0.1 行/秒) が
+          # chunk_target_size(1.5MB) 到達前に flush され、flush の 95% が idle 理由で平均 4.7KB/
+          # 225 行の極小チャンクを ~27万個/日 量産していた。idle 2h / max_age 4h で idle flush を
+          # ~4x 削減し、garage の object churn と全ノードのメタデータ書込増幅を比例低減する。
+          # chart の templated config の ingester には wal しか無く chunk 系キーが無いため、
+          # structuredConfig (mergeOverwrite で最終 deep-merge、wal とは共存) で追加・上書きする。
+          structuredConfig:
+            ingester:
+              chunk_idle_period: 2h
+              max_chunk_age: 4h
 
         # read/write/backend の全コンポーネントに Garage credentials を環境変数で注入
         # (AWS SDK が AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION を自動で拾う)
