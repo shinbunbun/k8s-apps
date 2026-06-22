@@ -94,10 +94,15 @@ spec:
             # k8s-pods は global sort が peak を支配し streaming の効きが薄く行数増で伸びやすい
             # (06-09 collect 4.15GiB) ため余裕厚めの 6Gi、他は実測 peak の 2.5x 以上を確保。
             # bronze_mem / *_tmp 系は本 right-size の対象外 (別途実測ベース)。
+            #
+            # bronze_tmp k8s-pods: 8Gi のままだったが 2026-06-22 daily run で bronze が
+            # EmptyDir "tmp" 8Gi 超過で Evicted (exit 137)。retry 側で完走したため
+            # データ欠損はないが、取り残された failed pod が KubePodNotReady を発報した。
+            # 行数増で 8Gi を超えたため、systemd / routeros と同じ 12Gi に引き上げる。
             withItems:
               - {source: systemd,        bronze_mem: 12Gi, bronze_tmp: 12Gi, silver_mem: 2Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: routeros,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 3Gi, silver_tmp: 4Gi, gold_mem: 4Gi, gold_tmp: 2Gi}
-              - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp:  8Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
+              - {source: k8s-pods,       bronze_mem:  6Gi, bronze_tmp: 12Gi, silver_mem: 6Gi, silver_tmp: 4Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
               - {source: macos-unified,  bronze_mem:  6Gi, bronze_tmp: 16Gi, silver_mem: 2Gi, silver_tmp: 8Gi, gold_mem: 2Gi, gold_tmp: 2Gi}
           # passive-dns / netflow (RouterOS アクセス先統計, dotfiles-private#326) は
           # collector が raw/source={passive-dns,netflow}/ を産出する。silver projection は
