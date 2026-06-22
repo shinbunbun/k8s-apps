@@ -1,0 +1,88 @@
+# NVD フィード同期スクリプト
+#
+# vulnix (diff-gate) が取りに行く NVD 2.0 バルクフィードを LAN 内へミラーするための
+# 同期スクリプト。vulnix は src/vulnix/nvd.py で `range(今年-5, 今年+1)` の年次 +
+# "modified" の計 7 ファイル (nvdcve-2.0-{year|modified}.json.gz) しか取得しないため、
+# それだけをミラーする (.meta は vulnix が使わないので不要)。
+#
+# vulnix の timeout=10 は inter-byte stall (無通信 10 秒で発火) のため、NVD が throttle で
+# ストリーム中に沈黙すると落ちる。本スクリプトは長い --max-time と --retry で「遅くても
+# 最終的に取り切る」ので、NVD が不調でも last-good を LAN に保持できる。
+#
+# init/sidecar 共用。終了コードは「フェッチ成否」ではなく「全 7 ファイルが存在するか」で
+# 決める → 既にシード済みなら NVD 不達でも exit 0 で nginx を継続起動させる (restart 耐性)。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvd-sync
+data:
+  sync.sh: |
+    #!/bin/sh
+    set -u
+    BASE="https://nvd.nist.gov/feeds/json/cve/2.0"
+    WEBROOT="${WEBROOT:-/data}"
+    Y=$(date -u +%Y)
+    files="nvdcve-2.0-modified.json.gz"
+    y=$((Y - 5))
+    while [ "$y" -le "$Y" ]; do
+      files="$files nvdcve-2.0-$y.json.gz"
+      y=$((y + 1))
+    done
+
+    for f in $files; do
+      zopt=""
+      [ -f "$WEBROOT/$f" ] && zopt="-z $WEBROOT/$f"
+      # shellcheck disable=SC2086
+      if curl -fsSL --connect-timeout 30 --max-time 1800 \
+           --retry 5 --retry-delay 20 --retry-all-errors \
+           $zopt -o "$WEBROOT/$f.tmp" "$BASE/$f"; then
+        if [ -s "$WEBROOT/$f.tmp" ]; then
+          mv "$WEBROOT/$f.tmp" "$WEBROOT/$f"
+          echo "updated   $f"
+        else
+          rm -f "$WEBROOT/$f.tmp"
+          echo "unchanged $f"
+        fi
+      else
+        rm -f "$WEBROOT/$f.tmp" 2>/dev/null || true
+        echo "WARN: fetch failed: $f" >&2
+      fi
+    done
+
+    # 鮮度/可用性メトリクスを /metrics に出力 (nginx が静的配信、VMAgent が scrape)。
+    # 配信は止めない設計のため readinessProbe では落とさず、アラートで気づく経路にする
+    # (probe で落とすと Service から外れ「やや古い」が「全く配信しない」に悪化するため)。
+    now=$(date -u +%s)
+    total=$(set -- $files; echo $#)
+    present=0
+    for f in $files; do
+      [ -s "$WEBROOT/$f" ] && present=$((present + 1))
+    done
+    mod_mtime=$(date -u -r "$WEBROOT/nvdcve-2.0-modified.json.gz" +%s 2>/dev/null || echo 0)
+    {
+      echo "# HELP nvd_mirror_last_run_timestamp_seconds Unix time when the sync loop last completed."
+      echo "# TYPE nvd_mirror_last_run_timestamp_seconds gauge"
+      echo "nvd_mirror_last_run_timestamp_seconds $now"
+      echo "# HELP nvd_mirror_files_present Number of expected feed files currently present."
+      echo "# TYPE nvd_mirror_files_present gauge"
+      echo "nvd_mirror_files_present $present"
+      echo "# HELP nvd_mirror_files_expected Number of feed files vulnix needs (modified + 直近6年)."
+      echo "# TYPE nvd_mirror_files_expected gauge"
+      echo "nvd_mirror_files_expected $total"
+      echo "# HELP nvd_mirror_modified_mtime_seconds Mtime of mirrored nvdcve-2.0-modified.json.gz (0 if absent)."
+      echo "# TYPE nvd_mirror_modified_mtime_seconds gauge"
+      echo "nvd_mirror_modified_mtime_seconds $mod_mtime"
+    } > "$WEBROOT/metrics.tmp" && mv "$WEBROOT/metrics.tmp" "$WEBROOT/metrics"
+
+    # 終了判定: 全ファイルが存在すれば成功 (鮮度ではなく可用性で判定 → restart 耐性)。
+    [ "$present" -eq "$total" ] && exit 0
+    echo "WARN: only $present/$total feed files present" >&2
+    exit 1
+  run-sidecar.sh: |
+    #!/bin/sh
+    # 起動直後に 1 回 + 以後 1 時間ごとに同期。modified フィードは頻繁に更新されるため。
+    set -u
+    while true; do
+      sh /scripts/sync.sh || echo "sync round had warnings" >&2
+      sleep 3600
+    done

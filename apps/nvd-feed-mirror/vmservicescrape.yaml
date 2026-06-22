@@ -1,0 +1,24 @@
+# nvd-feed-mirror の鮮度メトリクスを VMAgent に取り込む。
+#
+# sync sidecar が /metrics (nvd_mirror_*) を webroot に書き、nginx が静的配信する。
+# VMAgent は selectAllByDefault: true なので本 namespace の VMServiceScrape も拾う
+# (alloy が alloy ns で拾われているのと同方式)。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: nvd-feed-mirror
+spec:
+  namespaceSelector:
+    matchNames: [nvd-feed-mirror]
+  selector:
+    matchLabels:
+      app: nvd-feed-mirror
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 60s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: nvd-feed-mirror
+        - targetLabel: cluster
+          replacement: homelab

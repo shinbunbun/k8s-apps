@@ -1,0 +1,98 @@
+# NVD フィード LAN ミラー: nginx で静的配信 + sidecar で定期同期。
+#
+# vulnix は `requests.get(mirror + "nvdcve-2.0-<name>.json.gz")` の素朴な取得 + ETag 条件付き
+# GET なので、nginx の静的配信 (ETag 自動付与・If-None-Match 対応) で要件を満たす。Host
+# ヘッダ不要の path-style。LAN VIP :80 を vulnix の `--mirror http://<vip>/` で指す。
+#
+# init で 1 回シード (PVC が空でも nginx 起動前に全ファイルを用意)。既にシード済みなら
+# sync.sh が exit 0 するため NVD 不達時でも起動できる。sidecar が 1h ごとに refresh。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nvd-feed-mirror
+  labels:
+    app: nvd-feed-mirror
+spec:
+  replicas: 1
+  # local-path RWO のため複数 Pod 同時起動を避ける (volume は単一ノード固定)。
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nvd-feed-mirror
+  template:
+    metadata:
+      labels:
+        app: nvd-feed-mirror
+    spec:
+      securityContext:
+        # curl (uid 100) が PVC へ書けるよう fsGroup を curl の gid に合わせる。
+        # nginx-unprivileged (uid 101) は 644 の world-readable ファイルを読むだけ。
+        fsGroup: 100
+      # g3pro にはデータプレーン Pod を置かない方針 (soft)。
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      initContainers:
+        - name: seed
+          image: curlimages/curl:8.11.1
+          command: ["sh", "/scripts/sync.sh"]
+          env:
+            - name: WEBROOT
+              value: /data
+          volumeMounts:
+            - name: feeds
+              mountPath: /data
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 256Mi }
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: feeds
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 128Mi }
+        - name: sync
+          image: curlimages/curl:8.11.1
+          command: ["sh", "/scripts/run-sidecar.sh"]
+          env:
+            - name: WEBROOT
+              value: /data
+          volumeMounts:
+            - name: feeds
+              mountPath: /data
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: feeds
+          persistentVolumeClaim:
+            claimName: nvd-feeds
+        - name: scripts
+          configMap:
+            name: nvd-sync
