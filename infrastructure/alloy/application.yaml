@@ -34,13 +34,15 @@
 # write コンポーネント Service)。クラスタ内なので認証なし。LAN VIP
 # (192.168.128.14) は外部ホスト用なので使わない。
 #
-# 【長期アーカイブ】loki.process の forward_to を 2 並列にし、片方は loki.write
-# (Loki 配送、既存)、もう片方は otelcol.receiver.loki → otelcol.exporter.otlphttp
-# 経由で log-archiver-vector の OTLP HTTP receiver (4318) に push する。
-# Vector 側で source=k8s-pods として Garage S3 (logs-archive バケット) に
-# ndjson.zst で書き出され、日次 logs-rust-pipeline が Rust + Polars で daily-struct/
-# Parquet 化する (Issue #191 Phase 4 本採用)。
-# OTLP 経路に障害が出ても Loki 経路は無影響 (forward_to 2 並列、独立配送)。
+# 【取り込み/アーカイブ】loki.process.parse の出力を otelcol.receiver.loki (bridge) に
+# 集約し、bridge から 2 分岐する:
+#  - Loki 経路: transform で残すラベルを resource 属性に昇格 → otelcol.exporter.otlphttp で
+#    Loki の OTLP endpoint (/otlp/v1/logs) に push (pod/instance は structured metadata 化)。
+#  - archive 経路: otelcol.exporter.otlphttp で log-archiver-vector の OTLP HTTP receiver
+#    (4318) に直接 push (完全ラベル保持)。Vector 側で source=k8s-pods として Garage S3
+#    (logs-archive バケット) に ndjson.zst で書き出し、日次 logs-rust-pipeline が Rust +
+#    Polars で daily-struct/ Parquet 化する (Issue #191 Phase 4 本採用)。
+# 2 経路は独立配送なので片方に障害が出ても他方は無影響。
 #
 # 【リソース】requests cpu: 100m / memory: 128Mi、limits memory: 256Mi。
 # g3pro (Intel N150) でも問題ない軽量設定。ノード当たり処理量は少量。
@@ -150,9 +152,10 @@ spec:
               // 各 parser は抽出失敗時 extracted map を書き換えないので、
               // 最初に取れた値が残る。最後に小文字化 + warning→warn 正規化。
               loki.process "parse" {
-                // 2 並列: Loki 配送 (短期、検索用) + OTLP 経由で archive 経路 (長期)
+                // OTLP 1 本に集約: bridge → Loki(OTLP, ラベル昇格) と archive(Vector) に分岐。
+                // pod/instance を Loki で structured metadata 化するため native loki.write を
+                // 廃し、Loki も OTLP 取り込みに統一する (詳細は下の promote_labels コメント)。
                 forward_to = [
-                  loki.write.default.receiver,
                   otelcol.receiver.loki.bridge.receiver,
                 ]
 
@@ -271,11 +274,37 @@ spec:
                 }
               }
 
-              // ===== Loki 送信 =====
-              // SimpleScalable mode の write コンポーネントへ直接 push
-              loki.write "default" {
-                endpoint {
-                  url = "http://loki-write.loki.svc.cluster.local:3100/loki/api/v1/push"
+              // ===== Loki 向けラベル昇格 (高基数 pod/instance を structured metadata 化) =====
+              // otelcol.receiver.loki は Loki ラベルを OTLP の "log 属性" に載せる
+              // (アーカイブ Parquet 実測で確認)。一方 Loki の otlp_config は "resource 属性"
+              // のみ index_label 昇格できる。そこで残したいラベル (namespace/container/host/
+              // level/job) を log 属性 → resource 属性へコピーし、Loki 側 otlp_config で
+              // index_label 指定する。pod/instance は log 属性のまま残し、Loki が自動で
+              // structured metadata 化する (= ストリーム基数とデプロイ churn を削減しつつ
+              // `| pod="..."` で引き続きクエリ可能、アラートの by(pod) も維持可能)。
+              // Grafana 公式も pod 名の SM 化を推奨: https://grafana.com/docs/loki/latest/get-started/labels/
+              otelcol.processor.transform "promote_labels" {
+                error_mode = "ignore"
+                log_statements {
+                  context = "log"
+                  statements = [
+                    "set(resource.attributes[\"namespace\"], attributes[\"namespace\"])",
+                    "set(resource.attributes[\"container\"], attributes[\"container\"])",
+                    "set(resource.attributes[\"host\"], attributes[\"host\"])",
+                    "set(resource.attributes[\"level\"], attributes[\"level\"])",
+                    "set(resource.attributes[\"job\"], attributes[\"job\"])",
+                  ]
+                }
+                output {
+                  logs = [otelcol.exporter.otlphttp.loki.input]
+                }
+              }
+
+              // Loki OTLP push (/otlp/v1/logs)。従来の native loki.write を置換。
+              // otlphttp exporter は endpoint に /v1/logs を付与するため /otlp を指定。
+              otelcol.exporter.otlphttp "loki" {
+                client {
+                  endpoint = "http://loki-write.loki.svc.cluster.local:3100/otlp"
                 }
               }
 
@@ -287,7 +316,12 @@ spec:
               // Garage S3 (logs-archive) に ndjson.zst で書き出される。
               otelcol.receiver.loki "bridge" {
                 output {
-                  logs = [otelcol.exporter.otlphttp.vector.input]
+                  // Loki 経路: ラベル昇格 transform 経由で OTLP push。
+                  // archive 経路: Vector へ直接 (完全ラベル = pod/instance 含む を保持)。
+                  logs = [
+                    otelcol.processor.transform.promote_labels.input,
+                    otelcol.exporter.otlphttp.vector.input,
+                  ]
                 }
               }
 
