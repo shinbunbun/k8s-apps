@@ -145,9 +145,13 @@ data:
           # ベースラインで毎分1件発火していた (10件/10min)。
           # 本物の login failure は ident="user" かつ level=warning|error|critical で
           # 出るため、これを対象に変更。閾値も > 0 に下げる。
+          # 2026-06-23: ident は高基数(~5000 hex値)のため Loki の structured metadata に
+          # 降格 (nixos-observability-config generator.nix)。selector から `| ident=` フィルタ
+          # へ移行。`| ident=` は stream label / structured metadata の両方に効くため、
+          # generator 側 deploy の前後どちらでも動作する (先行 deploy 可能・無破壊)。
           - alert: RouterOSSSHAuthFailure
             expr: |
-              sum(count_over_time({job="routeros", ident="user", level=~"warning|error|critical"} |~ "(?i)login failure|invalid user|authentication fail" [10m])) by (host) > 0
+              sum(count_over_time({job="routeros", level=~"warning|error|critical"} | ident="user" |~ "(?i)login failure|invalid user|authentication fail" [10m])) by (host) > 0
             for: 2m
             labels:
               severity: warning
@@ -170,7 +174,7 @@ data:
           # RouterOSDNSCacheNearFull (metric) で予兆検知する)
           - alert: RouterOSErrorLogDetected
             expr: |
-              sum(count_over_time({job="routeros", level="error", ident!="cache"} [5m])) by (host, ident) > 0
+              sum(count_over_time({job="routeros", level="error"} | ident!="cache" [5m])) by (host, ident) > 0
             for: 1m
             labels:
               severity: warning
