@@ -119,6 +119,27 @@ spec:
             max_query_parallelism: 32
             reject_old_samples: true
             reject_old_samples_max_age: 168h
+            # 2026-06-22: k8s-pods を OTLP 取り込みに移行 (infrastructure/alloy)。
+            # Alloy が log 属性→resource 属性に昇格した namespace/container/host/level/job
+            # のみ index_label とし、pod/instance は log 属性のまま残して structured metadata
+            # 化する。これで高基数 pod/instance によるストリーム基数とデプロイ churn を削減
+            # (garage の極小チャンク churn → g3pro sda I/O 飽和の根本対策)。pod は
+            # `| pod="..."` でクエリ可能なまま、K3sPod* アラートの by(pod) も維持される。
+            # 注意: index_label になるのは下記 attributes に列挙したものだけ。flat 名のため
+            # Loki デフォルト昇格リスト (k8s.* semconv) には載らず、列挙漏れは全て SM 行き
+            # (= ラベル全消失=巨大ストリーム化に直結するので変更時は要検証)。
+            # systemd-journal / macos-unified は引き続き native push なので影響なし。
+            otlp_config:
+              resource_attributes:
+                ignore_defaults: true
+                attributes_config:
+                  - action: index_label
+                    attributes:
+                      - namespace
+                      - container
+                      - host
+                      - level
+                      - job
           compactor:
             retention_enabled: true
             retention_delete_delay: 2h
