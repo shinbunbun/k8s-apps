@@ -150,9 +150,10 @@ spec:
               // 各 parser は抽出失敗時 extracted map を書き換えないので、
               // 最初に取れた値が残る。最後に小文字化 + warning→warn 正規化。
               loki.process "parse" {
-                // 2 並列: Loki 配送 (短期、検索用) + OTLP 経由で archive 経路 (長期)
+                // 2 並列: Loki 配送 (短期、検索用、loki_only で高基数ラベル除去) +
+                // OTLP 経由で archive 経路 (長期、完全ラベル保持)
                 forward_to = [
-                  loki.write.default.receiver,
+                  loki.process.loki_only.receiver,
                   otelcol.receiver.loki.bridge.receiver,
                 ]
 
@@ -268,6 +269,23 @@ spec:
                 // 既存 Fluent Bit と同じ job ラベルを強制 (LogQL 互換性のため)
                 stage.static_labels {
                   values = { job = "k8s-pods" }
+                }
+              }
+
+              // ===== Loki 専用ラベル整理 (アーカイブ経路には影響させない) =====
+              // pod / instance は高基数ストリームラベルで、デプロイ毎に新しい pod 名 →
+              // 新ストリームを生む。低流量ストリームが chunk_target_size 到達前に idle flush
+              // され平均 4.7KB の極小チャンクを量産、garage の object churn → lmdb 肥大 →
+              // g3pro sda I/O 飽和 (52% io_time) の一因となっていた。これらは Loki の
+              // ストリームセレクタでは未使用 (アラートは by(...) 集約のみ、ダッシュボードも
+              // セレクタ不使用) のため、Loki 配送ブランチでのみラベルから除去して
+              // ストリーム基数とデプロイ churn を削減する。アーカイブ (OTLP bridge) には
+              // parse 直後の完全ラベルが渡るため pod/instance は Parquet に保持される。
+              // 関連: K3sPod* アラートの by(pod) は by(container) に追従 (apps/loki-config)。
+              loki.process "loki_only" {
+                forward_to = [loki.write.default.receiver]
+                stage.label_drop {
+                  values = ["pod", "instance"]
                 }
               }
 
