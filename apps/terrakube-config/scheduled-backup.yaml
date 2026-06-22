@@ -1,10 +1,12 @@
-# 毎日 03:00 JST (= 18:00 UTC) に terrakube-db の base backup を取得。
+# 毎日 04:00 JST (= 19:00 UTC) に terrakube-db の base backup を取得。
+# 時刻分散の理由は grafana-config/scheduled-backup.yaml 冒頭コメント参照
+# (authentik 03:00 / grafana 03:30 / terrakube 04:00)。
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
   name: terrakube-db-daily
 spec:
-  schedule: "0 0 18 * * *"
+  schedule: "0 0 19 * * *"
   backupOwnerReference: self
   cluster:
     name: terrakube-db

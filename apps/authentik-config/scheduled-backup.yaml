@@ -1,4 +1,6 @@
 # 毎日 03:00 JST (= 18:00 UTC) に authentik-db の base backup を取得。
+# 時刻分散の理由は grafana-config/scheduled-backup.yaml 冒頭コメント参照
+# (authentik 03:00 / grafana 03:30 / terrakube 04:00)。
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:

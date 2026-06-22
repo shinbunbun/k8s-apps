@@ -1,12 +1,18 @@
-# 毎日 03:00 JST (= 18:00 UTC) に grafana-db の base backup を取得。
+# 毎日 03:30 JST (= 18:30 UTC) に grafana-db の base backup を取得。
 # CNPG の schedule は秒を含む 6-field cron で UTC 基準。
 # immediate: false にし、初回は手動 kubectl cnpg backup で Plugin 経路を検証する。
+#
+# 時刻分散: authentik-db(03:00) / grafana-db(03:30) / terrakube-db(04:00) と
+# 30 分ずつずらす。3 クラスタの base backup が同時刻に走ると、g3pro
+# (Intel N150, 単一 sda) で base backup の全読み + Garage への upload I/O が
+# 重なり disk 飽和 (PSI full stall ~49%) を招くため。HA 構成 (instances:3) は
+# 変えず I/O のピークだけ分散する。
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
   name: grafana-db-daily
 spec:
-  schedule: "0 0 18 * * *"
+  schedule: "0 30 18 * * *"
   backupOwnerReference: self
   cluster:
     name: grafana-db
