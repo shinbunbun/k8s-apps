@@ -41,9 +41,15 @@ data:
           # sshd の `connect_to <addr> port <n>: failed.` は client 側の port forward 設定で
           # 指定された server-side ポートに listener が居ない場合に出る良性ノイズ
           # (server 障害ではなく client の forward 設定残骸)。よって line filter で除外する。
+          # dbus-broker-launch の `Ignoring duplicate name '...' in service file '...'` は
+          # NixOS の system-path が集約する D-Bus service file が各パッケージ固有の service file と
+          # well-known name 重複した際に error 優先度で記録される良性ノイズ。deploy-rs の
+          # switch-to-configuration がユーザ session bus を reload する度に再評価され、
+          # nixos-desktop では1世代切替あたり ~128件 噴出して CI deploy のたびに本アラートを
+          # 発火させていた (dup name は先勝ちで無視されるだけで機能影響なし)。よって除外する。
           - alert: ErrorLogDetected
             expr: |
-              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start|fluent-bit", level="error"} !~ "connect_to .* port .* failed" [1m])) by (host) > 0
+              sum(count_over_time({job="systemd-journal", service!~"loki|grafana-start|fluent-bit", level="error"} !~ "connect_to .* port .* failed" !~ "Ignoring duplicate name" [1m])) by (host) > 0
             for: 0s
             labels:
               severity: warning
