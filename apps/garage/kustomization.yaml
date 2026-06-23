@@ -27,15 +27,18 @@ resources:
   - cluster.yaml
   - cluster-archive.yaml
   - cluster-terrakube.yaml
+  - cluster-obs.yaml
   - pyroscope-namespace.yaml
   - tempo-namespace.yaml
   - buckets.yaml
   - buckets-archive.yaml
   - buckets-terrakube.yaml
+  - buckets-obs.yaml
   - reference-grants.yaml
   - keys.yaml
   - keys-archive.yaml
   - keys-terrakube.yaml
+  - keys-obs.yaml
   - lan-service.yaml
   - lan-service-archive.yaml
   - pyroscope-s3-service.yaml

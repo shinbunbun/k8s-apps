@@ -1,0 +1,70 @@
+# Observability 専用 Garage クラスタ (garage-obs / 単一ノード・非HA)
+#
+# 【背景】Pyroscope (profile blocks) / Tempo (trace blocks) は欠損許容の揮発的な
+# デバッグデータ。メイン garage クラスタ (cluster.yaml, RF=3) に載せると RF=3 の
+# 複製が g3pro の単一 SATA SSD にも配られ、Pyroscope の高頻度 flush + retention GC
+# churn が g3pro を恒常飽和させていた (dotfiles-private#266 / #372)。
+# garage には per-bucket replication factor が無いため、HA を捨てるバケットは
+# logs-archive (cluster-archive.yaml) と同様に別クラスタへ分離する。
+#
+# 【非HA設計】replication.factor=1 + storage.replicas=1。単一コピーなので nixos-desktop
+# のディスク故障で profile/trace は喪失するが、常時再生成される揮発データなので許容
+# (ユーザー承認済み。ログ(loki)/バックアップ(cnpg)はメイン RF=3 のまま維持)。
+#
+# 【配置】nixos-desktop に固定 (NVMe・RAM 潤沢)。Pyroscope も同ノードに固定されている
+# ため同期 flush はネットワークホップ 0・低レイテンシで、g3pro は一切関与しない。
+# これにより旧 garage-local Service (coordinator 固定 hack) も不要になる。
+#
+# 【容量】2026-06-23 実測 pyroscope-blocks 4.5GiB(27,857 obj) + tempo-traces 0.4GiB
+# (3,278 obj) = 約 5GiB。retention 定常 (pyroscope 30d / tempo 14d) なので大きくは
+# 伸びない。compaction の一時 2 倍書き + 余裕を見て data 15Gi。local-path は online
+# resize 不可のため逼迫時は StatefulSet 再作成。
+#
+# 【image / metadata】メインと同じ dxflrs/garage:v2.3.0 を明示 pin。metadata は別 PVC
+# + 6h auto-snapshot。
+apiVersion: garage.rajsingh.info/v1beta2
+kind: GarageCluster
+metadata:
+  name: garage-obs
+  namespace: garage
+  labels:
+    app.kubernetes.io/name: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  zone: dc1
+  image: dxflrs/garage:v2.3.0
+
+  replication:
+    factor: 1
+
+  storage:
+    replicas: 1
+    nodeSelector:
+      kubernetes.io/hostname: nixos-desktop
+    data:
+      type: PersistentVolumeClaim
+      size: 15Gi
+      storageClassName: local-path
+    metadata:
+      type: PersistentVolumeClaim
+      size: 2Gi
+      storageClassName: local-path
+      accessModes: [ReadWriteOnce]
+    metadataAutoSnapshotInterval: "6h"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        # Pyroscope の高頻度 PUT + compaction を単一ノードで捌くため余裕を持たせる
+        # (archive クラスタが bulk import で 1Gi では OOM した教訓を踏襲)。
+        memory: 2Gi
+
+  s3Api:
+    region: garage
+
+  admin:
+    adminTokenSecretRef:
+      name: garage-obs-admin-tokens
+      key: admin-token

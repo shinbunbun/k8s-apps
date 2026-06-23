@@ -1,0 +1,34 @@
+# Observability 専用クラスタ (garage-obs) のバケット定義
+#
+# metadata.name は garage ns 内で一意である必要があるため `-obs` サフィックスを付け、
+# spec.globalAlias で実バケット名 (pyroscope-blocks / tempo-traces) を付与する。
+# 別クラスタなので alias 名の衝突は起きず、クライアントは従来どおりの bucket 名で
+# アクセスできる (endpoint だけ garage-obs に向け替える)。
+#
+# retention は各サーバ側に一元化 (Pyroscope 30d / Tempo 14d、compactor が物理削除)。
+# Garage 側 lifecycle rule は未設定。
+#
+# sync-wave 1: GarageCluster garage-obs (wave 0) が Ready になってから apply。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: pyroscope-blocks-obs
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage-obs
+  globalAlias: pyroscope-blocks
+---
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageBucket
+metadata:
+  name: tempo-traces-obs
+  namespace: garage
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  clusterRef:
+    name: garage-obs
+  globalAlias: tempo-traces
