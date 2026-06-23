@@ -238,11 +238,17 @@ data:
       # アラート LogQL でも namespace!~ で二重除外して安全側に倒す。
       - name: k3s_pod_monitoring
         interval: 30s
+        # 良性ノイズ除外 (line filter):
+        # - "Failed to decode task, rejecting": authentik-worker (2026.2.3) の
+        #   django_dramatiq_postgres broker が空ペイロードの幻タスクを reject する
+        #   正常動作。修正 PR goauthentik/authentik#22110 が吐くログで worker は健全。
+        #   実行すべきデータのない空タスクのみ破棄され機能影響なし。
+        #   詳細: dotfiles-private#375 / upstream goauthentik/authentik#21410
         rules:
           # Pod エラーログ即時検知 (1分窓に1件以上で warning)
           - alert: K3sPodErrorLogDetected
             expr: |
-              sum(count_over_time({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [1m])) by (namespace, pod, host) > 0
+              sum(count_over_time({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} != "Failed to decode task, rejecting" [1m])) by (namespace, pod, host) > 0
             for: 0s
             labels:
               severity: warning
@@ -253,7 +259,7 @@ data:
           # 高エラーレート (5分窓 warning)
           - alert: K3sPodHighErrorRate5m
             expr: |
-              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [5m])) by (namespace, pod) > 0.5
+              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} != "Failed to decode task, rejecting" [5m])) by (namespace, pod) > 0.5
             for: 5m
             labels:
               severity: warning
@@ -265,7 +271,7 @@ data:
           # 持続的エラー (30分窓 critical)
           - alert: K3sPodHighErrorRate30m
             expr: |
-              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} [30m])) by (namespace, pod) > 0.3
+              sum(rate({job="k8s-pods", namespace!~"kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|log-archiver-vector", level="error"} != "Failed to decode task, rejecting" [30m])) by (namespace, pod) > 0.3
             for: 10m
             labels:
               severity: critical
