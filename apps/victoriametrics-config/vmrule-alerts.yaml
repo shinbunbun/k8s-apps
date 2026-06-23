@@ -798,16 +798,19 @@ spec:
       # 喪失は許容方針なので severity は info 寄りの warning 据え置きだが、single-point-of-failure
       # を可視化するために監視は持つ (dotfiles-private#379)。
       # job="garage-obs" は scrape-config-secret.yaml の専用 job で付与 (メイン garage との
-      # メトリクス名衝突回避)。スクレイプ自体が落ちた場合 (= cluster_healthy が消失) も
-      # absent() で検知する。
+      # メトリクス名衝突回避)。式形はメイン GarageClusterUnhealthy と対称に保つ
+      # (absent() は付けない)。/metrics 消失 = pod/node 断は KubePodNotReady /
+      # KubeNodeNotReady が generic に拾うため二重化せず、本 alert は cluster_healthy が
+      # 取れている前提でクラスタ内部の不健全のみを検知する。local-path PVC 逼迫時の
+      # StatefulSet 再作成 (cluster-obs.yaml 記載) でも absent 誤発火しない。
       - alert: GarageObsClusterUnhealthy
-        expr: 'cluster_healthy{job="garage-obs"} == 0 or absent(cluster_healthy{job="garage-obs"})'
+        expr: 'cluster_healthy{job="garage-obs"} == 0'
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "garage-obs cluster unhealthy or unreachable (single-node obs storage)"
-          description: "garage-obs (RF=1, nixos-desktop) is unhealthy or its /metrics is unreachable. This is the single-point-of-failure backing pyroscope profiles and tempo traces (lossy data, no replication). Check the garage-obs pod and nixos-desktop node state."
+          summary: "garage-obs cluster unhealthy (single-node obs storage)"
+          description: "garage-obs (RF=1, nixos-desktop) reports unhealthy. This is the single-point-of-failure backing pyroscope profiles and tempo traces (lossy data, no replication). Check the garage-obs pod and nixos-desktop node state. (Total pod/node loss is covered separately by KubePodNotReady / KubeNodeNotReady.)"
 
       # Loki ingestion レート急上昇 (10 分平均が 1 時間平均の 2 倍超)
       # 設定ミスや意図しないログ増加の検知 (Parquet 側にも影響する)
