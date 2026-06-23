@@ -59,6 +59,16 @@ spec:
   entrypoint: daily-pipeline
   ttlStrategy:
     secondsAfterCompletion: 86400  # 完了 Workflow CR を 1 日後に GC
+  # 【podGC】Workflow 成功時に Pod を掃除する。retry で完走した run の 1 回目の
+  # 失敗 Pod (Evicted / OOMKilled 等) は podGC 未設定だと ttl (24h) まで残り、
+  # 15 分 NotReady で KubePodNotReady を誤発報する (2026-06-22 k8s-pods bronze
+  # Evicted が該当)。OnWorkflowSuccess なら成功完了時に全 Pod を削除するため、
+  # 回復した一過性失敗の Pod は静かに消え、Workflow 全体が失敗した場合のみ Pod を
+  # 残してデバッグ可能にする (= 本物の失敗だけ KubePodNotReady が鳴る)。
+  # deleteDelayDuration で Promtail/Alloy のログ収集猶予を確保。
+  podGC:
+    strategy: OnWorkflowSuccess
+    deleteDelayDuration: 30s
   arguments:
     parameters: []
 
