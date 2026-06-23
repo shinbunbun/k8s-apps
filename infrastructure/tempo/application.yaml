@@ -19,18 +19,19 @@
 # distributor / ingester / querier / compactor を分離する意味は薄く、運用負荷増。
 # 単一 Deployment 内で全コンポーネントが動く。
 #
-# 【ストレージ】object storage backend は Garage S3 (apps/garage の tempo-traces
-# bucket、tempo-garage-credentials Secret で認証)。Loki / Pyroscope と同じ
-# Garage クラスタで運用統一。
-# - endpoint: cluster 内 DNS 経由 (garage.garage.svc:3900)
+# 【ストレージ】object storage backend は Garage S3 (tempo-traces bucket、
+# tempo-garage-obs-credentials Secret で認証)。欠損許容の trace は HA(RF=3) の
+# メイン garage ではなく専用の非HAクラスタ garage-obs (RF=1, nixos-desktop) に分離
+# (apps/garage/cluster-obs.yaml、g3pro の GC/resync churn 飽和 #372 を回避)。
+# - endpoint: cluster 内 DNS 経由 (garage-obs.garage.svc:3900)
 # - insecure: true (HTTP)
 # - forcepathstyle: true (Garage は virtual-hosted-style 非対応)
 # - WAL は emptyDir (persistence: false)。再起動で 1-2 分の loss 許容
 #
-# 【認証情報】tempo-garage-credentials Secret を extraEnvFrom で AWS SDK 標準
+# 【認証情報】tempo-garage-obs-credentials Secret を extraEnvFrom で AWS SDK 標準
 # キー (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION) として注入。
 # この Secret は Garage Operator が GarageKey CR の secretTemplate で tempo ns
-# に直接生成する (apps/garage/keys.yaml の tempo GarageKey)。
+# に直接生成する (apps/garage/keys-obs.yaml の tempo-obs GarageKey)。
 #
 # 【retention】14日。Tempo 内蔵 compactor が古い block を物理削除する。
 # Garage bucket lifecycle rule は未設定 (Tempo に retention 制御を一元化)。
@@ -99,7 +100,7 @@ spec:
           # (Secret は apps/garage の tempo GarageKey が auto-generate)
           extraEnvFrom:
             - secretRef:
-                name: tempo-garage-credentials
+                name: tempo-garage-obs-credentials
 
           # OTLP gRPC/HTTP のみ有効化 (Jaeger/OpenCensus/Zipkin 不要)
           receivers:
@@ -116,7 +117,11 @@ spec:
               backend: s3
               s3:
                 bucket: tempo-traces
-                endpoint: garage.garage.svc.cluster.local:3900
+                # 欠損許容の trace は専用の非HAクラスタ garage-obs (RF=1, nixos-desktop,
+                # apps/garage/cluster-obs.yaml) に分離。メイン RF=3 から外すことで g3pro
+                # の GC/resync churn 飽和 (#372) に寄与しない。bucket 名は globalAlias で
+                # 従来どおり tempo-traces のまま、endpoint だけ garage-obs に向ける。
+                endpoint: garage-obs.garage.svc.cluster.local:3900
                 region: garage
                 insecure: true
                 # path-style: Garage / MinIO 互換のため明示

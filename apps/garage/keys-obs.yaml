@@ -1,0 +1,69 @@
+# Observability 専用クラスタ (garage-obs) のアクセスキー定義
+#
+# Pyroscope / Tempo を RF=3 メインクラスタから garage-obs (RF=1) へ分離するための
+# 新キー。移行期間中はメインクラスタの旧キー (keys.yaml の pyroscope / tempo) と
+# 共存させるため、GarageKey 名・生成 Secret 名ともに `-obs` サフィックスで分離する。
+# 各 app を本 Secret + 新 endpoint (garage-obs.garage.svc:3900) へ切り替えた後、
+# 安定確認できたら旧バケット/キー (keys.yaml / buckets.yaml) を別 PR で削除する。
+#
+# cross-ns reference は既存 reference-grants.yaml の allow-consumer-namespaces が
+# 全 consumer ns (pyroscope / tempo を含む) × 全 GarageCluster/GarageBucket を
+# 許可済みのため追加不要。
+#
+# 【権限】owner は compactor/lifecycle の ListBucket + DeleteObject に必須
+# (Pyroscope 30d / Tempo 14d の内蔵 retention が古い block を物理削除する)。
+#
+# sync-wave 2: GarageCluster (wave 0) と GarageBucket (wave 1) 適用後に投入。
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: pyroscope-obs
+  namespace: pyroscope
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-obs
+    namespace: garage
+  name: pyroscope-obs
+  bucketPermissions:
+    - bucketRef:
+        name: pyroscope-blocks-obs
+        namespace: garage
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: pyroscope-garage-obs-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
+---
+apiVersion: garage.rajsingh.info/v1beta1
+kind: GarageKey
+metadata:
+  name: tempo-obs
+  namespace: tempo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  clusterRef:
+    name: garage-obs
+    namespace: garage
+  name: tempo-obs
+  bucketPermissions:
+    - bucketRef:
+        name: tempo-traces-obs
+        namespace: garage
+      read: true
+      write: true
+      owner: true
+  secretTemplate:
+    name: tempo-garage-obs-credentials
+    accessKeyIdKey: AWS_ACCESS_KEY_ID
+    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
+    regionKey: AWS_REGION
+    includeEndpoint: false
+    includeRegion: true
