@@ -193,9 +193,15 @@ data:
         interval: 30s
         rules:
           # macOS エラーログ検知
+          # `networkd_settings_init_block_invoke notify_register_check(...) status 8 token -1` は
+          # Network.framework/CFNetwork をリンクするプロセスが network 初期化時に出す Apple 内部の
+          # 良性ノイズ (notify_register_check が NOTIFY_STATUS_INVALID_NAME=8 を返すだけで実害なし)。
+          # macOS unified logging が Error レベルで記録するため、deploy-rs で nix が cache 問い合わせ等の
+          # network アクセスをする度に露出して本アラートを発火させていた。実データ上 macOS の error は
+          # 全てこのメッセージで、本物のエラーは存在しないため line filter で除外する。
           - alert: MacOSErrorLogDetected
             expr: |
-              sum(count_over_time({job="macos-unified", level="error"} [1m])) by (host) > 0
+              sum(count_over_time({job="macos-unified", level="error"} != "networkd_settings_init_block_invoke" [1m])) by (host) > 0
             for: 0s
             labels:
               severity: warning
