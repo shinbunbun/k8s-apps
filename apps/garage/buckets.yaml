@@ -54,34 +54,5 @@ metadata:
 spec:
   clusterRef:
     name: garage
----
-# Pyroscope 2.0 (monolithic) の object storage backend (Pyroscope 2.0 で mandatory)。
-# profile blocks + symbol metadata を格納。retention は server 側 30d 設定で
-# compactor が GC する (lifecycle rule は未設定、Pyroscope 内蔵 retention に委譲)。
-# Issue: shinbunbun/dotfiles#699
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageBucket
-metadata:
-  name: pyroscope-blocks
-  namespace: garage
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  clusterRef:
-    name: garage
----
-# Tempo monolithic の object storage backend。trace block + WAL flush を格納。
-# retention は Tempo 側 14d 設定で compactor が GC する (Pyroscope と同方針、
-# lifecycle rule 未設定)。
-# 14d は Garage 容量制約 (garage-2 残 24GB) を踏まえた初期値、後で延長判断。
-# Issue: shinbunbun/unified-dotfiles#16
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageBucket
-metadata:
-  name: tempo-traces
-  namespace: garage
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  clusterRef:
-    name: garage
+# pyroscope-blocks / tempo-traces は非HAクラスタ garage-obs へ分離したため削除
+# (buckets-obs.yaml に移設、#372)。

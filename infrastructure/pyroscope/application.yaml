@@ -106,15 +106,14 @@ spec:
                 # GC/resync churn 飽和 (dotfiles-private#266 / #372) の原因から外れる。
                 # garage-obs は pyroscope と同じ nixos-desktop (NVMe) 上に居るため
                 # 同期 flush もネットワークホップ 0・低レイテンシ。
-                # (旧 garage-local Service による coordinator 固定 hack は本移設で不要。
-                #  pyroscope-s3-service.yaml の撤去は安定確認後の別 PR で行う)
+                # (旧 garage-local Service による coordinator 固定 hack は本移設で不要となり撤去済み)
                 endpoint: garage-obs.garage.svc.cluster.local:3900
                 bucket_name: pyroscope-blocks
                 region: garage
                 insecure: true
                 # path-style: Garage 互換のため明示
                 force_path_style: true
-                # access_key_id / secret_access_key は env 経由 (pyroscope-garage-credentials)
+                # access_key_id / secret_access_key は env 経由 (pyroscope-garage-obs-credentials)
             # 30 日 retention (compactor が古い block を delete)。
             # Pyroscope 2.0 では `limits.compactor_blocks_retention_period` に書く
             # (CLI flag -compactor.blocks-retention-period 相当)。旧 1.x の
@@ -184,11 +183,12 @@ spec:
               memory: 2Gi
 
           # === ノード固定 (nixos-desktop) ===
-          # garage-local Service (internalTrafficPolicy: Local) で S3 コーディネータを
-          # 同一ノードの garage Pod に限定する設計上、pyroscope は garage-0 と同居する
-          # nixos-desktop (NVMe・24 コア) に固定する必要がある。
-          # ・g3pro に再配置されると Local が garage-1=g3pro に振られ本末転倒
-          # ・nixos-desktop は最強ノードかつ garage-0 同居でネットワークホップ 0
+          # S3 backend を garage-obs (RF=1, storage.replicas=1, nixos-desktop 固定,
+          # apps/garage/cluster-obs.yaml) に分離したため、pyroscope も同じ nixos-desktop
+          # に固定して同居させる。garage-obs Pod は nixos-desktop にしか居ないので、
+          # 同居させることで segment-writer の同期 flush がネットワークホップ 0・低レイテンシ
+          # になり、g3pro は同期/非同期いずれのパスにも一切関与しない (#266 / #372)。
+          # ・nixos-desktop は最強ノード (NVMe・24 コア)
           # データは emptyDir (object storage が真実) なので再配置自体は無害。
           affinity:
             nodeAffinity:
