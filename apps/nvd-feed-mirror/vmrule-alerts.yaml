@@ -13,13 +13,19 @@ spec:
       interval: 60s
       rules:
         # sync ループ (1h 周期) が止まった = sidecar 停止 / 慢性失敗。
+        # しきい値 = 6h: メトリクスは「ループ完了時刻」を測るため、健全な sidecar でも 1 ループの
+        # 所要時間が長いと完了間隔が空く。modified フィード (211MB) の curl は --max-time 1800 (30m)
+        # × --retry 5 で最悪 ~3h かかり得る (NVD が 500/部分配信を返すと毎回タイムアウト)。完了後の
+        # sleep 3600 (1h) も加わるので、NVD 不調時の「完了〜完了」間隔は健全でも最悪 ~4h。2h では
+        # 上流ゆらぎだけで誤発火するため、worst-case ループに余裕を持たせた 6h に設定 (sidecar 死亡は
+        # last_run が凍結し青天井に増えるので 6h でも確実に捕捉)。鮮度劣化は DataStale (7d) が別途カバー。
         - alert: NvdMirrorSyncStalled
-          expr: "time() - nvd_mirror_last_run_timestamp_seconds > 7200"
+          expr: "time() - nvd_mirror_last_run_timestamp_seconds > 21600"
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "NVD mirror sync が 2h 以上更新されていない"
+            summary: "NVD mirror sync が 6h 以上更新されていない"
             description: "sync sidecar の最終実行から {{ $value | humanizeDuration }} 経過。sidecar 停止か慢性 fetch 失敗の可能性。diff-gate は last-good で継続するが鮮度が劣化する。"
         # vulnix が必要とする 7 ファイルが揃っていない。
         - alert: NvdMirrorFilesMissing
@@ -37,7 +43,7 @@ spec:
         # 返す間 (=データ確認済みだが未変更) は mtime が進まない。そのため鮮度しきい値は NVD/vulnix の
         # 設計境界に合わせる: modified は「直近 8 日間の変更」しか含まず、vulnix は前回更新から 7 日超で
         # 全年次フィード (日次更新=最新) を再取得する。よって 7 日を超えて初めて実カバレッジが劣化する
-        # → しきい値 = 7d。sync 停止自体は NvdMirrorSyncStalled (2h) が別途カバー。
+        # → しきい値 = 7d。sync 停止自体は NvdMirrorSyncStalled (6h) が別途カバー。
         - alert: NvdMirrorDataStale
           expr: "nvd_mirror_modified_mtime_seconds > 0 and time() - nvd_mirror_modified_mtime_seconds > 604800"
           for: 30m
