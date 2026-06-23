@@ -131,74 +131,8 @@ spec:
     includeEndpoint: false
     includeRegion: true
 ---
-# Pyroscope 2.0 monolithic 用 GarageKey。
-# pyroscope-blocks に対して read+write+owner を付与:
-#   - owner は compactor/lifecycle が ListBucket + DeleteObject を行うため必須
-#   - Pyroscope 内蔵 retention (30d) で古い block を物理削除する
-# 生成 Secret は pyroscope ns の `pyroscope-garage-credentials` (AWS SDK 標準形式)。
-# infrastructure/pyroscope の Helm values から extraEnvFrom で注入する。
-# Issue: shinbunbun/dotfiles#699
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: pyroscope
-  namespace: pyroscope
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: pyroscope
-  bucketPermissions:
-    - bucketRef:
-        name: pyroscope-blocks
-        namespace: garage
-      read: true
-      write: true
-      owner: true
-  secretTemplate:
-    name: pyroscope-garage-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
-# Tempo monolithic 用 GarageKey。
-# tempo-traces に read+write+owner を付与:
-#   - owner は compactor の ListBucket + DeleteObject に必須
-#   - Tempo 内蔵 retention (14d) で古い block を物理削除
-# 生成 Secret は tempo ns の `tempo-garage-credentials` (AWS SDK 標準形式)。
-# infrastructure/tempo の Helm values から extraEnvFrom で注入する。
-# Issue: shinbunbun/unified-dotfiles#16
-apiVersion: garage.rajsingh.info/v1beta1
-kind: GarageKey
-metadata:
-  name: tempo
-  namespace: tempo
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  clusterRef:
-    name: garage
-    namespace: garage
-  name: tempo
-  bucketPermissions:
-    - bucketRef:
-        name: tempo-traces
-        namespace: garage
-      read: true
-      write: true
-      owner: true
-  secretTemplate:
-    name: tempo-garage-credentials
-    accessKeyIdKey: AWS_ACCESS_KEY_ID
-    secretAccessKeyKey: AWS_SECRET_ACCESS_KEY
-    regionKey: AWS_REGION
-    includeEndpoint: false
-    includeRegion: true
----
+# pyroscope / tempo の GarageKey は非HAクラスタ garage-obs へ分離したため削除
+# (keys-obs.yaml の pyroscope-obs / tempo-obs に移設、#372)。
 # Terrakube CNPG backup 用 GarageKey (terrakube-db 専用、grafana-db / authentik-db と
 # 障害隔離)。cnpg-backups を owner。生成 Secret は terrakube ns の
 # cnpg-garage-credentials (apps/terrakube-config/objectstore.yaml が参照)。
