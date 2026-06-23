@@ -792,6 +792,26 @@ spec:
           summary: "Garage cluster unhealthy (node disconnected)"
           description: "At least one Garage storage node is not connected. connected={{ with query \"cluster_storage_nodes_ok{job=\\\"garage\\\"}\" }}{{ . | first | value }}{{ end }}, total={{ with query \"cluster_storage_nodes{job=\\\"garage\\\"}\" }}{{ . | first | value }}{{ end }}. Check node/pod state."
 
+      # garage-obs (observability 専用・非HA RF=1 単一ノード) 健全性監視 —
+      # メイン garage と異なり RF=1 のため、単一ノード/ディスク障害 = profile(pyroscope)/
+      # trace(tempo) の喪失に直結する (欠損許容データとして承認済み, apps/garage/cluster-obs.yaml)。
+      # 喪失は許容方針なので severity は info 寄りの warning 据え置きだが、single-point-of-failure
+      # を可視化するために監視は持つ (dotfiles-private#379)。
+      # job="garage-obs" は scrape-config-secret.yaml の専用 job で付与 (メイン garage との
+      # メトリクス名衝突回避)。式形はメイン GarageClusterUnhealthy と対称に保つ
+      # (absent() は付けない)。/metrics 消失 = pod/node 断は KubePodNotReady /
+      # KubeNodeNotReady が generic に拾うため二重化せず、本 alert は cluster_healthy が
+      # 取れている前提でクラスタ内部の不健全のみを検知する。local-path PVC 逼迫時の
+      # StatefulSet 再作成 (cluster-obs.yaml 記載) でも absent 誤発火しない。
+      - alert: GarageObsClusterUnhealthy
+        expr: 'cluster_healthy{job="garage-obs"} == 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "garage-obs cluster unhealthy (single-node obs storage)"
+          description: "garage-obs (RF=1, nixos-desktop) reports unhealthy. This is the single-point-of-failure backing pyroscope profiles and tempo traces (lossy data, no replication). Check the garage-obs pod and nixos-desktop node state. (Total pod/node loss is covered separately by KubePodNotReady / KubeNodeNotReady.)"
+
       # Loki ingestion レート急上昇 (10 分平均が 1 時間平均の 2 倍超)
       # 設定ミスや意図しないログ増加の検知 (Parquet 側にも影響する)
       - alert: LokiIngestionRateSpike
