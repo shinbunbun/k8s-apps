@@ -327,6 +327,15 @@ spec:
                     - email
                     - profile
                     - groups
+                    # offline_access を upstream(Authentik) へ要求し refresh token を取得する。
+                    # これが無いと Authentik は refresh token を返さず (provider 側は
+                    # refresh_token_validity=30d で発行前提)、Dex は upstream identity を
+                    # 更新できず access token (5分) 失効後に
+                    # "failed to refresh identity: oauth2: token expired and refresh token
+                    # is not set" / Authentik 500 invalid_request を吐く。downstream
+                    # (Terrakube→Dex の dexClientScope) は既に offline_access を含むため、
+                    # upstream にも揃えて非対称を解消する。
+                    - offline_access
                   # Authentik は email_verified を必ずしも返さないため許容
                   insecureSkipEmailVerified: true
                   getUserInfo: true
