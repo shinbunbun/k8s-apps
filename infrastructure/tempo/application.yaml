@@ -35,9 +35,13 @@
 #
 # 【retention】14日。Tempo 内蔵 compactor が古い block を物理削除する。
 # Garage bucket lifecycle rule は未設定 (Tempo に retention 制御を一元化)。
-# 14d 選定理由: Garage cluster の最弱ノード (garage-2) が DataAvail 24GB
-# 残のため、retention 30d (推定 +15GB) で枯渇リスクあり。14d なら +7GB で安全。
-# 後で延長判断 (compactor の次サイクルで block_retention 変更が effective)。
+# 14d は意図的な選定であり、旧「メイン garage-2 の DataAvail 容量制約」由来ではない
+# (garage-obs 専用化でその制約は消滅。dotfiles-private#379 で見直し)。trace は
+# profile より有用期間が短く (障害調査は直近のものが主)、TraceQL のスキャン量も
+# 抑えられるため 14d で十分。容量はもはや律速ではない: 専用化した garage-obs
+# (RF=1, 15Gi PVC, apps/garage/cluster-obs.yaml) 上で tempo-traces は実測 0.4GiB のみ、
+# 30d へ延ばしても ~0.85GiB で余裕がある。将来 trace の遡及調査が増えたら 30d
+# (pyroscope と同値) へ延長してよい (compactor 次サイクルで block_retention 変更が effective)。
 #
 # 【レプリカ】monolithic で replicas: 1。ノード障害時は再起動で復旧、trace
 # データは Garage S3 に永続化済みなので block の再読込で継続。HA は必要に
@@ -89,7 +93,8 @@ spec:
       valuesObject:
         # === Tempo server 本体 ===
         tempo:
-          # retention 14日 (compactor が古い block を delete)
+          # retention 14日 (compactor が古い block を delete)。意図的な選定で旧 garage-2
+          # 容量制約由来ではない (詳細はヘッダコメントの【retention】を参照、#379)。
           # (2026-06-02: 旧ノイズ trace flush のため一時的に 1h へ下げた後、本値に復帰)
           retention: 336h
 
