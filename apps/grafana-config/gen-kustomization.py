@@ -104,6 +104,7 @@ DASHBOARDS = [
     ("storage-capacity.json", None, None, None),
     ("smartctl-exporter.json", None, None, None),
     ("processes.json", None, None, None),
+    ("llm-inference.json", None, None, None),
 ]
 
 

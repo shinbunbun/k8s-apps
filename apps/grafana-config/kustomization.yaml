@@ -276,3 +276,10 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-llm-inference
+    files:
+      - dashboards/llm-inference.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
