@@ -102,6 +102,23 @@ spec:
                 echo "mcp-grafana already present at /opt/data/bin/mcp-grafana, skipping install"
               fi
 
+              # codex CLI binary を PVC に配置 (Hermes codex_app_server runtime 用、dotfiles-private#383)。
+              # openai/codex の prebuilt musl 静的バイナリ (glibc 非依存)。リリース tar.gz は
+              # `codex-x86_64-unknown-linux-musl` 単一ファイルなので展開後 codex にリネーム。
+              # PVC 上に置くので Pod restart 時は skip。auth は別途 /opt/data/.codex/auth.json (PVC, 版管理外)。
+              if [ ! -x /opt/data/bin/codex ]; then
+                echo "Installing codex CLI ${CODEX_VERSION}"
+                curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-x86_64-unknown-linux-musl.tar.gz" \
+                  | tar -xz -C /opt/data/bin/
+                mv -f /opt/data/bin/codex-x86_64-unknown-linux-musl /opt/data/bin/codex
+                chmod +x /opt/data/bin/codex
+                # DL 破損/truncate 対策: version 確認に失敗したら corrupt binary を消して次回再取得させる
+                # (exit はしない = codex 不在でも Hermes 本体は起動し codex_app_server だけ soft-fail)
+                /opt/data/bin/codex --version || { echo "codex verify failed, removing for retry"; rm -f /opt/data/bin/codex; }
+              else
+                echo "codex already present at /opt/data/bin/codex, skipping install"
+              fi
+
               # Google Workspace skill 用 credential を Secret から file に展開
               # (Hermes 公式 productivity/google-workspace skill が読む path、~/.hermes/=/opt/data/、HOME=/opt/data)
               # token cache に refresh_token を含めることで OAuth flow (browser_navigate) を完全 skip
@@ -140,6 +157,10 @@ spec:
             # Renovate datasource: github-releases / depName=grafana/mcp-grafana
             - name: MCP_GRAFANA_VERSION
               value: "0.14.0"
+            # codex CLI version (initContainer が PVC に install、Hermes codex_app_server runtime 用)。
+            # Renovate datasource: github-releases / depName=openai/codex / extractVersion=^rust-v(?<version>.+)$
+            - name: CODEX_VERSION
+              value: "0.142.1"
             # Google Workspace skill 用 OAuth credentials (initContainer が token cache を /opt/data/ に展開)
             - name: GOOGLE_CALENDAR_OAUTH_CLIENT_ID
               valueFrom: {secretKeyRef: {name: hermes-credentials, key: GOOGLE_CALENDAR_OAUTH_CLIENT_ID}}
@@ -187,6 +208,12 @@ spec:
               sed -i 's/DEFAULT_CLAIM_TTL_SECONDS = 15 \* 60/DEFAULT_CLAIM_TTL_SECONDS = 60 * 60/' \
                 /opt/hermes/hermes_cli/kanban_db.py
               grep "DEFAULT_CLAIM_TTL_SECONDS = " /opt/hermes/hermes_cli/kanban_db.py | head -1
+              # codex CLI を PATH 上に出す (Hermes codex_app_server runtime は PATH 上の `codex` を spawn する)。
+              # initContainer が /opt/data/bin/codex (PVC) に install 済み。/usr/local/bin は ephemeral rootfs
+              # なので毎起動 symlink を貼り直す (immutable image、PATH dir は s6 が uid drop 後も継承)。
+              if [ -x /opt/data/bin/codex ]; then
+                ln -sf /opt/data/bin/codex /usr/local/bin/codex
+              fi
               # image 本来の s6 ENTRYPOINT を exec。main-wrapper が venv activate +
               # `gateway run` を `s6-setuidgid hermes hermes gateway run` にルーティングする。
               exec /init /opt/hermes/docker/main-wrapper.sh gateway run
