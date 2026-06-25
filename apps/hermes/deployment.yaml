@@ -5,6 +5,12 @@
 # - sidecar `state-syncer`: 15 min ごとに git add/commit/push (skill/memory/config の差分を private repo に同期)。
 #   push が non-fast-forward で弾かれたら origin/main に rebase して再 push、conflict 時はローカル優先で abort。
 #   conflict は level=error (logfmt) で 15 分ごとに再ログされ、K3sPodErrorLogDetected (loki-config) 経由で Discord に通知される。
+# - sidecar `log-tailer`: Hermes の Python logging は file 出力固定 (config/env で stdout 切替不可、upstream
+#   hermes_logging.setup_logging が RotatingFileHandler をハードコード) のため、ターンレベルの実ログ
+#   (agent.conversation_loop の turn / agent.auxiliary_client の WARNING / retry / timeout 等) が PVC 上の
+#   /opt/data/logs/agent.log にしか出ず Loki に流れない (dotfiles-private#385)。agent.log は root catch-all なので
+#   gateway.log / errors.log はその部分集合 → agent.log 1 本を tail -F して stdout に流せば全量が OTLP/Alloy 経由で
+#   job="k8s-pods" として Loki に収集される。
 #
 # nodeSelector で nixos-desktop に固定 (LLM endpoint と同 node)。
 # PVC ReadWriteOnce + strategy Recreate で Pod 入れ替え時の競合回避。
@@ -349,6 +355,28 @@ spec:
               # 定常は 1-5MB なので 512Mi はスパイク用の十分なヘッドルーム。
               memory: "512Mi"
               cpu: "200m"
+        # Hermes のファイル出力ログ (agent.log) を stdout に流し、Loki で観測可能にする (dotfiles-private#385)。
+        # 同 image を共有 (coreutils tail 同梱)。読み取り専用なので deploy-key mount も不要。
+        - name: log-tailer
+          image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          command: ["/bin/sh", "-c"]
+          args:
+            # -n 0: 起動時に既存バックログを再取り込みしない (PVC 永続で agent.log が肥大しているため、
+            #        Pod 再起動毎の全量再 ingest を避ける)。新規行のみ stdout へ。
+            # -F (= --follow=name --retry): RotatingFileHandler の rotation (agent.log -> .1) と、
+            #     gateway 起動前で file 未作成の初期状態の両方に追従する。
+            - exec tail -n 0 -F /opt/data/logs/agent.log
+          volumeMounts:
+            - name: state
+              mountPath: /opt/data
+              readOnly: true
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
       volumes:
         - name: state
           persistentVolumeClaim:
