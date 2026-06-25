@@ -1,0 +1,29 @@
+# cloudflared (k3s Tunnel) のメトリクスを VMPodScrape で収集
+#
+# cloudflared は config.yaml の `metrics: 0.0.0.0:2000` で Prometheus メトリクスを
+# expose している (apps/cloudflared-k3s/config.yaml)。Deployment は replicas: 3 で
+# Service を持たないため、Service ベースの VMServiceScrape ではなく Pod discovery の
+# VMPodScrape で 3 レプリカそれぞれを直接スクレイプする。
+#
+# kustomization の namespace: victoriametrics が効いて VMPodScrape は victoriametrics
+# ns に配置される。対象 Pod は別 ns なので namespaceSelector.matchNames: [cloudflared-k3s]
+# で拾う。pod / namespace ラベルは VM Operator が __meta_kubernetes_* から自動付与する。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: cloudflared
+spec:
+  namespaceSelector:
+    matchNames: [cloudflared-k3s]
+  selector:
+    matchLabels:
+      app: cloudflared
+  podMetricsEndpoints:
+    - port: metrics          # 2000: cloudflared メトリクス (/metrics)
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: cloudflared
+        - targetLabel: cluster
+          replacement: homelab

@@ -14,6 +14,7 @@ resources:
   - vmrule-recording.yaml
   - scrape-config-secret.yaml
   - vmpodscrape-cilium.yaml
+  - vmpodscrape-cloudflared.yaml
   - vmservicescrape-argocd.yaml
   - vmservicescrape-argo-workflows.yaml
   - vmservicescrape-loki.yaml
