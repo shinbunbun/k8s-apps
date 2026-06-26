@@ -1,0 +1,33 @@
+# Hermes Agent のメトリクスを VMPodScrape で収集
+#
+# Hermes 本体は /metrics を持たないため、hermes-runtime の user plugin
+# `hermes-prometheus` (config.yaml plugins.enabled で有効化) が in-process で
+# :9108/metrics を expose する。Deployment は Service を持たないため、Service
+# ベースの VMServiceScrape ではなく Pod discovery の VMPodScrape で直接拾う。
+#
+# kustomization の namespace: victoriametrics が効いて VMPodScrape は
+# victoriametrics ns に配置される。対象 Pod は hermes ns なので
+# namespaceSelector.matchNames: [hermes] で拾う。
+#
+# 注意: vmagent.yaml の inlineRelabelConfig が全 job の *_bucket を drop するため、
+# hermes_api_request_duration_seconds は _sum / _count のみ残る (平均レイテンシ =
+# rate(_sum) / rate(_count))。quantile が必要なら bucket-drop 除外条件を追加する。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: hermes
+spec:
+  namespaceSelector:
+    matchNames: [hermes]
+  selector:
+    matchLabels:
+      app: hermes
+  podMetricsEndpoints:
+    - port: metrics          # 9108: hermes-prometheus plugin (/metrics)
+      path: /metrics
+      interval: 30s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: hermes
+        - targetLabel: cluster
+          replacement: homelab
