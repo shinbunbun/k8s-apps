@@ -26,7 +26,7 @@ spec:
     # ArgoCD は OCI Helm chart を repoURL (no scheme) + chart 名で扱う (piraeus と同パターン)
     repoURL: ghcr.io/danny-avila/librechat-chart
     chart: librechat
-    targetRevision: "2.0.6"
+    targetRevision: "2.0.7"
     helm:
       valuesObject:
         fullnameOverride: librechat
