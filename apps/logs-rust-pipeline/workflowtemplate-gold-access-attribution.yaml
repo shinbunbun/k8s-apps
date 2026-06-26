@@ -1,0 +1,229 @@
+# Argo WorkflowTemplate: RouterOS アクセス先統計 gold (netflow ⋈ passive-dns ⋈ ASN)
+#
+# 設計 (dotfiles-private#326 フェーズ4 / #348):
+#   - これは netflow フローを「誰が・どのドメイン/組織へ・何 byte」に帰属させた
+#     gold (集約) 層。daily-pipeline の gold-volume (host+service+level の件数) とは
+#     別物で、複数 source の join + ASN range join が必要なため Rust/Polars gold には
+#     載せず、asn-reference-build と同じ **python:slim + pip 固定版 duckdb のインライン
+#     純 SQL ジョブ**として実装する (専用イメージや新 gold エンジンを増やさず k8s 単一
+#     リポジトリに収める方針に整合)。
+#
+#   - 以前は Grafana MyDuck datasource が query-time に silver ⋈ silver ⋈ reference を
+#     UNION + ASOF + inet range join していたが、dashboard を開くと 13 パネルが一斉発火
+#     して単一 MyDuck (DuckDB memory_limit 5GB) を超過し OOM していた。重い join を
+#     **日次バッチで 1 回だけ materialize** し、dashboard 側は純 GROUP BY に退化させる
+#     ことで根治する。
+#
+# 出力: s3://logs-archive/gold/access-attribution/date=<d>/data.parquet (garage-archive)
+#   粒度: (client_ip, remote, qname) の日次ロールバップ。org/country は remote の関数
+#   なので any_value で無損失。qname を grain に含めるため named/unnamed の byte 按分が
+#   per-flow と一致する (faithful)。date はデータ列に持たず hive partition (date=) が供給。
+#   列: client_ip, remote, qname(nullable), org(nullable), country(nullable), bytes, flows
+#   実測 (2026-06-25): 約 14.6k 行/日 (per-flow 360 万行から激減、parquet 数百 KB)。
+#
+# join 仕様 (Grafana dashboard の実証済み SQL をそのまま移設):
+#   - netflow を src/dst 双方向に UNION ALL で展開し client/remote を作る
+#   - 内部 IP (192.168./10./240b:/自 v4) を remote から除外 (外向きのみ)
+#   - passive-dns を ASOF LEFT JOIN ×2 (client 特定一致 + remote のみ一致) で 24h 窓内の
+#     直近 DNS 解決を引いて qname を帰属。flow は date=d のみ、DNS は跨日 lookback のため
+#     date IN (d-1, d) を読む (00:30 の flow が前日 DNS にマッチする境界対応)
+#   - reference/asn/asn.parquet (range_start/range_end は VARCHAR IP) に inet 拡張で
+#     `remote::INET BETWEEN start::INET AND end::INET` の range join で org/country を付与
+#
+# 【date param / 兼用】
+#   - 日次: daily-pipeline (workflowtemplate-daily-pipeline.yaml) が全 silver 完了後に
+#     templateRef で本テンプレートを date="" で呼ぶ → script が yesterday-JST を解釈
+#     (binary の default と同じ day)。
+#   - バックフィル: argo submit --from で date を明示渡し (immutable layer だが COPY が
+#     上書きするので再実行は冪等):
+#       argo submit -n logs-rust-pipeline \
+#         --from workflowtemplate/gold-access-attribution \
+#         -p date=2026-06-20
+#     bulk は shell loop:
+#       for d in $(seq 0 9 | xargs -I{} date -d "2026-06-16 +{} days" +%Y-%m-%d); do
+#         argo submit -n logs-rust-pipeline \
+#           --from workflowtemplate/gold-access-attribution -p date=${d} --wait
+#       done
+#
+# 【runtime / egress】asn-reference-build と同様 python:3.12-slim + pip duckdb==1.1.3。
+#   INSTALL httpfs / inet はランタイムに extensions.duckdb.org から取得する (asn-reference が
+#   iptoasn.com へ到達できているのと同じく当 namespace は egress 可)。pip / 拡張 / 拡張の
+#   home (~/.duckdb) はすべて readOnlyRootFilesystem 下で /tmp に隔離する。
+#
+# 【初回】WorkflowTemplate 単体では走らないため、merge → ArgoCD sync 後に上記 bulk
+#   backfill を 1 度手動実行して既存 silver 期間 (2026-06-16〜) の gold を埋める。
+#   gold が貯まるまで dashboard の gold 移行 (別 PR) はマージしない。
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: gold-access-attribution
+spec:
+  entrypoint: build
+  activeDeadlineSeconds: 1200
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+  arguments:
+    parameters:
+      # 空なら script が yesterday-JST を解釈 (daily 用)。backfill は YYYY-MM-DD を渡す。
+      - name: date
+        value: ""
+  templates:
+    - name: build
+      inputs:
+        parameters:
+          - name: date
+            value: ""
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: gold
+          table: access-attribution
+      # 一過性の S3 / 拡張取得失敗を OnFailure × 2 で吸収 (他 stage と同方針)。
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+        backoff:
+          duration: "30s"
+          factor: "2"
+          maxDuration: "5m"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      script:
+        image: python:3.12-slim
+        command: [bash]
+        source: |
+          set -euo pipefail
+          # pip / duckdb home は readOnlyRootFilesystem 下で書けないので /tmp に隔離。
+          pip install --no-cache-dir --quiet --target /tmp/pylib 'duckdb==1.1.3'
+          export PYTHONPATH=/tmp/pylib HOME=/tmp
+          export TARGET_DATE='{{inputs.parameters.date}}'
+          python - <<'PY'
+          import os, duckdb
+          from datetime import date, timedelta, datetime, timezone
+
+          # yesterday-JST (binary の default と同じ day)。JST = UTC+9。
+          jst = timezone(timedelta(hours=9))
+          raw = os.environ.get("TARGET_DATE", "").strip()
+          d = date.fromisoformat(raw) if raw else (datetime.now(jst).date() - timedelta(days=1))
+          dm1 = d - timedelta(days=1)
+          endpoint = os.environ["GARAGE_S3_ENDPOINT"]
+          dst = f"s3://logs-archive/gold/access-attribution/date={d}/data.parquet"
+
+          con = duckdb.connect()
+          con.execute("INSTALL httpfs; LOAD httpfs")
+          con.execute("INSTALL inet; LOAD inet")
+          # 単一日の join は軽量だが、念のため上限を切り /tmp に spill 可能にする。
+          con.execute("SET memory_limit='3GB'")
+          con.execute("SET threads=2")
+          con.execute("SET temp_directory='/tmp/duckdb'")
+          con.execute(f"""
+              CREATE SECRET garage (
+                TYPE s3, PROVIDER credential_chain, CHAIN 'env',
+                REGION 'garage', ENDPOINT '{endpoint}',
+                URL_STYLE 'path', USE_SSL false
+              )
+          """)
+
+          # 帰属 join (Grafana dashboard で実証済みの SQL を materialize 用に移設)。
+          # netflow は date=d のみ、passive-dns は跨日 24h lookback のため date IN (d-1, d)。
+          sql = f"""
+              COPY (
+                WITH pd AS (
+                  SELECT ts AS dns_ts, client_ip, qname, answer_ip
+                  FROM read_parquet('s3://logs-archive/silver/source=passive-dns/date=*/logs.parquet',
+                                    hive_partitioning=true)
+                  WHERE date IN (DATE '{dm1}', DATE '{d}')
+                ),
+                nf AS (
+                  SELECT ts AS flow_ts, src_ip, dst_ip, bytes
+                  FROM read_parquet('s3://logs-archive/silver/source=netflow/date=*/logs.parquet',
+                                    hive_partitioning=true)
+                  WHERE date = DATE '{d}' AND proto IN ('Tcp', 'Udp')
+                ),
+                flows AS (
+                  SELECT flow_ts, src_ip AS client, dst_ip AS remote, bytes FROM nf
+                  UNION ALL
+                  SELECT flow_ts, dst_ip AS client, src_ip AS remote, bytes FROM nf
+                ),
+                flows_ext AS (
+                  SELECT * FROM flows
+                  WHERE NOT (remote LIKE '192.168.%' OR remote LIKE '10.%'
+                             OR remote LIKE '240b:%' OR remote = '114.17.55.115')
+                ),
+                asn AS (
+                  SELECT range_start, range_end, org, nullif(country, 'None') AS country
+                  FROM read_parquet('s3://logs-archive/reference/asn/asn.parquet')
+                  WHERE asn <> 0
+                ),
+                ip_org AS (
+                  SELECT i.remote, any_value(g.org) AS org, any_value(g.country) AS country
+                  FROM (SELECT DISTINCT remote FROM flows_ext) i
+                  LEFT JOIN asn g ON i.remote::INET BETWEEN g.range_start::INET AND g.range_end::INET
+                  GROUP BY i.remote
+                ),
+                att AS (
+                  SELECT f.flow_ts, f.client AS client_ip, f.remote, f.bytes,
+                    CASE WHEN s.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN s.qname
+                         WHEN a.dns_ts >= f.flow_ts - INTERVAL 24 HOUR THEN a.qname END AS qname
+                  FROM flows_ext f
+                  ASOF LEFT JOIN pd s
+                    ON f.client = s.client_ip AND f.remote = s.answer_ip AND s.dns_ts <= f.flow_ts
+                  ASOF LEFT JOIN pd a
+                    ON f.remote = a.answer_ip AND a.dns_ts <= f.flow_ts
+                )
+                SELECT
+                  att.client_ip,
+                  att.remote,
+                  att.qname,
+                  any_value(o.org)     AS org,
+                  any_value(o.country) AS country,
+                  sum(att.bytes)::BIGINT AS bytes,
+                  count(*)::BIGINT       AS flows
+                FROM att LEFT JOIN ip_org o ON att.remote = o.remote
+                GROUP BY att.client_ip, att.remote, att.qname
+              ) TO '{dst}' (FORMAT parquet, COMPRESSION zstd)
+          """
+          con.execute(sql)
+
+          n = con.execute(f"SELECT count(*) FROM read_parquet('{dst}')").fetchone()[0]
+          print(f"wrote {dst} date={d} (dns lookback {dm1}..{d}) rows={n}")
+          # daily 経路では group 1 の silver 依存で空入力はほぼ起き得ないが、netflow
+          # collector が当日全断だと silver は空 parquet になり gold が 0 行になりうる。
+          # hard fail (assert) は daily workflow を落とし誤ページングするため、WARNING を
+          # 出すだけに留める (Loki でグレップ可能、必要なら後段でアラート化)。
+          if n == 0:
+              print(f"WARNING: gold/access-attribution date={d} が 0 行 — silver 欠損 / netflow 全断 / join 全 miss の可能性")
+          PY
+        env:
+          - name: GARAGE_S3_ENDPOINT
+            value: "garage-archive.garage.svc.cluster.local:3900"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-archive-credentials
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            memory: 4Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi

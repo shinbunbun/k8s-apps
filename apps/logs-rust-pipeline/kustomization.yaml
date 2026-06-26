@@ -34,5 +34,9 @@ resources:
   - deployment-netflow.yaml
   - service-netflow-lan.yaml
   # IP→ASN/org reference parquet 週次ビルダー (アクセス先統計 v2, dotfiles-private#348)。
-  # reference/asn/asn.parquet を産出し、dashboard が query-time に inet range join する。
+  # reference/asn/asn.parquet を産出し、gold-access-attribution が inet range join する。
   - cronworkflow-asn-reference.yaml
+  # RouterOS アクセス先統計 gold (netflow ⋈ passive-dns ⋈ ASN) の materialize ジョブ。
+  # daily-pipeline が group 2 で templateRef 実行 + backfill で argo submit する
+  # (dotfiles-private#326 フェーズ4)。gold/access-attribution/ を産出し dashboard が純 GROUP BY。
+  - workflowtemplate-gold-access-attribution.yaml
