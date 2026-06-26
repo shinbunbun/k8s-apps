@@ -55,7 +55,7 @@ spec:
       initContainers:
         # hermes-runtime repo を deploy key で clone、PVC に展開
         - name: clone-runtime
-          image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          image: docker.io/nousresearch/hermes-agent:v2026.6.19
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -182,7 +182,7 @@ spec:
               readOnly: true
       containers:
         - name: hermes
-          image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          image: docker.io/nousresearch/hermes-agent:v2026.6.19
           # s6-overlay 移行 (v2026.5.29~) への対応:
           # このイメージから ENTRYPOINT が `/init` (s6-overlay) に変わり、tini は同梱されなくなった。
           # 旧来の `/usr/bin/tini -- docker/entrypoint.sh gateway run` は二重で破綻する:
@@ -261,7 +261,7 @@ spec:
               memory: "4Gi"
               cpu: "2000m"
         - name: state-syncer
-          image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          image: docker.io/nousresearch/hermes-agent:v2026.6.19
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -358,7 +358,7 @@ spec:
         # Hermes のファイル出力ログ (agent.log) を stdout に流し、Loki で観測可能にする (dotfiles-private#385)。
         # 同 image を共有 (coreutils tail 同梱)。読み取り専用なので deploy-key mount も不要。
         - name: log-tailer
-          image: docker.io/nousresearch/hermes-agent:v2026.5.29
+          image: docker.io/nousresearch/hermes-agent:v2026.6.19
           command: ["/bin/sh", "-c"]
           args:
             # -n 0: 起動時に既存バックログを再取り込みしない (PVC 永続で agent.log が肥大しているため、
