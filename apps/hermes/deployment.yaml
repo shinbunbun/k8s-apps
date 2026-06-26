@@ -223,6 +223,12 @@ spec:
               # image 本来の s6 ENTRYPOINT を exec。main-wrapper が venv activate +
               # `gateway run` を `s6-setuidgid hermes hermes gateway run` にルーティングする。
               exec /init /opt/hermes/docker/main-wrapper.sh gateway run
+          # hermes-prometheus plugin (hermes-runtime repo, config.yaml plugins.enabled)
+          # が in-process で listen するメトリクスポート。VMPodScrape (victoriametrics-config)
+          # が named port "metrics" を参照してスクレイプする。
+          ports:
+            - name: metrics
+              containerPort: 9108
           env:
             # 個別 env で渡す (envFrom を使うと GITHUB_DEPLOY_KEY も env 化されて process listing に露出するため避ける)
             - name: TELEGRAM_BOT_TOKEN

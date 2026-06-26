@@ -3,7 +3,9 @@
 #   - host node (LLM endpoint on nixos-desktop) への egress は port 8082 限定
 #   - Grafana LAN VIP (Cilium LB IPAM) は port 80 限定
 #   - Internet (RFC1918 等除く) は 53/UDP+TCP, 443/TCP のみ
-#   - Ingress は全 deny (Telegram long-polling 前提、外部到達不要)
+#   - Ingress は原則 deny (Telegram long-polling 前提、外部到達不要)。
+#     例外として victoriametrics ns の vmagent から metrics port (9108) のみ許可
+#     (hermes-prometheus plugin の /metrics スクレイプ用)。
 #
 # 実装注意:
 #   - 標準 NetworkPolicy の `ipBlock` は Cilium 環境では同 node の host network や LB VIP の
@@ -21,7 +23,21 @@ spec:
       app: hermes
   policyTypes:
     - Ingress
-  ingress: []
+  # 既定は全 ingress deny。例外として victoriametrics ns の vmagent Pod から
+  # メトリクスポート (9108) への scrape のみ許可する。namespaceSelector +
+  # podSelector は identity ベースのため Cilium でも問題なく enforcement される
+  # (このファイル冒頭で触れた ipBlock の落とし穴は egress / host・LB VIP 固有)。
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: victoriametrics
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmagent
+      ports:
+        - protocol: TCP
+          port: 9108
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

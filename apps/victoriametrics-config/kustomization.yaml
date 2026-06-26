@@ -15,6 +15,7 @@ resources:
   - scrape-config-secret.yaml
   - vmpodscrape-cilium.yaml
   - vmpodscrape-cloudflared.yaml
+  - vmpodscrape-hermes.yaml
   - vmservicescrape-argocd.yaml
   - vmservicescrape-argo-workflows.yaml
   - vmservicescrape-loki.yaml
