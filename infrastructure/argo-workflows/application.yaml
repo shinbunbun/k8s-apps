@@ -60,7 +60,7 @@ spec:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-workflows
     # Chart 1.0.14 = Argo Workflows v4.0.5 (2026-04-23 release)
-    targetRevision: "1.0.14"
+    targetRevision: "1.0.17"
     helm:
       valuesObject:
         singleNamespace: false
