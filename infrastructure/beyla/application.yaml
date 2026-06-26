@@ -83,7 +83,7 @@ spec:
     chart: beyla
     # Chart 1.16.7 = Beyla v3.14.0
     # https://github.com/grafana/beyla/blob/main/charts/beyla/Chart.yaml
-    targetRevision: "1.16.7"
+    targetRevision: "1.16.8"
     helm:
       valuesObject:
         # === preset: application (HTTP/gRPC/SQL auto-instrument) ===
