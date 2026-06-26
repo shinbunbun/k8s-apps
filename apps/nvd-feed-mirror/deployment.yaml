@@ -41,7 +41,7 @@ spec:
                     values: [g3pro]
       initContainers:
         - name: seed
-          image: curlimages/curl:8.11.1
+          image: curlimages/curl:8.21.0
           command: ["sh", "/scripts/sync.sh"]
           env:
             - name: WEBROOT
@@ -76,7 +76,7 @@ spec:
             requests: { cpu: 25m, memory: 32Mi }
             limits: { memory: 128Mi }
         - name: sync
-          image: curlimages/curl:8.11.1
+          image: curlimages/curl:8.21.0
           command: ["sh", "/scripts/run-sidecar.sh"]
           env:
             - name: WEBROOT
