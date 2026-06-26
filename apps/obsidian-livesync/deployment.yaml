@@ -19,7 +19,7 @@ spec:
       initContainers:
         # ConfigMapのiniファイルをコピーし、SecretからJWT設定を生成
         - name: prepare-config
-          image: busybox:1.37
+          image: busybox:1.38
           command:
             - sh
             - -c

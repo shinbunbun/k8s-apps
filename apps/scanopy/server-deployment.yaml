@@ -36,7 +36,7 @@ spec:
       # initContainer で展開して共有 emptyDir に書き出す。
       initContainers:
         - name: render-oidc
-          image: busybox:1.37
+          image: busybox:1.38
           command: ["/bin/sh", "-c"]
           args:
             - |
