@@ -56,7 +56,7 @@ spec:
             limits: { memory: 256Mi }
       containers:
         - name: nginx
-          image: nginxinc/nginx-unprivileged:1.27-alpine
+          image: nginxinc/nginx-unprivileged:1.31-alpine
           ports:
             - name: http
               containerPort: 8080
