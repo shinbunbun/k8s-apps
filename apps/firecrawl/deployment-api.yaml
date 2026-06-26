@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/firecrawl/firecrawl@sha256:d115036a6ddebada04106544486315b08efc7e88c6c5a5a0c4b5f581042706ce
+          image: ghcr.io/firecrawl/firecrawl@sha256:9b21a5525afbfd3d6def98cf0b32841c434fdd82f98f332420e30903582524c2
           command: ["node"]
           args:
             - "--max-old-space-size=2048"
