@@ -290,3 +290,10 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-hermes
+    files:
+      - dashboards/hermes.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
