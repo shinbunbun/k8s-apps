@@ -139,6 +139,19 @@ spec:
               - {source: passive-dns,  bronze_mem: 2Gi, bronze_tmp: 4Gi, silver_mem: 2Gi, silver_tmp: 2Gi}
               - {source: netflow,      bronze_mem: 2Gi, bronze_tmp: 4Gi, silver_mem: 2Gi, silver_tmp: 2Gi}
 
+        # group 2: group 1 の全 silver 完了後に RouterOS アクセス先統計 gold を materialize。
+        # netflow ⋈ passive-dns (ASOF) ⋈ ASN (inet range) の重い join を日次 1 回だけ実行し、
+        # Grafana dashboard を gold の純 GROUP BY に退化させて MyDuck の OOM を根治する
+        # (dotfiles-private#326 フェーズ4)。本体は別 WorkflowTemplate gold-access-attribution
+        # (logs-pipeline#46 の埋め込み DuckDB binary `gold-build --table access-attribution`)
+        # を templateRef で呼ぶ。step group は直列なので group 1 の全 source-pipeline 完了が
+        # 依存として効く (attribution が必要なのは netflow / passive-dns silver のみだが、group
+        # 境界で簡潔に順序保証する)。date 未指定 → binary が yesterday-jst を解釈。
+        - - name: gold-access-attribution
+            templateRef:
+              name: gold-access-attribution
+              template: build
+
     # 1 source 分の bronze -> silver -> gold-volume を直列実行。
     # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。
     # gold-volume は固有差分が多いため独立テンプレート (下記参照)。
@@ -270,7 +283,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
+        image: ghcr.io/shinbunbun/logs-pipeline:f381780
         args:
           - "{{inputs.parameters.stage}}"
           - --source
@@ -352,7 +365,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:e4b7ab1
+        image: ghcr.io/shinbunbun/logs-pipeline:f381780
         args:
           - gold-build
           - --table

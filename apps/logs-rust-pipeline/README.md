@@ -5,9 +5,11 @@ Rust + Polars 実装 (`shinbunbun/logs-pipeline` repo) の logs archive pipeline
 ## 構成
 
 ```
-workflowtemplate-daily-pipeline.yaml  日次 DAG (4 source × 3 stage = 12 タスク)
-cronworkflow-daily.yaml                00:35 JST 起動 schedule
-workflowtemplate-backfill.yaml         migrate / silver-backfill / gold-backfill / verify
+workflowtemplate-daily-pipeline.yaml         日次 DAG (4 source × 3 stage + access-attribution gold)
+cronworkflow-daily.yaml                       00:35 JST 起動 schedule
+workflowtemplate-backfill.yaml                migrate / silver-backfill / gold-backfill / verify
+workflowtemplate-gold-access-attribution.yaml RouterOS アクセス先統計 gold (netflow⋈passive-dns⋈ASN, 埋め込み DuckDB)
+cronworkflow-asn-reference.yaml               IP→ASN/org reference parquet 週次ビルダー
 ```
 
 ## アーキテクチャ
@@ -78,6 +80,25 @@ done
 
 並列実行する場合は `--wait` を外し、cluster の Pod 並列度と各 entrypoint の memory limit (migrate 32Gi / silver 12Gi / gold 4Gi) を踏まえて parallelism を調整。
 
+### access-attribution gold の backfill
+
+RouterOS アクセス先統計 gold (`gold/access-attribution/`) は daily-pipeline が group 2 で自動生成するが、新規導入時や silver 再生成後は別 WorkflowTemplate `gold-access-attribution` を直接 submit して遡及生成する (`--force` で COPY 上書き、冪等):
+
+```bash
+# 1 day
+argo submit -n logs-rust-pipeline \
+  --from workflowtemplate/gold-access-attribution \
+  -p date=2026-06-20
+
+# bulk (silver 期間 2026-06-16 以降を埋める例)
+for d in $(seq 0 9 | xargs -I{} date -d "2026-06-16 +{} days" +%Y-%m-%d); do
+  argo submit -n logs-rust-pipeline \
+    --from workflowtemplate/gold-access-attribution -p date=${d} --wait
+done
+```
+
+`date` 省略時 (daily 経路) は binary が yesterday-jst を解釈する。
+
 ## ロールバック
 
 | 問題 | 対応 |
@@ -92,9 +113,10 @@ done
 `logs-pipeline` repo の HEAD bump 時:
 
 1. 該当 PR を merge し、build workflow が `ghcr.io/shinbunbun/logs-pipeline:<sha>` を push
-2. 本 directory の以下 2 ファイルで `7bd76bc` 等の SHA を新 SHA に置換:
-   - `workflowtemplate-daily-pipeline.yaml` (3 stage container.image)
-   - `workflowtemplate-backfill.yaml` (4 stage container.image)
+2. 本 directory の以下 3 ファイルで SHA を新 SHA に一括置換 (`sed -i 's#:<旧>#:<新>#g'`):
+   - `workflowtemplate-daily-pipeline.yaml` (ingest-stage / gold-volume の 2 image)
+   - `workflowtemplate-backfill.yaml` (migrate / silver / gold / verify の 4 image)
+   - `workflowtemplate-gold-access-attribution.yaml` (build の 1 image)
 3. PR を出して ArgoCD sync
 
 Phase 2-3 時点で並行していた kustomize images transformer は Phase 4 で廃止済 (CRD path 標準対応外のため WorkflowTemplate に直接書く方式)。
