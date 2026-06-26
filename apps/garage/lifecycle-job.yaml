@@ -46,7 +46,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: lifecycle
-          image: python:3.13-slim
+          image: python:3.14-slim
           command: [bash, -c]
           args:
             - |
