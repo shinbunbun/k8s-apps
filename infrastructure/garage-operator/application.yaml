@@ -36,7 +36,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/rajsinghtech/garage-operator.git
-    targetRevision: v0.6.12
+    targetRevision: v0.6.18
     path: charts/garage-operator
     helm:
       valuesObject:
