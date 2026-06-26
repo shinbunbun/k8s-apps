@@ -88,7 +88,7 @@ spec:
     chart: tempo
     # Chart 2.1.2 = Tempo v2.10.5
     # https://github.com/grafana-community/helm-charts/blob/main/charts/tempo/Chart.yaml
-    targetRevision: "2.1.2"
+    targetRevision: "2.2.3"
     helm:
       valuesObject:
         # === Tempo server 本体 ===
