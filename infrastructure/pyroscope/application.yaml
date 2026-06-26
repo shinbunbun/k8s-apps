@@ -64,7 +64,7 @@ spec:
     repoURL: https://grafana.github.io/helm-charts
     chart: pyroscope
     # Chart 2.0.1 = Pyroscope 2.0.1 (https://github.com/grafana/pyroscope/blob/main/operations/pyroscope/helm/pyroscope/Chart.yaml)
-    targetRevision: "2.0.3"
+    targetRevision: "2.1.0"
     helm:
       valuesObject:
         # === デプロイモード ===
