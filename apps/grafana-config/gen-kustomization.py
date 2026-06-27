@@ -76,6 +76,7 @@ DASHBOARDS = [
     ("nixos.json", None, None, None),
     ("routeros.json", None, None, None),
     ("cloudflare-tunnel.json", None, None, None),
+    ("cloudflare-zone.json", None, None, None),
     ("k8s.json", None, "Kubernetes", None),
     ("logs-overview.json", None, None, None),
     ("logs-errors.json", None, None, None),

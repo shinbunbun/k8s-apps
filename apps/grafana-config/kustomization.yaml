@@ -63,6 +63,13 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-cloudflare-zone
+    files:
+      - dashboards/cloudflare-zone.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
   - name: grafana-dashboard-k8s
     files:
       - dashboards/k8s.json
