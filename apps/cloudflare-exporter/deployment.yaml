@@ -23,16 +23,24 @@ spec:
           type: RuntimeDefault
       containers:
         - name: cloudflare-exporter
-          image: ghcr.io/lablabs/cloudflare_exporter:0.2.3
-          ports:
-            - name: metrics
-              containerPort: 8080
-          # 非機密の設定は ConfigMap、CF_API_TOKEN のみ Secret から注入。
+          # 自作 exporter (stdlib のみ) を素の python イメージで実行。
+          # 専用イメージビルド/CI は不要、コードは ConfigMap から /app にマウント。
+          image: python:3.12-slim
+          command: ["python3", "-B", "/app/exporter.py"]
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          # 非機密設定は ConfigMap、CF_API_TOKEN のみ Secret から注入。
           envFrom:
             - configMapRef:
                 name: cloudflare-exporter-config
             - secretRef:
                 name: cloudflare-exporter-token
+          ports:
+            - name: metrics
+              containerPort: 8080
           readinessProbe:
             httpGet:
               path: /metrics
@@ -40,15 +48,17 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 15
           livenessProbe:
+            # /healthz は poll スレッドが死ぬと 503 を返す (/metrics は常に 200 のため
+            # それだけだと wedged な exporter を検知できない)。
             httpGet:
-              path: /metrics
+              path: /healthz
               port: metrics
             initialDelaySeconds: 30
             periodSeconds: 30
             failureThreshold: 3
           resources:
             requests:
-              memory: "32Mi"
+              memory: "48Mi"
               cpu: "10m"
             limits:
               memory: "128Mi"
@@ -58,3 +68,16 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: code
+              mountPath: /app
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: code
+          configMap:
+            name: cloudflare-exporter-code
+            defaultMode: 0444
+        - name: tmp
+          emptyDir: {}

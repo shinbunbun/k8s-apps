@@ -1,65 +1,74 @@
-# cloudflare-exporter — Cloudflare エッジ分析 Prometheus Exporter
+# cloudflare-exporter — Cloudflare Free プラン zone 分析 exporter (自作)
 
-[lablabs/cloudflare-exporter](https://github.com/lablabs/cloudflare-exporter) を使い、Cloudflare の
-GraphQL Analytics API から `shinbunbun.com` ゾーンのエッジ分析 (リクエスト数 / 転送バイト /
-ステータスコード / 国別 / キャッシュ状況 等) を収集して Prometheus メトリクスとして expose する。
+`shinbunbun.com` (Cloudflare **Free プラン**) の zone エッジ分析を GraphQL Analytics API
+(`httpRequestsAdaptiveGroups`) から取得し Prometheus メトリクスとして expose する自作 exporter。
 
-dotfiles-private#381 Phase 2。Phase 1 (cloudflared 自身の `/metrics`、トークン不要) では取れない
-「外から見たトラフィック」をエッジ側から取得する。
+dotfiles-private#381 Phase 2。
+
+## なぜ自作か
+
+既製の Prometheus exporter は **Cloudflare Free プランの zone analytics に非対応**:
+
+- **lablabs/cloudflare-exporter**: `fetchZoneTotals` が `httpRequests1mGroups` +
+  `firewallEventsAdaptiveGroups` + `healthCheckEventsAdaptiveGroups` を**1 本の結合クエリ**で
+  要求する。Free プランはこれらに `does not have access to the path` を返すため、クエリ全体が
+  `data:null` で失敗しメトリクスが一切出ない。`FREE_TIER=true` はゾーン除外の有無を変えるだけで
+  クエリ構造は変えない (実機・ソース両方で確認済み)。
+- **cloudflare/cloudflare-prometheus-exporter (公式)**: Free ゾーンの analytics を自動スキップ。
+  かつ Cloudflare Workers + Durable Objects 上で動くため別軸の課金リスクがある。
+
+一方 **`httpRequestsAdaptiveGroups` だけは Free でも使える** (実機確認済み)。そこで「adaptive のみを
+叩く」最小 exporter を自作した。GraphQL Analytics API 自体は非課金、k3s 自己ホストなので
+追加課金は一切なし。
+
+## 実装方針
+
+- **stdlib のみ** (urllib / json / http.server / threading)。pip 依存なし → 専用イメージ不要、
+  素の `python:3.12-slim` + ConfigMap マウントで動く ([[feedback_language_boundary_minimize]] の
+  例外: 単機能・小規模なため self-contained script を許容)。
+- 累積カウンタ方式: `last` から `now - LAG_SECONDS` までの新スライスを `SCRAPE_INTERVAL` 毎に
+  取得しカウンタへ加算 (重複なし)。`LAG_SECONDS=900` で Free の確定ラグ (可変 2〜11 分) を超過。
+- 起動時に `LOOKBACK_INIT_SECONDS` 遡って backfill しダッシュボードに即値を出す
+  (カウンタを 0 からその合計に立ち上げるだけなので rate() に偽スパイクは出ない)。
 
 ## ファイル構成
 
 | ファイル | 役割 |
 |---|---|
-| `deployment.yaml` | Deployment (1 replica, non-root UID 65534, readOnlyRootFilesystem) |
+| `exporter.py` | exporter 本体 (stdlib only)。configMapGenerator で `cloudflare-exporter-code` に格納 |
+| `deployment.yaml` | `python:3.12-slim` で `exporter.py` を実行 (non-root, readOnlyRootFilesystem) |
 | `service.yaml` | ClusterIP Service :8080 (VMServiceScrape 対象) |
-| `configmap.yaml` | **ConfigMap `cloudflare-exporter-config`**: CF_ZONES / FREE_TIER 等の非機密 env |
-| `secret-generator.yaml` | KSOPS で secrets/cf-api-token.enc.yaml を復号 |
-| `secrets/cf-api-token.enc.yaml` | **Secret `cloudflare-exporter-token`**: `CF_API_TOKEN` のみ (SOPS-Age 暗号化) |
-| `vmservicescrape.yaml` | VMServiceScrape (`selectAllByDefault: true` で本 ns から拾われる) |
-| `kustomization.yaml` | リソース + ksops generator |
+| `kustomization.yaml` | configMapGenerator (code + env、**ハッシュ付与で自動ロール**) + ksops generator |
+| `secret-generator.yaml` / `secrets/cf-api-token.enc.yaml` | `CF_API_TOKEN` (SOPS-Age 暗号化) |
+| `vmservicescrape.yaml` | VMServiceScrape (`selectAllByDefault` で本 ns から拾われる) |
+
+ConfigMap を **configMapGenerator (ハッシュ付与)** にしてあるため、`exporter.py` や env を変更すると
+ConfigMap 名が変わり Deployment が自動でロールする (`envFrom` 直参照だと config 変更で Pod が
+再起動しない問題を恒久回避)。
 
 ## Cloudflare API トークン
 
-- スコープは **`Zone > Analytics:Read` のみ** (読み取り専用、課金リスクなし)。
-- 対象ゾーンは `Zone Resources: Include → Specific zone → shinbunbun.com` に限定。
-- `CF_API_EMAIL` / `CF_API_KEY` のレガシー方式は使わない (全リソース書き込み権限で危険)。
-- ローテーション手順:
-  ```sh
-  # 平文を書いて再暗号化 (.sops.yaml の creation_rules が k8s age 公開鍵を選択)
-  sops --encrypt --encrypted-regex '^stringData$' --in-place \
-    apps/cloudflare-exporter/secrets/cf-api-token.enc.yaml
-  ```
+`Zone > Analytics:Read` のみ (読み取り専用、課金リスクなし)、対象ゾーンは shinbunbun.com に限定。
+ローテーション:
+```sh
+sops --encrypt --encrypted-regex '^stringData$' --in-place \
+  apps/cloudflare-exporter/secrets/cf-api-token.enc.yaml
+```
 
-## Free プランの制約 (重要)
+## 公開メトリクス
 
-`shinbunbun.com` は Cloudflare **Free プラン**。GraphQL Analytics API 自体は非課金だが:
+| メトリクス | 型 | ラベル |
+|---|---|---|
+| `cloudflare_zone_requests_total` | counter | `zone, host, status, cache_status` |
+| `cloudflare_zone_bandwidth_bytes_total` | counter | `zone, host, cache_status` |
+| `cloudflare_zone_requests_country_total` | counter | `zone, country` |
+| `cloudflare_zone_exporter_last_success_timestamp_seconds` | gauge | `zone` (staleness 監視用) |
+| `cloudflare_zone_exporter_scrape_errors_total` | counter | `zone` |
+| `cloudflare_zone_exporter_up` | gauge | `zone` (直近取得の成否) |
 
-- 取得対象は `httpRequestsAdaptiveGroups` 系のみ。WAF/Firewall 詳細・Worker・LB 等の
-  premium データセットは取れない → `FREE_TIER: "true"` で premium クエリをスキップ
-  (付けないと Paid 専用フィールド要求でエラーになる)。
-- 1 クエリの時間範囲は最大 1 日、保持期間も短くサンプリングあり。
-- GraphQL クォータは 300 queries / 5min。scrape interval 60s で十分収まる。
+## Free プランの制約
 
-### SCRAPE_DELAY と Free プランの確定ラグ (重要)
-
-exporter は `httpRequestsAdaptiveGroups` を **1 分窓で、各分を `SCRAPE_DELAY` 秒遅れで 1 回だけ**
-クエリする (lablabs `GetTimeRange()` は固定 1 分窓)。`SCRAPE_DELAY` が Free プランのデータ
-**確定ラグより短いと、確定前にその分をクエリして空を取得し、二度と再取得しない**ため
-メトリクスが一切出ない。実測で Free プランの確定ラグは可変 (2〜11 分) だったため
-`SCRAPE_DELAY=900` (15 分) に設定している。
-
-- トレードオフ: ダッシュボードのデータは約 15 分遅延する (homelab では許容)。
-- トラフィックの少ない分は実際に 0 (バースト型: 3h で約 78% の分が無トラフィック)。
-  バースト分は確定後に正しく拾える。
-- メトリクスが出ない場合はまず `SCRAPE_DELAY` を上げる。
-
-## 主要メトリクス (lablabs cloudflare_zone_*)
-
-| メトリクス | 用途 |
-|---|---|
-| `cloudflare_zone_requests_total` | ゾーン総リクエスト数 |
-| `cloudflare_zone_requests_status` | ステータスコード別リクエスト (4xx/5xx 監視) |
-| `cloudflare_zone_requests_country` | 国別リクエスト数 |
-| `cloudflare_zone_requests_cached` / `_uncached` | キャッシュヒット可視化 |
-| `cloudflare_zone_bandwidth_total` / `_cached` | 帯域 |
+- 取得は `httpRequestsAdaptiveGroups` のみ (WAF/Worker/LB/health 等は権限なし)。
+- データは約 15 分遅延 (`LAG_SECONDS`)、バースト型 (無トラフィックの分は 0)。
+- GraphQL クォータ 300 queries/5min。1 query/min なので十分余裕。
+- メトリクスが出ない場合はまず `LAG_SECONDS` を上げる。
