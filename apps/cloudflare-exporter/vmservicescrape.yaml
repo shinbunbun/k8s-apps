@@ -1,0 +1,26 @@
+# cloudflare-exporter (Cloudflare エッジ分析) を VMAgent に取り込む。
+#
+# lablabs/cloudflare-exporter が GraphQL Analytics API から取得した zone 分析を
+# /metrics (cloudflare_zone_*) で expose する。VMAgent は selectAllByDefault: true
+# なので本 namespace の VMServiceScrape も拾う (nvd-feed-mirror と同方式)。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: cloudflare-exporter
+spec:
+  namespaceSelector:
+    matchNames: [cloudflare-exporter]
+  selector:
+    matchLabels:
+      app: cloudflare-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      # exporter は GraphQL を SCRAPE_DELAY 遅延で取得しキャッシュ配信するため、
+      # scrape 間隔は荒くてよい (CF GraphQL の 300 queries/5min クォータにも優しい)。
+      interval: 60s
+      relabelConfigs:
+        - targetLabel: job
+          replacement: cloudflare-exporter
+        - targetLabel: cluster
+          replacement: homelab

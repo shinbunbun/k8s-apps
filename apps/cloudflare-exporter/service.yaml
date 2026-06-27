@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudflare-exporter
+  labels:
+    app: cloudflare-exporter
+spec:
+  selector:
+    app: cloudflare-exporter
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics

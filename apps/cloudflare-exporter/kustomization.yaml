@@ -1,0 +1,15 @@
+# cloudflare-exporter (lablabs/cloudflare-exporter) — Cloudflare エッジ分析を
+# GraphQL Analytics API から収集する Prometheus exporter。
+#
+# namespace はディレクトリ名と同じ cloudflare-exporter。apps-appset.yaml の git generator が
+# apps/* を自動検出し destination.namespace=basename + CreateNamespace=true で生成するため、
+# kustomization 側に namespace は記さない (nvd-feed-mirror / routeros-backup と同方式)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - vmservicescrape.yaml
+generators:
+  - secret-generator.yaml

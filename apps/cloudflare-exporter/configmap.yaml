@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflare-exporter-config
+data:
+  # 対象ゾーンを shinbunbun.com に限定 (account 全体を勝手に走査させない)。
+  CF_ZONES: "8e56680d1b6e70559a45f98f88ec2b76"
+  # shinbunbun.com は Free プラン。Paid 専用フィールド要求でのエラーを避けるため必須。
+  # Free では httpRequestsAdaptiveGroups (req/帯域/ステータス/国別/キャッシュ) が取得対象。
+  FREE_TIER: "true"
+  # GraphQL の集計遅延を考慮した取得対象時刻のオフセット (秒)。デフォルト 300。
+  SCRAPE_DELAY: "300"
+  LISTEN: ":8080"
+  METRICS_PATH: "/metrics"
+  LOG_LEVEL: "info"
