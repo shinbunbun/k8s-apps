@@ -1,8 +1,12 @@
-# MongoDB 7.0 - LibreChat 専用シングルレプリカ
+# MongoDB 8.0 - LibreChat 専用シングルレプリカ
 #
 # Bitnami の OSS Helm chart が 2025-09-29 で廃止されたため subchart は使わず、
-# 公式 mongo:7.0 image を直接 StatefulSet で立てる。HA / replica set は組まず、
+# 公式 mongo:8.0 image を直接 StatefulSet で立てる。HA / replica set は組まず、
 # 1 replica + local-path PVC (20Gi) で運用する。
+#
+# 8.0 は production major (LTS)。8.1+ は Atlas 専用 rapid release のため
+# セルフホストでは採用しない (renovate.json5 の allowedVersions で抑止)。
+# 7.0 → 8.0 はメジャー飛び越し不可・FCV を 7.0 にした状態で昇格すること。
 #
 # root credentials は KSOPS で復号する Secret `mongo-root` (envFrom) から注入。
 # LibreChat 側は MONGO_URI に root credentials を含めて接続する (authSource=admin)。
@@ -23,7 +27,7 @@ spec:
     spec:
       containers:
         - name: mongo
-          image: mongo:7.0
+          image: mongo:8.0
           ports:
             - name: mongodb
               containerPort: 27017

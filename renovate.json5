@@ -81,6 +81,14 @@
       enabled: false,
     },
     {
+      // mongo の 8.1 / 8.2 / 8.3 等は Atlas 専用の rapid release で、
+      // セルフホスト (on-prem) deployment ではサポートされない。LTS は x.0 系
+      // (7.0 / 8.0 / 9.0 …) のみのため、追従対象を x.0 系に限定する。
+      description: "mongo は LTS (x.0) のみ追従し rapid release を除外",
+      matchPackageNames: ["mongo"],
+      allowedVersions: "/^\\d+\\.0(\\.|$)/",
+    },
+    {
       // scanopy server image は pg_dump 17 client を内蔵しており (scanopy/scanopy@9681c1e
       // "put PostgreSQL 17 client ahead of v16 on PATH")、upstream docker-compose.yml も
       // postgres:17-alpine を pin している。upstream が bump するまで major は追従しない。
