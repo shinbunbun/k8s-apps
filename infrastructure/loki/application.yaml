@@ -49,7 +49,6 @@ spec:
     # 参考: https://github.com/grafana/loki/issues/20705
     repoURL: https://grafana-community.github.io/helm-charts
     chart: loki
-    # Chart 16.0.0 = Loki 3.7.2 (https://github.com/grafana-community/helm-charts/blob/main/charts/loki/Chart.yaml)
     targetRevision: "18.1.1"
     helm:
       valuesObject:
