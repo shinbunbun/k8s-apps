@@ -1,15 +1,39 @@
-# cloudflare-exporter (lablabs/cloudflare-exporter) — Cloudflare エッジ分析を
-# GraphQL Analytics API から収集する Prometheus exporter。
+# cloudflare-exporter — Cloudflare Free プランの zone エッジ分析を収集する自作 exporter。
+#
+# 既製 exporter (lablabs / 公式) は Free プランの zone analytics に非対応 (httpRequests1mGroups
+# や firewall/healthcheck を結合クエリで要求し data:null で全滅する)。本 app は Free でも
+# 唯一アクセスできる httpRequestsAdaptiveGroups だけを叩く stdlib-only Python exporter を
+# 素の python イメージ + ConfigMap で動かす (専用イメージ/CI 不要)。
+#
+# ConfigMap は configMapGenerator でハッシュ付与する。これにより exporter.py や env を
+# 変更すると名前が変わり Deployment が自動ロールする (envFrom 直参照だと config 変更で
+# Pod が再起動しない問題を恒久回避)。
 #
 # namespace はディレクトリ名と同じ cloudflare-exporter。apps-appset.yaml の git generator が
 # apps/* を自動検出し destination.namespace=basename + CreateNamespace=true で生成するため、
-# kustomization 側に namespace は記さない (nvd-feed-mirror / routeros-backup と同方式)。
+# kustomization 側に namespace は記さない。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 resources:
-  - configmap.yaml
   - deployment.yaml
   - service.yaml
   - vmservicescrape.yaml
+
+configMapGenerator:
+  - name: cloudflare-exporter-code
+    files:
+      - exporter.py
+  - name: cloudflare-exporter-config
+    literals:
+      - CF_ZONE_ID=8e56680d1b6e70559a45f98f88ec2b76
+      # 確定ラグ (Free は可変 2〜11 分) を超過させる。各スライスをこの遅延で取得。
+      - LAG_SECONDS=900
+      # scrape (GraphQL 取得) 間隔。CF GraphQL クォータ 300/5min に十分収まる。
+      - SCRAPE_INTERVAL=60
+      # 起動時の backfill 幅。ダッシュボードに即値を出す (カウンタ立ち上げのみ)。
+      - LOOKBACK_INIT_SECONDS=3600
+      - LISTEN_PORT=8080
+
 generators:
   - secret-generator.yaml
