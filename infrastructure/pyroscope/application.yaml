@@ -48,8 +48,9 @@
 # - 外部公開なし (Cloudflare Tunnel にも載せない、LAN 限定)。Loki と同方針。
 # - LAN VIP も初期は割り当てない (必要になったら apps/pyroscope-config/lan-service.yaml で追加)
 #
-# 【リソース】requests cpu: 200m / memory: 512Mi、limits memory: 2Gi。
-# homelab 規模 (~3 ノードからの CPU profile、19Hz sampling) では十分。
+# 【リソース】requests cpu: 200m / memory: 512Mi、limits memory: 1Gi。
+# homelab 規模 (~3 ノードからの CPU profile、19Hz sampling) では十分。実測常時
+# ~150Mi のため旧 2Gi は過大で 1Gi に right-size (それでも実測の ~6 倍マージン)。
 #
 # 【sync-wave】10: loki / alloy と同階層。
 # apps/garage の Bucket/Key (wave 1-2) が先に立っている必要があるが、
@@ -84,6 +85,15 @@ spec:
 
         # chart 同梱の MinIO subchart は使わず、外部 Garage (apps/garage) を参照
         minio:
+          enabled: false
+
+        # chart 同梱の Alloy subchart (pyroscope 自身の self-profiling) を無効化。
+        # `pyroscope/pyroscope` `pyroscope/alloy` の self-profile を生成していたが、
+        # 観測スタック自身は測らない方針 (infrastructure/alloy-profiles の keep allowlist、
+        # k8s-apps#595 と一貫) に揃える。pyroscope-alloy StatefulSet ごと削除され、
+        # ~130Mi と garage-obs への自己 profile 書き込みが消える。pyroscope 本体の
+        # 重さを将来見たくなったら再有効化する。
+        alloy:
           enabled: false
 
         # === Pyroscope server 本体設定 ===
@@ -183,7 +193,7 @@ spec:
               cpu: 200m
               memory: 512Mi
             limits:
-              memory: 2Gi
+              memory: 1Gi
 
           # === ノード固定 (nixos-desktop) ===
           # S3 backend を garage-obs (RF=1, storage.replicas=1, nixos-desktop 固定,
