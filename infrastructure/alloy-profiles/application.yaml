@@ -34,9 +34,14 @@
 # 絞り、3 重採取を防ぐ (DaemonSet ベストプラクティス、既存 alloy と同方針)。
 # NODE_NAME は extraEnv で fieldRef: spec.nodeName から取得。
 #
-# 【除外 namespace】kube-system / kube-public / kube-node-lease (k8s 標準) +
-# loki / victoriametrics / monitoring / alloy / alloy-profiles / log-archiver-vector
-# / pyroscope (観測スタック自身の self-profile はノイズ、必要時のみ on)。
+# 【計測対象 namespace (allowlist)】自前アプリで CPU flame graph を実際に最適化に
+# 使う namespace のみ keep する: hermes / logs-rust-pipeline / peer-issuer / myduck-poc。
+# 既製コードのインフラ・観測スタック自身 (garage/tempo/grafana 等)・各種 DB・CSI
+# (piraeus 等) を無差別にプロファイルしても flame graph を見て手を入れられないため
+# 採取しない。Beyla (infrastructure/beyla) が tempo-traces 圧迫を理由に自前アプリのみへ
+# 縮小したのと同方針。なおトレース対象 (Beyla) とは一致させない: routeros-backup は
+# CronJob で短命のため profile 無価値で除外、逆に hermes/myduck は trace していないが
+# profile は見るので keep。計測したい自前アプリが増えたら下記 regex に追加する。
 #
 # 【Pyroscope 送信先】pyroscope.pyroscope.svc.cluster.local:4040 (ClusterIP)。
 # 同クラスタ内なので認証なし。external_labels に cluster=homelab + host=<node>
@@ -149,14 +154,20 @@ spec:
                 role = "pod"
               }
 
-              // 観測スタック自身 + k8s system ns を除外 (self-profile のノイズ削減)
+              // 自前アプリの namespace のみ keep する allowlist 方式。
+              // 旧実装は観測スタック等を列挙する drop 方式だったが、インフラ ns は
+              // 新 DB/operator 追加のたびに増え列挙が追いつかず、かつ既製コードを
+              // プロファイルしても手を入れられない (60+ サービス中 ~45 が既製部品で
+              // flame graph を見ない死蔵データだった)。自前で CPU 最適化対象の ns
+              // だけ残し、それ以外 (kube-system 等の標準 ns・観測スタック自身・各種
+              // DB・CSI・既製アプリ) は keep に該当せず自動 drop される。Beyla と同思想。
               discovery.relabel "profile_targets" {
                 targets = discovery.kubernetes.local_pods.targets
 
                 rule {
                   source_labels = ["__meta_kubernetes_namespace"]
-                  regex         = "kube-system|kube-public|kube-node-lease|loki|victoriametrics|monitoring|alloy|alloy-profiles|log-archiver-vector|pyroscope"
-                  action        = "drop"
+                  regex         = "hermes|logs-rust-pipeline|peer-issuer|myduck-poc"
+                  action        = "keep"
                 }
               }
 
