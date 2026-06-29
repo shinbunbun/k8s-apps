@@ -35,7 +35,7 @@ spec:
         # ConfigMap マウントすると「存在する」と判定されて sed されないため、
         # ここで先回りして置換しておく。
         - name: prepare-config
-          image: busybox:1.37.0
+          image: busybox:1.38.0
           command:
             - sh
             - -c
