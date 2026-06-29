@@ -30,7 +30,7 @@ spec:
   source:
     repoURL: https://charts.terrakube.io
     chart: terrakube
-    targetRevision: "4.7.3"
+    targetRevision: "4.7.4"
     helm:
       releaseName: terrakube
       valuesObject:
