@@ -43,6 +43,23 @@
     ],
   },
 
+  // Argo CronWorkflow スクリプト内に直書きした pip 固定版 (kubernetes manager は
+  // image タグしか見ないため、放置すると duckdb が凍結し python image の bump と
+  // ABI が乖離して wheel ビルドが壊れる。#574 で実際に発生)。pypi datasource で追跡。
+  customManagers: [
+    {
+      customType: "regex",
+      description: "asn-reference-build の pip 固定版 duckdb を追跡",
+      managerFilePatterns: [
+        "/^apps/logs-rust-pipeline/cronworkflow-asn-reference\\.yaml$/",
+      ],
+      matchStrings: [
+        "'(?<depName>duckdb)==(?<currentValue>[0-9][0-9.]*)'",
+      ],
+      datasourceTemplate: "pypi",
+    },
+  ],
+
   packageRules: [
     {
       description: "Patch release は自動マージ",
