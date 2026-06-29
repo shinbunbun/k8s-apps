@@ -40,8 +40,9 @@
 # profile より有用期間が短く (障害調査は直近のものが主)、TraceQL のスキャン量も
 # 抑えられるため 14d で十分。容量はもはや律速ではない: 専用化した garage-obs
 # (RF=1, 15Gi PVC, apps/garage/cluster-obs.yaml) 上で tempo-traces は実測 0.4GiB のみ、
-# 30d へ延ばしても ~0.85GiB で余裕がある。将来 trace の遡及調査が増えたら 30d
-# (pyroscope と同値) へ延長してよい (compactor 次サイクルで block_retention 変更が effective)。
+# 30d へ延ばしても ~0.85GiB で余裕がある。将来 trace の遡及調査が増えたら延長して
+# よい (compactor 次サイクルで block_retention 変更が effective)。なお pyroscope も
+# 同じ 14d (336h) に揃えてある (旧 30d から短縮、infrastructure/pyroscope)。
 #
 # 【レプリカ】monolithic で replicas: 1。ノード障害時は再起動で復旧、trace
 # データは Garage S3 に永続化済みなので block の再読込で継続。HA は必要に

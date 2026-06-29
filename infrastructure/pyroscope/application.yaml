@@ -31,8 +31,11 @@
 # この Secret は Garage Operator が GarageKey CR の secretTemplate で pyroscope ns
 # に直接生成する (apps/garage/keys-obs.yaml の pyroscope-obs GarageKey)。
 #
-# 【retention】30 日。Pyroscope 内蔵 compactor が古い block を物理削除する。
+# 【retention】14 日。Pyroscope 内蔵 compactor が古い block を物理削除する。
 # Garage bucket lifecycle rule は未設定 (Pyroscope に retention 制御を一元化)。
+# Tempo (infrastructure/tempo, 336h) と揃えた値。揮発デバッグデータなので 30→14d
+# 短縮で compaction の書き込み増幅が減り、同居先 garage-obs (nixos-desktop nvme0n1)
+# の I/O も軽くなる。
 #
 # 【レプリカ】monolithic で replicas: 1。ノード障害時は再起動で復旧、profile
 # データは Garage S3 に永続化済みなので block の再読込で継続。HA は必要に
@@ -114,12 +117,12 @@ spec:
                 # path-style: Garage 互換のため明示
                 force_path_style: true
                 # access_key_id / secret_access_key は env 経由 (pyroscope-garage-obs-credentials)
-            # 30 日 retention (compactor が古い block を delete)。
+            # 14 日 retention (compactor が古い block を delete)。Tempo (336h) と同値。
             # Pyroscope 2.0 では `limits.compactor_blocks_retention_period` に書く
             # (CLI flag -compactor.blocks-retention-period 相当)。旧 1.x の
             # `compactor.retention_period` は v2 の compactor.Config に存在しない。
             limits:
-              compactor_blocks_retention_period: 720h
+              compactor_blocks_retention_period: 336h
             # pyroscopedb.max_block_duration は default (1h) のまま使用 (homelab 3 ノード
             # 規模では短縮しても compaction 頻度が上がるだけでメリット薄)
 
