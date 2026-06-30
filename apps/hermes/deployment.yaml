@@ -260,6 +260,11 @@ spec:
               valueFrom: {secretKeyRef: {name: hermes-credentials, key: GITHUB_APP_INSTALLATION_ID}}
             - name: RENOVATE_GH_APP_PEM
               valueFrom: {secretKeyRef: {name: hermes-credentials, key: GITHUB_APP_PRIVATE_KEY}}
+            # Zaim API (OAuth 1.0) の consumer credential。Zaim 連携 skill / MCP が読む。
+            - name: ZAIM_CONSUMER_KEY
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: ZAIM_CONSUMER_KEY}}
+            - name: ZAIM_CONSUMER_SECRET
+              valueFrom: {secretKeyRef: {name: hermes-credentials, key: ZAIM_CONSUMER_SECRET}}
           volumeMounts:
             - name: state
               mountPath: /opt/data
