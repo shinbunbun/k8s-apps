@@ -63,6 +63,14 @@ spec:
             serviceName: grafana-lan
             namespace: grafana
 
+    # Home Assistant LAN VIP (192.168.128.27)。Hermes の MCP client (mcp-remote) が
+    # HA の /mcp_server/sse に接続するため。DNS は dnsConfig (1.1.1.1) のため
+    # cluster Service 名は解決できず、config.yaml 側は LAN VIP IP を直指定する。
+    - toServices:
+        - k8sService:
+            serviceName: home-assistant-lan
+            namespace: home-assistant
+
     # Internet: DNS + HTTPS (RFC1918 / CGNAT / link-local / loopback 除外で cluster 内も deny)
     - toCIDRSet:
         - cidr: 0.0.0.0/0
