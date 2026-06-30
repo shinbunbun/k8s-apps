@@ -108,6 +108,7 @@ DASHBOARDS = [
     ("processes.json", None, None, None),
     ("llm-inference.json", None, None, None),
     ("hermes.json", None, None, None),
+    ("home-assistant.json", None, None, None),
 ]
 
 
