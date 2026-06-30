@@ -26,11 +26,19 @@ spec:
             spec:
               # operator が生成する Deployment への patches (順次適用):
               #
-              # 【patch[0]】linstor-controller HA (2026-05 のクラスタ全停止インシデント対策)
-              # - replicas: 1 → 2 (k8s-await-election による leader election で active/standby、
-              #   1 Pod 落ちても endpoint Ready が維持される。Service endpoint 不在で
-              #   Cilium socket-LB が EPERM を返し CSI 連鎖障害を起こす経路の根本対策)。
-              # - strategy: Recreate → RollingUpdate (replicas=2 前提、ローリング切替が可能に)。
+              # 【patch[0]】linstor-controller の probe/toleration 緩和 (2026-05 全停止インシデント由来)
+              # - replicas は operator デフォルトの 1 を維持 (= シングルトン)。
+              #   2026-05 に一時 replicas=2 にしたが、standby は :3370 を serve せず常に
+              #   serving:false (EndpointSlice 実査) なため startupProbe が永久失敗し約10分毎に
+              #   crashloop するだけで、肝心の involuntary failover でも昇格側が結局 JVM cold
+              #   start するので zero-endpoint 窓は消えない (= HA になっていなかった)。
+              #   LINSTOR controller は DB ロックを持つシングルトンでホットスタンバイ不可。
+              #   瞬断自体は csi の継続リトライ + DRBD の I/O 継続で自己回復するため、
+              #   replicas を増やすより 1 に戻して crashloop を解消する判断 (2026-06-30)。
+              # - strategy は RollingUpdate のまま据え置く (operator デフォルトは Recreate)。
+              #   ただし leader election でリーダー重複不可なため、replicas=1 では更新時に
+              #   旧 Pod 終了→新 Pod 昇格→cold start のギャップが残り、実質 Recreate と
+              #   ほぼ同等 (maxSurge は緩衝にならない)。最小 diff のため strategy 自体は不変更。
               # - livenessProbe timeoutSeconds 1 → 10、periodSeconds 10 → 30、
               #   startupProbe failureThreshold 30 → 60。
               #   Java GC pause / Kubernetes-CRD DB 読み込み中の 1秒タイムアウトに
@@ -38,7 +46,7 @@ spec:
               #   30s 間隔 x failureThreshold=3 で 90s 猶予を確保。
               # - tolerationSeconds 30 → 300 (operator デフォルトの 30s を k8s 標準に戻す。
               #   一過性の NodeNotReady で即 evict されない)。
-              # - topologySpreadConstraints で 2 Pod を別ノードに分散。
+              # - topologySpreadConstraints は replicas=1 では no-op (将来の複数化に備え残置)。
               # - DRBD 系 toleration (force-io-error/lost-quorum) は controller pod が
               #   DRBD を直接操作しないため明示しない (operator デフォルトに任せる)。
               #
@@ -57,7 +65,7 @@ spec:
               #
               # 復旧手順: 各 patch ブロックを削除すれば元に戻る (可逆)。
               patches:
-                # 【patch[0]】linstor-controller HA
+                # 【patch[0]】linstor-controller (replicas=1 + probe/toleration 緩和)
                 - target:
                     kind: Deployment
                     name: linstor-controller
@@ -67,7 +75,7 @@ spec:
                     metadata:
                       name: linstor-controller
                     spec:
-                      replicas: 2
+                      replicas: 1
                       strategy:
                         type: RollingUpdate
                         rollingUpdate:
