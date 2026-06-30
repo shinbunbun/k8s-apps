@@ -1,0 +1,15 @@
+# LAN からの UI アクセス / 初回オンボーディング用の固定 VIP (Cilium LB IPAM)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: home-assistant-lan
+  annotations:
+    io.cilium/lb-ipam-ips: 192.168.128.27
+spec:
+  type: LoadBalancer
+  selector:
+    app: home-assistant
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

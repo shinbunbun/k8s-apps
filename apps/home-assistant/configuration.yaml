@@ -1,0 +1,23 @@
+# Home Assistant 本体設定 (GitOps 管理 / configMapGenerator で subPath マウント)
+# 注: SwitchBot (クラウド) と MCP Server は config-flow (UI 設定) 型のため
+#     ここには書かず、初回オンボーディング後に UI から追加する (.storage / PVC に永続化)。
+default_config:
+
+homeassistant:
+  name: Home
+  external_url: "https://home-assistant.shinbunbun.com"
+  internal_url: "http://192.168.128.27"
+
+# Cloudflare Tunnel / Cilium LB の背後に居るため、信頼するプロキシ網を明示。
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+    - 10.42.0.0/16  # k3s pod CIDR (cloudflared 等)
+    - 10.43.0.0/16  # k3s service CIDR
+
+# Prometheus 連携: /api/prometheus を公開 (スクレイプには long-lived token が必要)。
+# メトリクス名は homeassistant_<namespace>_... となる。
+prometheus:
+  namespace: hass
