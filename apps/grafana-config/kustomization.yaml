@@ -304,3 +304,10 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: false
+  - name: grafana-dashboard-home-assistant
+    files:
+      - dashboards/home-assistant.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: false
