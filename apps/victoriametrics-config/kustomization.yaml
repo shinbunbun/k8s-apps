@@ -19,6 +19,7 @@ resources:
   - vmservicescrape-argocd.yaml
   - vmservicescrape-argo-workflows.yaml
   - vmservicescrape-loki.yaml
+  - vmservicescrape-home-assistant.yaml
   - lan-service.yaml
   - alertmanager-lan-service.yaml
 

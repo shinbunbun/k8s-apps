@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: home-assistant
+  labels:
+    app: home-assistant  # VMServiceScrape (victoriametrics-config) のセレクタ対象
 spec:
   selector:
     app: home-assistant

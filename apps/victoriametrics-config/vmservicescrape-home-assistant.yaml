@@ -1,0 +1,35 @@
+# Home Assistant メトリクス scrape 設定
+#
+# HA の Prometheus インテグレーション (configuration.yaml の `prometheus:`) が
+# /api/prometheus を公開する。認証は HA の long-lived access token を
+# Authorization: Bearer で要求するため、bearerTokenSecret で渡す。
+#
+# kustomization の namespace: victoriametrics が効いて VMServiceScrape 自体は
+# victoriametrics ns に配置される。namespaceSelector で home-assistant ns の
+# Service を拾い、bearerTokenSecret も同 ns (victoriametrics) の Secret を解決する。
+#
+# メトリクス名 prefix は configuration.yaml の prometheus.namespace 設定に依存
+# (hass_* / homeassistant_* など)。実値は scrape 開始後に VM で確認しダッシュボード化する。
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: home-assistant
+spec:
+  namespaceSelector:
+    matchNames: [home-assistant]
+  selector:
+    matchLabels:
+      app: home-assistant
+  endpoints:
+    - port: http
+      scheme: http
+      path: /api/prometheus
+      interval: 30s
+      bearerTokenSecret:
+        name: ha-prometheus-token
+        key: token
+      relabelConfigs:
+        - targetLabel: job
+          replacement: home-assistant
+        - targetLabel: cluster
+          replacement: homelab
