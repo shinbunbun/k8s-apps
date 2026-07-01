@@ -86,7 +86,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:0ad0857
+        image: ghcr.io/shinbunbun/logs-pipeline:0cf4337
         args:
           - gold-build
           - --table

@@ -41,7 +41,9 @@ resources:
   # backfill で argo submit する。logs-pipeline#46 の埋め込み DuckDB binary を使い、
   # gold/access-attribution/ を産出。dashboard はこれを純 GROUP BY で読む。
   - workflowtemplate-gold-access-attribution.yaml
-  # egress C2 検知 gold 日次ビルダー (dotfiles-private#399 / #396)。既存の
-  # gold/access-attribution + silver/netflow + reference/asn に C2 脅威フィード判定と
-  # ビーコン統計を乗せ、gold/egress-c2/ を産出。Grafana dashboard/alert が読む。
-  - cronworkflow-egress-c2.yaml
+  # egress C2 検知 gold の materialize テンプレート (dotfiles-private#399 / #396)。
+  # logs-pipeline の `gold-build --table egress-c2` (GoldTable::EgressC2) を templateRef で呼び、
+  # gold/access-attribution + silver/netflow + reference/asn + C2 脅威フィードから D1/D2/D3 を
+  # gold/egress-c2/ に産出。daily-pipeline が gold-access-attribution の後段で実行 (順序依存)。
+  # Grafana dashboard と Loki alert (EgressC2*) がこれを読む。
+  - workflowtemplate-gold-egress-c2.yaml
