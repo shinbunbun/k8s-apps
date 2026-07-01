@@ -89,6 +89,9 @@ DASHBOARDS = [
     ("k8s-pods-archive.json", "grafana-dashboard-logs-archive-k8s-pods", "Logs Archive", None),
     ("macos-unified-archive.json", "grafana-dashboard-logs-archive-macos-unified", "Logs Archive", None),
     ("routeros-access-archive.json", "grafana-dashboard-logs-archive-routeros-access", "Logs Archive", None),
+    ("egress-c2-archive.json", "grafana-dashboard-logs-archive-egress-c2", "Logs Archive", [
+        "# egress C2 検知 (dotfiles-private#399) - gold/egress-c2 を MyDuck datasource で可視化",
+    ]),
     ("cilium.json", None, "Kubernetes", None),
     ("hubble.json", None, "Kubernetes", None),
     ("hubble-network-overview-namespace.json", None, "Kubernetes", None),

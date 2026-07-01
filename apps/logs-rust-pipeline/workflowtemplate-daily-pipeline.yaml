@@ -152,6 +152,15 @@ spec:
               name: gold-access-attribution
               template: build
 
+        # group 3: access-attribution gold 完了後に egress C2 検知 gold を materialize
+        # (dotfiles-private#399)。D1/D3 が同日の gold/access-attribution を入力に読むため、
+        # step group を分けて access-attribution の後に順序保証する。本体は別 WorkflowTemplate
+        # gold-egress-c2 (`gold-build --table egress-c2`) を templateRef で呼ぶ。
+        - - name: gold-egress-c2
+            templateRef:
+              name: gold-egress-c2
+              template: build
+
     # 1 source 分の bronze -> silver -> gold-volume を直列実行。
     # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。
     # gold-volume は固有差分が多いため独立テンプレート (下記参照)。
@@ -283,7 +292,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:0ad0857
+        image: ghcr.io/shinbunbun/logs-pipeline:0cf4337
         args:
           - "{{inputs.parameters.stage}}"
           - --source
@@ -365,7 +374,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:0ad0857
+        image: ghcr.io/shinbunbun/logs-pipeline:0cf4337
         args:
           - gold-build
           - --table
