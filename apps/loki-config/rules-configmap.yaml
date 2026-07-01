@@ -288,8 +288,8 @@ data:
               description: "Error rate is {{ $value }} errors/sec sustained over 30 minutes"
 
       # egress C2 検知アラート (dotfiles-private#399 / #396)
-      # logs-rust-pipeline の egress-c2-build ジョブ (日次 05:00 JST) が gold/egress-c2 を
-      # materialize し、severity=alert の検知を "EGRESS_C2_ALERT ..." マーカー行で stdout に出す。
+      # logs-rust-pipeline の daily-pipeline (gold-egress-c2 ステップ、日次 00:35 JST) が
+      # gold/egress-c2 を materialize し、severity=alert の検知を "EGRESS_C2_ALERT ..." マーカー行で出す。
       # Alloy が job="k8s-pods" として Loki に収集するので、その行を count_over_time で拾って発火する。
       # 日次バッチなので窓は [1d]: マーカーが出た当日はアラートが立ち続け、翌日検知が消えれば自然解決する
       # (恒常的な感染は毎日マーカーが出て発火継続 = 望ましい)。詳細と client_ip/remote/ioc は Grafana
