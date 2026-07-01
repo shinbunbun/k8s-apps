@@ -7,7 +7,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -28,6 +28,23 @@
         },
         "enable": true,
         "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "エアコン ON",
+        "type": "prometheus",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "expr": "(hass_climate_mode{entity=\"climate.eakon\",mode=\"off\"} == 0) and (hass_climate_mode{entity=\"climate.eakon\",mode=\"off\"} offset 30s == 1)",
+        "step": "30s",
+        "titleFormat": "エアコン ON",
+        "textFormat": "",
+        "tagKeys": "",
+        "useValueForTime": false
       }
     ]
   },
