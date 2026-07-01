@@ -1,0 +1,398 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "egress C2 検知 (dotfiles-private#399)。既存 netflow/passive-DNS に C2 脅威フィード判定 + ビーコン統計を乗せた gold/egress-c2 を可視化。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "🚨 Alert 検知 (D1+D2)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "known-bad + beacon。1 件でも出たら要調査。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*)::BIGINT AS value\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='alert'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "レビュー枠 (D3)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "direct-to-IP × 非大手 ASN。単独では良性が多く、top を目視で確認する枠。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*)::BIGINT AS value\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='review'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "known-bad (D1)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "gold.remote が C2 脅威フィード (C2IntelFeeds) に一致。精度≈1.0。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*)::BIGINT AS value\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND detection='known_bad'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "dark-red"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "beacon (D2)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "接続間隔が規則的 (CV<0.3, ≥24 接続) かつ非大手 ASN。未知 C2 の振る舞い検知。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*)::BIGINT AS value\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND detection='beacon'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "検知件数 / 日 (detection 別)",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT date::timestamp AS time, detection AS metric, count(*)::BIGINT AS value\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date)\nGROUP BY date, detection ORDER BY time"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "lineWidth": 1
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "🚨 Alerts: known-bad (D1) + beacon (D2)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "act-on これ。known-bad は即調査、beacon は org/間隔から良性 SaaS か判断し allowlist へ。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT date, detection, client_ip, remote, dst_port, org, country, ioc,\n  conns, round(cv,3) AS cv, med_gap_s, mean_bytes, flows\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='alert'\nORDER BY date DESC, detection, remote"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "D3 direct-to-IP レビュー枠 (flows 上位)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "PmyduckPoc0001"
+      },
+      "description": "DNS 解決痕跡なし × 非大手 ASN。hosting/VPS・意外な国を上から目視。良性は org で判別。",
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT date, client_ip, remote, org, country, flows, bytes\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='review'\nORDER BY date DESC, flows DESC LIMIT 100"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "logs-archive",
+    "security",
+    "egress-c2"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-14d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Egress C2 Detection",
+  "uid": "egress-c2-detection",
+  "version": 1,
+  "weekStart": ""
+}
