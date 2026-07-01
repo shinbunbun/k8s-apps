@@ -226,6 +226,27 @@ spec:
                     GROUP BY detection ORDER BY detection"""
             ).fetchall()
             print(f"wrote {GARAGE}/gold/egress-c2/date={rundate}/data.parquet rows={n} by_detection={by}")
+
+            # severity=alert (D1 known-bad / D2 beacon) を 1 行 1 検知の構造化マーカーで stdout に出す。
+            # Alloy DaemonSet が job="k8s-pods" として Loki へ収集し、loki-config の EgressC2* ルールが
+            # このマーカー行を count_over_time で拾って Alertmanager→Discord に流す (k8s-apps#... / #399)。
+            # level="error" にしない(既存 K3sPodErrorLogDetected と混線させない)ため "error/fail/warn"
+            # 語を含めず、専用トークン EGRESS_C2_ALERT を目印にする。
+            alerts = con.execute(f"""
+                SELECT detection, client_ip, remote,
+                  coalesce(dst_port::VARCHAR, '') AS dst_port,
+                  coalesce(org, '(unknown ASN)') AS org, coalesce(country, '') AS country,
+                  coalesce(ioc, '') AS ioc, coalesce(conns::VARCHAR, '') AS conns,
+                  coalesce(cv::VARCHAR, '') AS cv
+                FROM read_parquet('{GARAGE}/gold/egress-c2/date={rundate}/data.parquet')
+                WHERE severity = 'alert' ORDER BY detection, remote
+            """).fetchall()
+            for detection, client_ip, remote, dst_port, org, country, ioc, conns, cv in alerts:
+                sev = "critical" if detection == "known_bad" else "warning"
+                print(f"EGRESS_C2_ALERT severity={sev} detection={detection} client_ip={client_ip} "
+                      f"remote={remote} dst_port={dst_port} org={org!r} country={country} "
+                      f"ioc={ioc!r} conns={conns} cv={cv} date={rundate}")
+            print(f"egress-c2 alert markers emitted={len(alerts)}")
             PY
           env:
             - name: GARAGE_S3_ENDPOINT

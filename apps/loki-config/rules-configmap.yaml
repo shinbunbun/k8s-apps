@@ -286,3 +286,35 @@ data:
             annotations:
               summary: "k3s pod sustained errors ({{ $labels.namespace }}/{{ $labels.pod }})"
               description: "Error rate is {{ $value }} errors/sec sustained over 30 minutes"
+
+      # egress C2 検知アラート (dotfiles-private#399 / #396)
+      # logs-rust-pipeline の egress-c2-build ジョブ (日次 05:00 JST) が gold/egress-c2 を
+      # materialize し、severity=alert の検知を "EGRESS_C2_ALERT ..." マーカー行で stdout に出す。
+      # Alloy が job="k8s-pods" として Loki に収集するので、その行を count_over_time で拾って発火する。
+      # 日次バッチなので窓は [1d]: マーカーが出た当日はアラートが立ち続け、翌日検知が消えれば自然解決する
+      # (恒常的な感染は毎日マーカーが出て発火継続 = 望ましい)。詳細と client_ip/remote/ioc は Grafana
+      # "Egress C2 Detection" ダッシュボードで確認する。
+      # マーカーは level="error" にしていない (既存 K3sPodErrorLogDetected と混線させないため)。
+      - name: egress_c2_monitoring
+        interval: 30s
+        rules:
+          # D1: 既知 C2 宛先 (脅威フィード一致)。精度≈1.0 なので critical。
+          - alert: EgressC2KnownBadDetected
+            expr: |
+              sum(count_over_time({job="k8s-pods", namespace="logs-rust-pipeline"} |= "EGRESS_C2_ALERT" |= "detection=known_bad" [1d])) > 0
+            for: 0s
+            labels:
+              severity: critical
+            annotations:
+              summary: "感染端末が既知 C2 に通信している可能性 (egress C2 known-bad)"
+              description: "gold/egress-c2 の D1 が既知 C2 宛先への通信を検出。Grafana 'Egress C2 Detection' で client_ip / remote / ioc を確認し該当端末を隔離・調査する。"
+          # D2: ビーコン (未知 C2 の振る舞い)。要トリアージなので warning。
+          - alert: EgressC2BeaconDetected
+            expr: |
+              sum(count_over_time({job="k8s-pods", namespace="logs-rust-pipeline"} |= "EGRESS_C2_ALERT" |= "detection=beacon" [1d])) > 0
+            for: 0s
+            labels:
+              severity: warning
+            annotations:
+              summary: "規則的ビーコン通信を検出 (egress C2 beacon)"
+              description: "gold/egress-c2 の D2 が非大手 ASN への規則的ビーコンを検出。Grafana 'Egress C2 Detection' で org / 間隔 (cv, med_gap_s) を確認。良性 SaaS なら allowlist へ、不明なら該当端末を調査する。"
