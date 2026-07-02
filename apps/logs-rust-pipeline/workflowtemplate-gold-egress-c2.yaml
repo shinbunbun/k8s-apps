@@ -83,7 +83,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:8777821
+        image: ghcr.io/shinbunbun/logs-pipeline:cae1e5b
         args:
           - gold-build
           - --table
@@ -97,6 +97,10 @@ spec:
             value: "http://garage-archive.garage.svc.cluster.local:3900"
           - name: RUST_LOG
             value: "info"
+          # allowlist CSV (cloud_org.csv / benign_pair.csv) を mount した path。binary は
+          # ここを読み D2/D3 の抑制に使う。ファイル不在なら埋め込みデフォルトに fallback。
+          - name: EGRESS_C2_ALLOWLIST_DIR
+            value: "/etc/egress-c2"
         envFrom:
           - secretRef:
               name: logs-rust-pipeline-archive-credentials
@@ -117,9 +121,16 @@ spec:
         volumeMounts:
           - name: tmp
             mountPath: /tmp
+          # allowlist CSV (read-only)。readOnlyRootFilesystem 下でも ConfigMap volume は読める。
+          - name: allowlist
+            mountPath: /etc/egress-c2
+            readOnly: true
       volumes:
         - name: tmp
           # tempfile (gold parquet) + DuckDB の拡張 INSTALL 先 + spill 先。7 日 silver の
           # 窓処理で spill し得るため 6Gi。
           emptyDir:
             sizeLimit: 6Gi
+        - name: allowlist
+          configMap:
+            name: egress-c2-allowlist

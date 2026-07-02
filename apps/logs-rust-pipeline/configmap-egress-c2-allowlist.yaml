@@ -1,0 +1,58 @@
+# egress C2 検知 (gold-egress-c2) の allowlist (dotfiles-private#399)。
+#
+# logs-pipeline の binary が env EGRESS_C2_ALLOWLIST_DIR (=/etc/egress-c2) 配下の
+# 以下 2 CSV を read_csv で読み、D2/D3 の抑制に使う。ConfigMap 不在時は binary 内の
+# 埋め込みデフォルト (cloud=DEFAULT_CLOUD_ORGS / pair=空) に fallback する。
+#
+# ★ data-only 編集: このファイルを編集 → ArgoCD sync → 次回 daily run で反映 (image 再ビルド不要)。
+#
+# cloud_org.csv (列 pattern):
+#   大手 cloud/CDN/SaaS の org 部分文字列。org 名に部分一致 (lower(org) LIKE '%pattern%') した
+#   宛先は D2 beacon / D3 direct-suspicious から抑制される (良性の周期/直打ちノイズ)。
+#   - パターンは LIKE の部分文字列 (正規表現ではない)。'%' '_' は LIKE ワイルドカードになるので使わない。
+#   - 空行 (空/空白 pattern) は binary 側で無視する (LIKE '%%' 全一致=全滅を防止)。
+#
+# benign_pair.csv (列 client_ip,remote,note):
+#   トリアージで良性確認できた (端末IP → 宛先IP) ペア。D2/D3 の該当行を最終抑制する。
+#   D1 known-bad (脅威フィード一致) は対象外 (フィード一致を良性ペアで消せると危険なため)。
+#   - ASN 丸ごとでなく必ずペア単位で許可する (VPS/hosting/外国クラウドに本物 C2 が潜むため)。
+#   - 確認できていない検知は登録しない (現状 Alibaba .16 / UNINETT .4 は未確認なので未登録)。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: egress-c2-allowlist
+data:
+  cloud_org.csv: |
+    pattern
+    amazon
+    cloudflare
+    google
+    facebook
+    meta platforms
+    microsoft
+    msn
+    apple
+    akamai
+    fastly
+    edgecast
+    limelight
+    cdn77
+    incapsula
+    imperva
+    netflix
+    youtube
+    telegram
+    linkedin
+    twitter
+    zoho
+    salesforce
+    rubicon
+    adjust
+    aarki
+    line corp
+    automattic
+    cloudfront
+    sinet
+  # 確認済み良性ペアはここに `client_ip,remote,note` で追記する (現状は header のみ = 空)。
+  benign_pair.csv: |
+    client_ip,remote,note

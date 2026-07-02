@@ -47,3 +47,6 @@ resources:
   # gold/egress-c2/ に産出。daily-pipeline が gold-access-attribution の後段で実行 (順序依存)。
   # Grafana dashboard と Loki alert (EgressC2*) がこれを読む。
   - workflowtemplate-gold-egress-c2.yaml
+  # egress C2 検知の allowlist (cloud org 部分文字列 + 確認済み良性 client_ip→remote ペア)。
+  # gold-egress-c2 に /etc/egress-c2 で mount し、binary が D2/D3 の抑制に使う (data-only 編集可能)。
+  - configmap-egress-c2-allowlist.yaml
