@@ -16,7 +16,7 @@
 #   トリアージで良性確認できた (端末IP → 宛先IP) ペア。D2/D3 の該当行を最終抑制する。
 #   D1 known-bad (脅威フィード一致) は対象外 (フィード一致を良性ペアで消せると危険なため)。
 #   - ASN 丸ごとでなく必ずペア単位で許可する (VPS/hosting/外国クラウドに本物 C2 が潜むため)。
-#   - 確認できていない検知は登録しない (現状 Alibaba .16 / UNINETT .4 は未確認なので未登録)。
+#   - 確認できていない検知は登録しない。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -53,6 +53,8 @@ data:
     automattic
     cloudfront
     sinet
-  # 確認済み良性ペアはここに `client_ip,remote,note` で追記する (現状は header のみ = 空)。
+  # 確認済み良性ペアはここに `client_ip,remote,note` で追記する。
   benign_pair.csv: |
     client_ip,remote,note
+    192.168.1.4,157.249.81.141,api.met.no weather API (nixos-desktop weather widget) hourly poll - benign FP 2026-07-02
+    192.168.1.16,47.84.41.67,Alibaba US cloud app on iPhone - foreground session bursts - benign FP 2026-07-02
