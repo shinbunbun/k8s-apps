@@ -307,7 +307,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT date, detection, client_ip, remote, dst_port, org, country, ioc,\n  conns, round(cv,3) AS cv, med_gap_s, mean_bytes, flows\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='alert'\nORDER BY date DESC, detection, remote"
+          "rawSql": "SELECT date::VARCHAR AS date, detection, client_ip, remote, dst_port, org, country, ioc,\n  conns, round(cv,3) AS cv, med_gap_s, mean_bytes, flows\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='alert'\nORDER BY date DESC, detection, remote"
         }
       ],
       "options": {
@@ -350,7 +350,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT date, client_ip, remote, org, country, flows, bytes\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='review'\nORDER BY date DESC, flows DESC LIMIT 100"
+          "rawSql": "SELECT date::VARCHAR AS date, client_ip, remote, org, country, flows, bytes\nFROM read_parquet('s3://logs-archive/gold/egress-c2/date=*/data.parquet', hive_partitioning=true)\nWHERE $__timeFilter(date) AND severity='review'\nORDER BY date DESC, flows DESC LIMIT 100"
         }
       ],
       "options": {
