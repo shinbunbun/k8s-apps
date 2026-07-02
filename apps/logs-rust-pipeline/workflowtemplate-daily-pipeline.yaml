@@ -292,7 +292,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:cae1e5b
+        image: ghcr.io/shinbunbun/logs-pipeline:1c89272
         args:
           - "{{inputs.parameters.stage}}"
           - --source
@@ -374,7 +374,7 @@ spec:
                     operator: NotIn
                     values: [g3pro]
       container:
-        image: ghcr.io/shinbunbun/logs-pipeline:cae1e5b
+        image: ghcr.io/shinbunbun/logs-pipeline:1c89272
         args:
           - gold-build
           - --table
