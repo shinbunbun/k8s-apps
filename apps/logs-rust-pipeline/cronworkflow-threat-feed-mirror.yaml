@@ -12,10 +12,12 @@
 #     列 = ip, ioc, source。ip で dedup (D1 の join を 1:1 に保つ)。
 #
 # フィード:
-#   - ThreatFox ip-port/full (abuse.ch): 全既知 C2 ip:port。ip 部分を抽出。CSV は引用符付き
-#     + '#' コメントヘッダ + 一部列に内部カンマ (malware_alias/tags) があるため quote='"' で
-#     正規パースする。Auth-Key は現状 public だが、認証アクセスがスロットル安全な正道なので
-#     THREATFOX_AUTH_KEY があれば http secret で送る (placeholder のままなら未認証)。
+#   - ThreatFox ip-port/full (abuse.ch): 全既知 C2 ip:port (~23k IP)。full は zip
+#     (application/zip) 配信なので urllib で DL→展開して local CSV 化し DuckDB に食わせる
+#     (DuckDB read_csv は zip 非対応)。CSV は引用符付き + '#' コメントヘッダ + 一部列に内部
+#     カンマ (malware_alias/tags) があるため列明示 + quote='"' で正規パース。ip 部分を抽出。
+#     DL 失敗時は public な recent (text/plain・~1.8k IP) に fallback。Auth-Key はスロットル
+#     安全のため urllib ヘッダで送る (full 自体は現状 public、THREATFOX_AUTH_KEY があれば送信)。
 #   - C2IntelFeeds IPC2s.csv (GitHub, 無認証): ip,ioc 形式。SOH delim で 1 行 1 列読みし
 #     split_part で抽出、'#' コメント行を除外。
 #
@@ -73,7 +75,7 @@ spec:
             pip install --no-cache-dir --quiet --target /tmp/pylib 'duckdb==1.5.4'
             export PYTHONPATH=/tmp/pylib HOME=/tmp
             python - <<'PY'
-            import os, duckdb
+            import os, io, zipfile, urllib.request, duckdb
 
             DST = "s3://logs-archive/reference/threat-feeds/feeds.parquet"
             # ThreatFox ip-port CSV は 15 列固定・引用符付き・'#' コメント・一部列に内部カンマ。
@@ -122,33 +124,38 @@ spec:
                 "URL_STYLE 'path', USE_SSL false)"
             )
 
-            # ThreatFox: full は Auth-Key 必須 (未認証だと空応答)。実キー注入時のみ full を認証取得し、
-            # placeholder/未設定なら public な recent にフォールバック。
+            # ThreatFox: full は zip (application/zip、~23k IP)、recent は text/plain (~1.8k)。
+            # DuckDB read_csv は zip を解けないため、full は urllib で zip DL→展開して local CSV 化し
+            # DuckDB に食わせる。DL/展開失敗時は recent (DuckDB 直読み URL) にフォールバック。
+            # Auth-Key はスロットル安全のため urllib ヘッダで送る (full 自体は現状 public)。
             recent = "https://threatfox.abuse.ch/export/csv/ip-port/recent/"
             full = "https://threatfox.abuse.ch/export/csv/ip-port/full/"
+            tf_local = "/tmp/threatfox_full.csv"
             key = os.environ.get("THREATFOX_AUTH_KEY", "").strip()
-            tf_url = recent
-            if key and key != "REPLACE_WITH_SOPS_SET":
-                # key はエラー文に載せない (下の except は copy の e のみ print、CREATE SECRET は包まない)。
-                con.execute(
-                    "CREATE SECRET tf (TYPE http, EXTRA_HTTP_HEADERS MAP "
-                    "{'Auth-Key': '" + key.replace("'", "''") + "'}, "
-                    "SCOPE 'https://threatfox.abuse.ch')"
-                )
-                tf_url = full
+            tf_src, tier = recent, "recent"
+            try:
+                hdr = {"Auth-Key": key} if (key and key != "REPLACE_WITH_SOPS_SET") else {}
+                raw = urllib.request.urlopen(
+                    urllib.request.Request(full, headers=hdr), timeout=120
+                ).read()
+                with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                    with open(tf_local, "wb") as f:
+                        f.write(z.read(z.namelist()[0]))
+                tf_src, tier = tf_local, "full"
+            except Exception as e:
+                print(f"threatfox full zip download failed, using recent: {e}")
 
             try:
-                con.execute(copy_sql(tf_url))
+                con.execute(copy_sql(tf_src))
             except Exception as e:
-                if tf_url == full:
-                    print(f"threatfox full fetch failed, falling back to recent: {e}")
-                    tf_url = recent
+                if tier == "full":
+                    print(f"copy with full csv failed, falling back to recent: {e}")
+                    tf_src, tier = recent, "recent"
                     con.execute(copy_sql(recent))
                 else:
                     raise
 
             n = con.execute(f"SELECT count(*) FROM read_parquet('{DST}')").fetchone()[0]
-            tier = "full" if tf_url == full else "recent"
             print(f"wrote {DST} rows={n} threatfox={tier}")
             # 総フェッチ失敗の検知 (C2IntelFeeds だけでも ~200 は出る)。
             assert n > 100, f"unexpectedly few feed rows: {n}"
