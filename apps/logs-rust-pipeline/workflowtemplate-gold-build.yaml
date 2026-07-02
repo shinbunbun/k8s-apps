@@ -1,0 +1,202 @@
+# Argo WorkflowTemplate: 埋め込み DuckDB gold builder (access-attribution / egress-c2 共用)
+#
+# 【テンプレート統合 (T80)】かつて workflowtemplate-gold-access-attribution.yaml と
+# workflowtemplate-gold-egress-c2.yaml の 2 ファイルに near-verbatim 重複した build
+# テンプレート (retryStrategy / affinity (g3pro NotIn) / securityContext / env /
+# image SHA / resources が同一) を、T62 の ingest-stage と同型の inputs.parameters
+# 化で単一テンプレートに統合した。table ごとの実効差分はパラメータで表現する:
+#   - table:    gold-build --table <t> の対象 (access-attribution | egress-c2)。
+#               pod の table ラベルにも使う。必須 (取り違え防止のため default なし)。
+#   - deadline: activeDeadlineSeconds (access-attribution 1200 / egress-c2 1800)。
+#               template レベルの activeDeadlineSeconds は IntOrString なので
+#               parameter substitution がそのまま効く (spec レベルは int64 で不可)。
+#   - tmp_size: /tmp emptyDir の sizeLimit (access-attribution 4Gi / egress-c2 6Gi)。
+#               emptyDir.sizeLimit は CRD が ResourceQuantity 正規表現で validate する
+#               ため {{...}} を直接書けず、ingest-stage と同じく placeholder +
+#               podSpecPatch (Pod 生成時 strategic merge) で上書きする。
+#   - date:     処理対象日。未指定 (daily 経路) は binary が yesterday-jst を解釈。
+# egress-c2 固有だった allowlist ConfigMap mount + EGRESS_C2_ALLOWLIST_DIR env は
+# 両 table に無条件で付ける (access-attribution では inert: env は binary の
+# egress-c2 経路しか読まず、mount は read-only ConfigMap で無害)。分岐を増やすより
+# 統合を優先する意図的差分。deadline / tmp_size の値対応を取り違えると egress-c2
+# (重い方) が deadline 死するため、呼び出し側の値は上の対応表に揃えること。
+#
+# 【table: access-attribution】RouterOS アクセス先統計 (netflow ⋈ passive-dns ⋈ ASN)
+#   設計 (dotfiles-private#326 フェーズ4 / #348):
+#   - netflow フローを「誰が・どのドメイン/組織へ・何 byte」へ帰属させた gold (集約) 層。
+#     ASN の inet 非等価レンジ join + DNS の ASOF join が本質で、Polars では表現しづらい
+#     (INET 型なし / IPv6 整数化が必要) ため logs-pipeline (Rust) の gold builder が
+#     埋め込み DuckDB を使う (logs-pipeline#46、GoldTable::AccessAttribution)。
+#   - 以前は Grafana MyDuck datasource が query-time に同じ join を実行して OOM していた。
+#     重い join を日次バッチで 1 回だけ materialize し、dashboard 側を純 GROUP BY に
+#     退化させて根治する。
+#   - 出力: s3://logs-archive/gold/access-attribution/date=<d>/data.parquet
+#     粒度 (client_ip, remote, qname) 日次ロールアップ、~14.6k 行/日。
+#
+# 【table: egress-c2】egress C2 検知 (dotfiles-private#399 / #396)
+#   - 「感染端末が変なとこ (C2) へ通信していないか」を、既存の netflow(IPFIX) +
+#     passive-DNS の上に脅威判定 + ビーコン統計を乗せて日次検知する
+#     (logs-pipeline#48、GoldTable::EgressC2)。3 検知を 1 テーブルに UNION:
+#       - D1 known-bad (severity=alert): C2 脅威フィード (C2IntelFeeds) 一致
+#       - D2 beacon    (severity=alert): 接続間隔が規則的 × 非大手 ASN
+#       - D3 direct-to-IP suspicious (severity=review): DNS 解決痕跡なし × 非大手 ASN
+#     severity=alert は "EGRESS_C2_ALERT ..." マーカーを stderr に出し、Alloy →
+#     Loki → loki-config の EgressC2* ルールが Alertmanager→Discord に流す。
+#   - 入力に **同日ぶんの access-attribution gold が build 済みである前提**があるため、
+#     daily-pipeline は egress-c2 を access-attribution の後段の step group で呼ぶ。
+#   - 出力: s3://logs-archive/gold/egress-c2/date=<d>/data.parquet。
+#     Grafana "Egress C2 Detection" dashboard がこれを読む。
+#   - allowlist CSV (cloud_org.csv / benign_pair.csv) を /etc/egress-c2 に mount し
+#     D2/D3 の抑制に使う。ファイル不在なら埋め込みデフォルトに fallback。
+#
+# date はどちらの table もデータ列に持たず hive partition (date=) が供給。
+#
+# 【daily / backfill 兼用】
+#   - 日次: daily-pipeline (workflowtemplate-daily-pipeline.yaml) が group 2/3 の
+#     templateRef で本テンプレートを table 別パラメータ付きで呼ぶ。date 未指定 →
+#     binary が yesterday-jst を解釈 (group 1 が生成した silver と同じ day)。
+#   - backfill: argo submit --from で table / date を明示渡し (--force で COPY 上書き、冪等):
+#       argo submit -n logs-rust-pipeline \
+#         --from workflowtemplate/gold-build \
+#         -p table=access-attribution -p date=2026-06-20
+#     deadline / tmp_size は省略時どちらも安全側 (egress-c2 相当の 1800 / 6Gi) の
+#     default が効く (deadline / sizeLimit は上限値なので緩くても無害)。
+#     egress-c2 の backfill は対象日の access-attribution gold が存在している必要がある。
+#     bulk は shell loop (README 参照)。
+#
+# 【埋め込み DuckDB のランタイム要件】binary は httpfs/inet (egress-c2 は icu も) を
+#   runtime に extensions.duckdb.org から INSTALL する (bundled はコアのみ静的化)。
+#   - HTTPS egress: 当 namespace は NetworkPolicy 無しで egress 可 (S3 + GitHub フィード
+#     取得。asn-reference が iptoasn.com 到達で実証済み)。
+#   - 書込可能な拡張/spill ディレクトリ: binary 側で extension_directory / temp_directory
+#     を std::env::temp_dir() (=/tmp) 配下に向けるため、readOnlyRootFilesystem 下でも
+#     /tmp emptyDir があれば動く。
+#
+# 【image SHA】daily-pipeline / backfill と同じく直書き。logs-pipeline を bump したら
+#   3 ファイルとも揃える (README「image SHA bump」参照)。
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: gold-build
+spec:
+  entrypoint: build
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+  # podGC: standalone submit (backfill) 時の retry 1 回目失敗 Pod を成功時に掃除し
+  # KubePodNotReady 誤発報を防ぐ (daily 経由時は daily-pipeline 側の podGC が適用)。
+  podGC:
+    strategy: OnWorkflowSuccess
+    deleteDelayDuration: 30s
+  arguments:
+    parameters:
+      # 対象 gold table。取り違え防止のため default なし (指定漏れは submit 時に
+      # validation error で落ちる)。
+      - name: table
+      # 空でなく "yesterday-jst" を既定にする (binary の --date default リテラルと一致)。
+      # backfill は YYYY-MM-DD を渡す。
+      - name: date
+        value: "yesterday-jst"
+      # deadline / tmp_size は backfill の単発 submit で省略できるよう安全側
+      # (egress-c2 相当) を default にする。daily-pipeline は table ごとの実測値を渡す。
+      - name: deadline
+        value: "1800"
+      - name: tmp_size
+        value: "6Gi"
+  templates:
+    - name: build
+      inputs:
+        parameters:
+          - name: table
+          - name: date
+            value: "yesterday-jst"
+          - name: deadline
+            value: "1800"
+          - name: tmp_size
+            value: "6Gi"
+      # access-attribution 1200 / egress-c2 1800 (D2 が trailing 7 日ぶんの netflow
+      # silver を窓関数走査 + INET join するため長め)。
+      activeDeadlineSeconds: "{{inputs.parameters.deadline}}"
+      # tmp emptyDir sizeLimit の実値は Pod 生成時に strategic merge patch で上書き
+      # (placeholder の理由は volumes 側コメント参照)。
+      podSpecPatch: |
+        volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: "{{inputs.parameters.tmp_size}}"
+      metadata:
+        labels:
+          app: logs-rust-pipeline
+          tier: gold
+          table: "{{inputs.parameters.table}}"
+      # 一過性の S3 timeout / 拡張取得失敗を OnFailure × 2 で吸収 (他 stage と同方針)。
+      retryStrategy:
+        limit: "2"
+        retryPolicy: OnFailure
+        backoff:
+          duration: "30s"
+          factor: "2"
+          maxDuration: "5m"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: [g3pro]
+      container:
+        image: ghcr.io/shinbunbun/logs-pipeline:1c89272
+        args:
+          - gold-build
+          - --table
+          - "{{inputs.parameters.table}}"
+          - --date
+          - "{{inputs.parameters.date}}"
+          # daily は新規 date を書くため no-op、backfill は既存 date を上書き。
+          # 単一日の materialize は軽量なので常に --force で冪等にする。
+          - --force
+        env:
+          - name: AWS_S3_ENDPOINT
+            value: "http://garage-archive.garage.svc.cluster.local:3900"
+          - name: RUST_LOG
+            value: "info"
+          # allowlist CSV (cloud_org.csv / benign_pair.csv) を mount した path。binary は
+          # egress-c2 経路でのみ読み D2/D3 の抑制に使う (access-attribution では inert)。
+          - name: EGRESS_C2_ALLOWLIST_DIR
+            value: "/etc/egress-c2"
+        envFrom:
+          - secretRef:
+              name: logs-rust-pipeline-archive-credentials
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            # DuckDB memory_limit は binary 側 (access-attribution 3GB / egress-c2 2GB)。
+            # 管理外メモリ + 拡張ロード分のヘッドルームとして 4Gi。超過分は /tmp へ spill。
+            memory: 4Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          # allowlist CSV (read-only)。readOnlyRootFilesystem 下でも ConfigMap volume は読める。
+          - name: allowlist
+            mountPath: /etc/egress-c2
+            readOnly: true
+      volumes:
+        - name: tmp
+          # tempfile (gold parquet) + DuckDB の拡張 INSTALL 先 + spill 先。
+          # placeholder: emptyDir.sizeLimit は CRD admission が ResourceQuantity 正規表現で
+          # validate するため parameter substitution string ({{...}}) を直接書けない。
+          # 実値 (access-attribution 4Gi / egress-c2 6Gi) は上の podSpecPatch で上書きする。
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: allowlist
+          configMap:
+            name: egress-c2-allowlist

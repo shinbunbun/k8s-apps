@@ -9,6 +9,8 @@
 #           bronze        -> ingest-stage(stage=bronze)  logs-pipeline bronze --source <s>
 #           silver        -> ingest-stage(stage=silver)  logs-pipeline silver --source <s>     (depends: bronze)
 #           gold-volume   -> gold-volume                 logs-pipeline gold-build --table volume --source <s> (depends: silver)
+#       gold-access-attribution -> templateRef gold-build(table=access-attribution)  (group 2: 全 silver 完了後)
+#       gold-egress-c2          -> templateRef gold-build(table=egress-c2)           (group 3: access-attribution 完了後)
 #
 # 【テンプレート統合 (T62)】bronze/silver/gold-volume の 3 stage はかつて
 # それぞれ別テンプレート (各 ~85 行) として定義され、retryStrategy/affinity
@@ -142,24 +144,37 @@ spec:
         # group 2: group 1 の全 silver 完了後に RouterOS アクセス先統計 gold を materialize。
         # netflow ⋈ passive-dns (ASOF) ⋈ ASN (inet range) の重い join を日次 1 回だけ実行し、
         # Grafana dashboard を gold の純 GROUP BY に退化させて MyDuck の OOM を根治する
-        # (dotfiles-private#326 フェーズ4)。本体は別 WorkflowTemplate gold-access-attribution
-        # (logs-pipeline#46 の埋め込み DuckDB binary `gold-build --table access-attribution`)
-        # を templateRef で呼ぶ。step group は直列なので group 1 の全 source-pipeline 完了が
-        # 依存として効く (attribution が必要なのは netflow / passive-dns silver のみだが、group
-        # 境界で簡潔に順序保証する)。date 未指定 → binary が yesterday-jst を解釈。
+        # (dotfiles-private#326 フェーズ4)。本体は共用 WorkflowTemplate gold-build
+        # (logs-pipeline#46 の埋め込み DuckDB binary `gold-build --table access-attribution`、
+        # T80 で egress-c2 と統合) を templateRef で呼ぶ。step group は直列なので group 1 の
+        # 全 source-pipeline 完了が依存として効く (attribution が必要なのは netflow /
+        # passive-dns silver のみだが、group 境界で簡潔に順序保証する)。date 未指定 →
+        # binary が yesterday-jst を解釈。deadline / tmp_size は table 別の実測値
+        # (対応表は workflowtemplate-gold-build.yaml ヘッダ参照)。
         - - name: gold-access-attribution
             templateRef:
-              name: gold-access-attribution
+              name: gold-build
               template: build
+            arguments:
+              parameters:
+                - {name: table,    value: access-attribution}
+                - {name: deadline, value: "1200"}
+                - {name: tmp_size, value: 4Gi}
 
         # group 3: access-attribution gold 完了後に egress C2 検知 gold を materialize
         # (dotfiles-private#399)。D1/D3 が同日の gold/access-attribution を入力に読むため、
-        # step group を分けて access-attribution の後に順序保証する。本体は別 WorkflowTemplate
-        # gold-egress-c2 (`gold-build --table egress-c2`) を templateRef で呼ぶ。
+        # step group を分けて access-attribution の後に順序保証する。本体は同じく共用
+        # WorkflowTemplate gold-build (`gold-build --table egress-c2`) を templateRef で呼ぶ。
+        # deadline 1800 (trailing 7 日 netflow silver の窓関数走査) / tmp 6Gi (spill 余地)。
         - - name: gold-egress-c2
             templateRef:
-              name: gold-egress-c2
+              name: gold-build
               template: build
+            arguments:
+              parameters:
+                - {name: table,    value: egress-c2}
+                - {name: deadline, value: "1800"}
+                - {name: tmp_size, value: 6Gi}
 
     # 1 source 分の bronze -> silver -> gold-volume を直列実行。
     # bronze/silver は共通テンプレート ingest-stage を stage 名違いで呼ぶ。

@@ -5,10 +5,11 @@ Rust + Polars 実装 (`shinbunbun/logs-pipeline` repo) の logs archive pipeline
 ## 構成
 
 ```
-workflowtemplate-daily-pipeline.yaml         日次 DAG (4 source × 3 stage + access-attribution gold)
+workflowtemplate-daily-pipeline.yaml         日次 DAG (4 source × 3 stage + access-attribution / egress-c2 gold)
 cronworkflow-daily.yaml                       00:35 JST 起動 schedule
 workflowtemplate-backfill.yaml                migrate / silver-backfill / gold-backfill / verify
-workflowtemplate-gold-access-attribution.yaml RouterOS アクセス先統計 gold (netflow⋈passive-dns⋈ASN, 埋め込み DuckDB)
+workflowtemplate-gold-build.yaml              gold 共用 builder (埋め込み DuckDB, table パラメータ切替):
+                                                access-attribution (netflow⋈passive-dns⋈ASN) / egress-c2 (C2 検知)
 cronworkflow-asn-reference.yaml               IP→ASN/org reference parquet 週次ビルダー
 ```
 
@@ -27,6 +28,9 @@ cronworkflow-asn-reference.yaml               IP→ASN/org reference parquet 週
    source-pipeline (dag) ← per-source 並列
         |
    bronze -> silver -> gold-volume    (真の dependencies)
+        |
+        v  (全 source 完了後、直列 step group)
+   gold-access-attribution -> gold-egress-c2   (templateRef gold-build, table 切替)
 ```
 
 旧 12 CronJob (Phase 4 で削除) では bronze 00:35 / silver 01:35 / gold 05:00 の壁時計オフセットで stage 依存を表現していた。Phase 3 以降は真の DAG dependencies で連鎖。
@@ -80,24 +84,28 @@ done
 
 並列実行する場合は `--wait` を外し、cluster の Pod 並列度と各 entrypoint の memory limit (migrate 32Gi / silver 12Gi / gold 4Gi) を踏まえて parallelism を調整。
 
-### access-attribution gold の backfill
+### access-attribution / egress-c2 gold の backfill
 
-RouterOS アクセス先統計 gold (`gold/access-attribution/`) は daily-pipeline が group 2 で自動生成するが、新規導入時や silver 再生成後は別 WorkflowTemplate `gold-access-attribution` を直接 submit して遡及生成する (`--force` で COPY 上書き、冪等):
+RouterOS アクセス先統計 gold (`gold/access-attribution/`) と egress C2 検知 gold (`gold/egress-c2/`) は daily-pipeline が group 2/3 で自動生成するが、新規導入時や silver 再生成後は共用 WorkflowTemplate `gold-build` を `table` パラメータ付きで直接 submit して遡及生成する (`--force` で COPY 上書き、冪等):
 
 ```bash
 # 1 day
 argo submit -n logs-rust-pipeline \
-  --from workflowtemplate/gold-access-attribution \
-  -p date=2026-06-20
+  --from workflowtemplate/gold-build \
+  -p table=access-attribution -p date=2026-06-20
 
 # bulk (silver 期間 2026-06-16 以降を埋める例)
 for d in $(seq 0 9 | xargs -I{} date -d "2026-06-16 +{} days" +%Y-%m-%d); do
   argo submit -n logs-rust-pipeline \
-    --from workflowtemplate/gold-access-attribution -p date=${d} --wait
+    --from workflowtemplate/gold-build \
+    -p table=access-attribution -p date=${d} --wait
 done
 ```
 
-`date` 省略時 (daily 経路) は binary が yesterday-jst を解釈する。
+- `table` は必須 (`access-attribution` | `egress-c2`)。指定漏れは submit 時に validation error で落ちる。
+- `date` 省略時 (daily 経路) は binary が yesterday-jst を解釈する。
+- `deadline` / `tmp_size` は省略可: default は安全側の 1800 / 6Gi (egress-c2 相当の上限値。daily-pipeline は table 別実測値 access-attribution=1200/4Gi, egress-c2=1800/6Gi を渡す)。
+- `table=egress-c2` の backfill は対象日の access-attribution gold が先に存在している必要がある (D1/D3 の入力)。
 
 ## ロールバック
 
@@ -116,7 +124,9 @@ done
 2. 本 directory の以下 3 ファイルで SHA を新 SHA に一括置換 (`sed -i 's#:<旧>#:<新>#g'`):
    - `workflowtemplate-daily-pipeline.yaml` (ingest-stage / gold-volume の 2 image)
    - `workflowtemplate-backfill.yaml` (migrate / silver / gold / verify の 4 image)
-   - `workflowtemplate-gold-access-attribution.yaml` (build の 1 image)
+   - `workflowtemplate-gold-build.yaml` (build の 1 image — access-attribution / egress-c2 共用)
 3. PR を出して ArgoCD sync
+
+なお `deployment-passive-dns.yaml` / `deployment-netflow.yaml` (常駐 collector) も同 repo の image を使うが、batch 系とは独立に pin しており本手順の対象外 (collector 側の変更を含む bump 時のみ個別に更新)。
 
 Phase 2-3 時点で並行していた kustomize images transformer は Phase 4 で廃止済 (CRD path 標準対応外のため WorkflowTemplate に直接書く方式)。

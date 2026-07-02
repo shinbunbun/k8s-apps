@@ -3,10 +3,13 @@
 # 構成 (dotfiles#681 Phase 4 で旧 CronJob 12 本 + Job template 4 本を削除し、
 # Argo Workflows ベースに完全移行):
 #
-#   workflowtemplate-daily-pipeline.yaml  日次 DAG (4 source × 3 stage)
+#   workflowtemplate-daily-pipeline.yaml  日次 DAG (4 source × 3 stage、後段に
+#                                          access-attribution → egress-c2 gold を直列実行)
 #   cronworkflow-daily.yaml                00:35 JST 起動 schedule
 #   workflowtemplate-backfill.yaml         migrate / silver-backfill /
 #                                          gold-backfill / verify の 4 entrypoint
+#   workflowtemplate-gold-build.yaml       access-attribution / egress-c2 gold の
+#                                          共用 builder (table パラメータで切替)
 #   README.md                              運用手順 (daily / backfill / rollback)
 #
 # 旧層 (Phase 4 で削除):
@@ -36,17 +39,18 @@ resources:
   # IP→ASN/org reference parquet 週次ビルダー (アクセス先統計 v2, dotfiles-private#348)。
   # reference/asn/asn.parquet を産出し、gold-access-attribution が inet range join する。
   - cronworkflow-asn-reference.yaml
-  # RouterOS アクセス先統計 gold (netflow ⋈ passive-dns ⋈ ASN) の materialize テンプレート
-  # (dotfiles-private#326 フェーズ4)。daily-pipeline が group 2 で templateRef 実行 +
-  # backfill で argo submit する。logs-pipeline#46 の埋め込み DuckDB binary を使い、
-  # gold/access-attribution/ を産出。dashboard はこれを純 GROUP BY で読む。
-  - workflowtemplate-gold-access-attribution.yaml
-  # egress C2 検知 gold の materialize テンプレート (dotfiles-private#399 / #396)。
-  # logs-pipeline の `gold-build --table egress-c2` (GoldTable::EgressC2) を templateRef で呼び、
-  # gold/access-attribution + silver/netflow + reference/asn + C2 脅威フィードから D1/D2/D3 を
-  # gold/egress-c2/ に産出。daily-pipeline が gold-access-attribution の後段で実行 (順序依存)。
-  # Grafana dashboard と Loki alert (EgressC2*) がこれを読む。
-  - workflowtemplate-gold-egress-c2.yaml
+  # 埋め込み DuckDB gold builder 共用テンプレート (T80 で 2 ファイルを統合、table
+  # パラメータで切替)。daily-pipeline が group 2/3 で templateRef 実行 + backfill で
+  # argo submit する。
+  #   - table=access-attribution: RouterOS アクセス先統計 (netflow ⋈ passive-dns ⋈ ASN、
+  #     dotfiles-private#326 フェーズ4、logs-pipeline#46)。gold/access-attribution/ を産出、
+  #     dashboard はこれを純 GROUP BY で読む。
+  #   - table=egress-c2: egress C2 検知 (dotfiles-private#399 / #396、logs-pipeline#48)。
+  #     gold/access-attribution + silver/netflow + reference/asn + C2 脅威フィードから
+  #     D1/D2/D3 を gold/egress-c2/ に産出 (access-attribution の後段で順序依存)。
+  #     Grafana dashboard と Loki alert (EgressC2*) がこれを読む。
+  - workflowtemplate-gold-build.yaml
   # egress C2 検知の allowlist (cloud org 部分文字列 + 確認済み良性 client_ip→remote ペア)。
-  # gold-egress-c2 に /etc/egress-c2 で mount し、binary が D2/D3 の抑制に使う (data-only 編集可能)。
+  # gold-build に /etc/egress-c2 で mount し、binary が egress-c2 経路の D2/D3 抑制に使う
+  # (data-only 編集可能。access-attribution 経路では読まれない)。
   - configmap-egress-c2-allowlist.yaml
