@@ -50,3 +50,11 @@ resources:
   # egress C2 検知の allowlist (cloud org 部分文字列 + 確認済み良性 client_ip→remote ペア)。
   # gold-egress-c2 に /etc/egress-c2 で mount し、binary が D2/D3 の抑制に使う (data-only 編集可能)。
   - configmap-egress-c2-allowlist.yaml
+  # C2 脅威フィード (ThreatFox + C2IntelFeeds) の日次ミラー (dotfiles-private#399)。
+  # reference/threat-feeds/feeds.parquet を産出し、gold-egress-c2 の D1 が S3 から読む。
+  # 外部フィード取得を本 cron 1 箇所に隔離し、gold build を S3 read only にする。
+  - cronworkflow-threat-feed-mirror.yaml
+
+# ThreatFox Auth-Key secret (threatfox-credentials)。threat-feed-mirror が envFrom で参照。
+generators:
+  - secret-generator.yaml

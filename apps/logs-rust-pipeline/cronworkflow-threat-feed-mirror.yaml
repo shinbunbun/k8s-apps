@@ -1,0 +1,183 @@
+# Argo CronWorkflow: C2 脅威フィードミラー (dotfiles-private#399)
+#
+# egress C2 検知 (gold-egress-c2) の D1 known-bad が使う脅威フィード (C2 宛先 IP) を
+# 日次でミラーし、reference/threat-feeds/feeds.parquet に materialize する。
+#
+# 設計 (asn-reference-build と同じ reference 層パターン):
+#   - gold build 側 (gold-egress-c2 binary) は外部フィードを直接叩かず、この reference
+#     parquet を S3 から読むだけにする。→ フィード障害が gold build (D1/D2/D3) を
+#     一切巻き込まない。認証も本 cron 1 箇所に隔離される。backfill が何度走っても
+#     abuse.ch を叩かない (スロットル安全)。
+#   - 出力: s3://logs-archive/reference/threat-feeds/feeds.parquet (garage-archive)。
+#     列 = ip, ioc, source。ip で dedup (D1 の join を 1:1 に保つ)。
+#
+# フィード:
+#   - ThreatFox ip-port/full (abuse.ch): 全既知 C2 ip:port。ip 部分を抽出。CSV は引用符付き
+#     + '#' コメントヘッダ + 一部列に内部カンマ (malware_alias/tags) があるため quote='"' で
+#     正規パースする。Auth-Key は現状 public だが、認証アクセスがスロットル安全な正道なので
+#     THREATFOX_AUTH_KEY があれば http secret で送る (placeholder のままなら未認証)。
+#   - C2IntelFeeds IPC2s.csv (GitHub, 無認証): ip,ioc 形式。SOH delim で 1 行 1 列読みし
+#     split_part で抽出、'#' コメント行を除外。
+#
+# 初回: CronWorkflow は作成時には走らないため、merge 後に一度手動トリガして seed する
+#   argo submit --from cronwf/threat-feed-mirror -n logs-rust-pipeline
+# (feeds.parquet 生成までは gold-egress-c2 の D1 read_parquet が対象を欠く)。
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: threat-feed-mirror
+spec:
+  # 毎日 00:00 JST。daily-pipeline (00:35) の前に走らせ当日ぶんを新鮮にする。
+  # 失敗しても前日の feeds.parquet が残る (上書きは成功時のみ) ため D1 は劣化しない。
+  schedules:
+    - "0 0 * * *"
+  timezone: "Asia/Tokyo"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    entrypoint: build
+    activeDeadlineSeconds: 900
+    ttlStrategy:
+      secondsAfterCompletion: 86400
+    podMetadata:
+      labels:
+        app: logs-rust-pipeline
+        tier: reference
+        source: threat-feeds
+    templates:
+      - name: build
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: NotIn
+                      values: [g3pro]
+        retryStrategy:
+          limit: "2"
+          retryPolicy: OnFailure
+          backoff:
+            duration: "1m"
+            factor: "2"
+            maxDuration: "10m"
+        script:
+          image: python:3.14-slim
+          command: [bash]
+          source: |
+            set -euo pipefail
+            # asn-reference-build と同じ: readOnlyRootFilesystem 下は /tmp に隔離インストール。
+            pip install --no-cache-dir --quiet --target /tmp/pylib 'duckdb==1.5.4'
+            export PYTHONPATH=/tmp/pylib HOME=/tmp
+            python - <<'PY'
+            import os, duckdb
+
+            DST = "s3://logs-archive/reference/threat-feeds/feeds.parquet"
+            # ThreatFox ip-port CSV は 15 列固定・引用符付き・'#' コメント・一部列に内部カンマ。
+            # 列数変動で dialect 自動検出が失敗するため列を明示し strict_mode=false で緩く読む。
+            TF_COLS = ("{'first_seen':'VARCHAR','ioc_id':'VARCHAR','ioc_value':'VARCHAR',"
+                       "'ioc_type':'VARCHAR','threat_type':'VARCHAR','fk_malware':'VARCHAR',"
+                       "'malware_alias':'VARCHAR','malware_printable':'VARCHAR','last_seen':'VARCHAR',"
+                       "'confidence':'VARCHAR','is_compromised':'VARCHAR','reference':'VARCHAR',"
+                       "'tags':'VARCHAR','anonymous':'VARCHAR','reporter':'VARCHAR'}")
+
+            def tf_select(url):
+                return (
+                    "SELECT split_part(trim(both ' \"' FROM ioc_value), ':', 1) AS ip, "
+                    "nullif(trim(both ' \"' FROM malware_printable), '') AS ioc, 'threatfox' AS source "
+                    f"FROM read_csv('{url}', delim=',', quote='\"', escape='\"', header=false, "
+                    f"comment='#', ignore_errors=true, strict_mode=false, null_padding=true, columns={TF_COLS}) "
+                    "WHERE trim(both ' \"' FROM ioc_type) IN ('ip:port','ip') "
+                    "AND trim(both ' \"' FROM ioc_value) LIKE '%.%.%.%'"
+                )
+
+            # C2IntelFeeds は ip,ioc 形式。SOH delim で 1 行 1 列読みし split_part で抽出、'#' 除外。
+            C2IF = (
+                "SELECT split_part(l, ',', 1) AS ip, nullif(split_part(l, ',', 2), '') AS ioc, "
+                "'c2intelfeeds' AS source "
+                "FROM read_csv('https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s.csv', "
+                "header=false, delim=chr(1), quote='', columns={'l':'VARCHAR'}, ignore_errors=true) "
+                "WHERE l NOT LIKE '#%' AND l LIKE '%.%.%.%,%'"
+            )
+
+            def copy_sql(tf_url):
+                # ip で dedup (D1 の join を 1:1 に)。予約 IP は D1 が gold.remote=外部 IP と join
+                # するため自然に除外され、フィルタ不要。
+                return (
+                    "COPY (SELECT ip, min(ioc) AS ioc, "
+                    "string_agg(DISTINCT source, '+' ORDER BY source) AS source "
+                    f"FROM ({tf_select(tf_url)} UNION ALL {C2IF}) GROUP BY ip) "
+                    f"TO '{DST}' (FORMAT parquet, COMPRESSION zstd)"
+                )
+
+            con = duckdb.connect()
+            con.execute("INSTALL httpfs")
+            con.execute("LOAD httpfs")
+            con.execute(
+                "CREATE SECRET garage (TYPE s3, PROVIDER credential_chain, CHAIN 'env', "
+                f"REGION 'garage', ENDPOINT '{os.environ['GARAGE_S3_ENDPOINT']}', "
+                "URL_STYLE 'path', USE_SSL false)"
+            )
+
+            # ThreatFox: full は Auth-Key 必須 (未認証だと空応答)。実キー注入時のみ full を認証取得し、
+            # placeholder/未設定なら public な recent にフォールバック。
+            recent = "https://threatfox.abuse.ch/export/csv/ip-port/recent/"
+            full = "https://threatfox.abuse.ch/export/csv/ip-port/full/"
+            key = os.environ.get("THREATFOX_AUTH_KEY", "").strip()
+            tf_url = recent
+            if key and key != "REPLACE_WITH_SOPS_SET":
+                # key はエラー文に載せない (下の except は copy の e のみ print、CREATE SECRET は包まない)。
+                con.execute(
+                    "CREATE SECRET tf (TYPE http, EXTRA_HTTP_HEADERS MAP "
+                    "{'Auth-Key': '" + key.replace("'", "''") + "'}, "
+                    "SCOPE 'https://threatfox.abuse.ch')"
+                )
+                tf_url = full
+
+            try:
+                con.execute(copy_sql(tf_url))
+            except Exception as e:
+                if tf_url == full:
+                    print(f"threatfox full fetch failed, falling back to recent: {e}")
+                    tf_url = recent
+                    con.execute(copy_sql(recent))
+                else:
+                    raise
+
+            n = con.execute(f"SELECT count(*) FROM read_parquet('{DST}')").fetchone()[0]
+            tier = "full" if tf_url == full else "recent"
+            print(f"wrote {DST} rows={n} threatfox={tier}")
+            # 総フェッチ失敗の検知 (C2IntelFeeds だけでも ~200 は出る)。
+            assert n > 100, f"unexpectedly few feed rows: {n}"
+            PY
+          env:
+            - name: GARAGE_S3_ENDPOINT
+              value: "garage-archive.garage.svc.cluster.local:3900"
+          envFrom:
+            - secretRef:
+                name: logs-rust-pipeline-archive-credentials
+            - secretRef:
+                name: threatfox-credentials
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        volumes:
+          - name: tmp
+            emptyDir:
+              sizeLimit: 512Mi
